@@ -1,0 +1,95 @@
+﻿version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: authx-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-authx}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: authx-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: ..
+      dockerfile: src/Skopka.Hello/Dockerfile
+    image: skopka.hello:dev
+    container_name: skopka-hello
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db-migrator:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      CONNECTIONSTRINGS__DEFAULT: Host=postgres;Port=5432;Database=${POSTGRES_DB:-authx};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      REDIS_CONNECTION: redis:6379
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
+      CORS__ORIGINS: ${CORS__ORIGINS:-http://localhost:5173}
+      SIGNING__ALGORITHM: ${SIGNING__ALGORITHM:-ES256}
+      SIGNING__KID: ${SIGNING__KID:-dev-key}
+      SIGNING__PEMFILE: ${SIGNING__PEMFILE:-/config/secrets/signing-key.pem}
+      FEATURES__INTROSPECTION: ${FEATURES__INTROSPECTION:-false}
+    ports:
+      - "8080:8080"
+    volumes:
+      - type: bind
+        source: ../deploy/settings
+        target: /config/settings
+      - type: bind
+        source: ../deploy/secrets
+        target: /config/secrets
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  db-migrator:
+    image: skopka.hello:dev
+    container_name: skopka-hello-migrator
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      CONNECTIONSTRINGS__DEFAULT: Host=postgres;Port=5432;Database=${POSTGRES_DB:-authx};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      MIGRATIONS__APPLY: "true"
+      MIGRATIONS__EXITAFTER: "true"
+    command: ["dotnet","Skopka.Hello.dll"]
+    volumes:
+      - type: bind
+        source: ../deploy/settings
+        target: /config/settings
+      - type: bind
+        source: ../deploy/secrets
+        target: /config/secrets
+    restart: "no"
+
+volumes:
+  pgdata:

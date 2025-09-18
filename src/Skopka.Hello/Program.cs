@@ -5,6 +5,7 @@ var builder = WebApplication.CreateBuilder(args);
 // External config first: /config/settings/appsettings.json + environment variables
 builder.Configuration
     .AddJsonFile("/config/settings/appsettings.json", optional: true, reloadOnChange: true)
+    .AddKeyPerFile("/config/secret")
     .AddEnvironmentVariables();
 
 var configuration = builder.Configuration;

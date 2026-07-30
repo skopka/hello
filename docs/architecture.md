@@ -8,10 +8,11 @@ reimplement the identity domain.
 ```text
 Server / Sample
   -> Skopka.Hello.Endpoints
+  -> Skopka.Hello.UI
   -> Skopka.Hello
   -> Skopka.Identity packages
 
-UI / Oidc / Admin
+Oidc / Admin
   -> Skopka.Hello
 ```
 
@@ -35,12 +36,13 @@ identity.UseJwtBearerAuthentication();
 
 ## First vertical flow
 
-Registration maps an HTTP DTO to `RegisterPasswordUserCommand<TProfile>` and
-uses the atomic registration service. Login authenticates one explicit
-`PasswordLoginHandle`, then passes the returned user id and current security
-stamp to session creation. Refresh delegates strict rotation to
-Skopka.Identity. Account endpoints use the authenticated subject and never call
-EF stores directly.
+`IHelloIdentityApplication<TProfile>` is the shared transport-facing
+orchestrator. Registration maps to
+`RegisterPasswordUserCommand<TProfile>` and uses the atomic registration
+service. Login authenticates one explicit `PasswordLoginHandle`, then passes
+the returned user id and current security stamp to session creation. Refresh
+delegates strict rotation to Skopka.Identity. Minimal API and Razor handlers
+call the same operations and never call EF stores directly.
 
 Skopka.Identity owns:
 
@@ -52,7 +54,8 @@ Skopka.Identity owns:
 Skopka.Hello owns:
 
 - HTTP DTOs, route authorization and `ProblemDetails`;
-- refresh and antiforgery cookies;
+- shared application operation results;
+- refresh, UI authentication and antiforgery cookies;
 - trusted request-derived client/session display context;
 - server configuration and migration composition;
 - security-event request enrichment and audit-outbox contracts.
@@ -75,6 +78,21 @@ the stable error type and code:
 Arbitrary error details are not serialized. Validation fields and the safe
 rate-limit retry timestamp are handled explicitly.
 
+Razor forms map the same structured errors to field or summary validation.
+They do not convert expected failures into exceptions.
+
+## Browser session
+
+The Razor UI has its own ASP.NET Core cookie authentication scheme and policy.
+The encrypted authentication ticket stores the short-lived access token; the
+refresh token remains only in the separate `HttpOnly` refresh cookie. On every
+protected UI request, the cookie event validates the access token online with
+Skopka.Identity. When it has expired, the handler rotates the refresh session,
+replaces both protected tickets and rebuilds safe display claims.
+
+Every Razor mutation uses antiforgery. Minimal API bearer authentication remains
+separate and still returns access tokens as JSON.
+
 ## Security events and outbox boundary
 
 `HelloIdentitySecurityEventObserver` enriches committed Skopka.Identity events
@@ -92,7 +110,8 @@ claimed.
 
 ## Deferred modules
 
-`Skopka.Hello.UI`, `Skopka.Hello.Oidc` and `Skopka.Hello.Admin` are real package
+Recovery, confirmation, credential/external-login management and admin pages
+remain deferred. `Skopka.Hello.Oidc` and `Skopka.Hello.Admin` are real package
 boundaries, but contain no speculative protocol or identity logic. OAuth/OIDC
 will use a maintained protocol library only after target-framework support and
 threat modeling are verified.

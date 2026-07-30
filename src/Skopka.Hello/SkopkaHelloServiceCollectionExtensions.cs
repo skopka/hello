@@ -41,6 +41,12 @@ public static class SkopkaHelloServiceCollectionExtensions
         services.TryAddSingleton<
             IIdentitySecurityEventObserver,
             Skopka.Hello.HelloIdentitySecurityEventObserver>();
+        services.TryAddScoped<
+            Skopka.Hello.IHelloIdentityApplication<TProfile>,
+            Skopka.Hello.HelloIdentityApplication<TProfile>>();
+        services.TryAddScoped<
+            Skopka.Hello.IHelloSessionCookieManager,
+            Skopka.Hello.HelloSessionCookieManager>();
 
         return services.AddSkopkaIdentity<TProfile>();
     }

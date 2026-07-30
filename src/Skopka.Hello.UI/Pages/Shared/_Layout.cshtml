@@ -1,0 +1,48 @@
+@inject SkopkaHelloUiOptions UiOptions
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] · Skopka.Hello</title>
+    @if (UiOptions.BuiltInStylesEnabled)
+    {
+        <link rel="stylesheet"
+              href="/_content/Skopka.Hello.UI/css/hello.css" />
+    }
+    @if (UiOptions.CustomCssFilePath is not null)
+    {
+        <link rel="stylesheet"
+              href="@UiOptions.CustomCssRequestPath" />
+    }
+</head>
+<body>
+    <header class="hello-header">
+        <a class="hello-brand" href="@HelloUiDefaults.RootPath">
+            Skopka.Hello
+        </a>
+        <nav aria-label="Account navigation">
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <a href="@HelloUiDefaults.AccountPath">Account</a>
+                <a href="@HelloUiDefaults.SessionsPath">Sessions</a>
+                <form method="post"
+                      asp-page="/Account/Index"
+                      asp-page-handler="Logout">
+                    <button class="hello-link-button" type="submit">
+                        Sign out
+                    </button>
+                </form>
+            }
+            else
+            {
+                <a href="@HelloUiDefaults.LoginPath">Sign in</a>
+                <a href="@HelloUiDefaults.RegisterPath">Register</a>
+            }
+        </nav>
+    </header>
+    <main class="hello-main">
+        @RenderBody()
+    </main>
+</body>
+</html>

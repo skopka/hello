@@ -35,6 +35,13 @@ The default bearer mode is stateless until JWT expiry. Set
 check the current persisted session and security stamp. This adds a database
 lookup. Role and user changes otherwise affect newly issued access tokens only.
 
+The Razor UI uses a separate cookie authentication scheme. Its encrypted,
+`HttpOnly` authentication ticket stores the short-lived access token, while the
+plain refresh token remains only in the refresh cookie. Every protected Razor
+request validates the access token online. When it expires, the cookie handler
+uses strict refresh rotation and renews both protected browser artifacts. A
+revoked session therefore stops authorizing the UI immediately.
+
 ## CSRF
 
 `POST /auth/refresh` and `POST /auth/logout` validate ASP.NET Core antiforgery
@@ -47,6 +54,8 @@ sets:
 The client copies the request-token value into `X-CSRF-TOKEN`. The readable token
 is not a credential; the refresh token remains inaccessible to JavaScript.
 Bearer-authorized account mutations do not derive authority from cookies.
+Razor form mutations use the framework antiforgery hidden field and cookie.
+Login and registration are also antiforgery protected.
 
 ## Secrets
 

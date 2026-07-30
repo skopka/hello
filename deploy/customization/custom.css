@@ -1,0 +1,10 @@
+/*
+ * This file is mounted read-only into Skopka.Hello.Server and served after
+ * built-in UI styles from /_content/Skopka.Hello.UI/custom.css.
+ *
+ * Replace these declarations or add selectors used by your host application.
+ */
+:root {
+  --skopka-hello-color-primary: #6658d3;
+  --skopka-hello-font-family: system-ui, sans-serif;
+}

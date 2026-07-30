@@ -12,6 +12,14 @@ docker build -f .\src\Skopka.Hello.Server\Dockerfile -t skopka-hello:local .
 The runtime image runs as the non-root .NET image user and includes a
 process-based health check for `/health/live`.
 
+The image declares `/var/lib/skopka-hello/customization` as a volume and reads
+`custom.css` from it by default. Mount this directory read-only. Only the
+configured file is served; directory browsing and arbitrary request-to-file
+mapping are not enabled.
+
+The account UI is served under `/hello`. The packaged stylesheet is an RCL
+static asset; the mounted custom stylesheet is linked after it.
+
 ## Configuration
 
 Inject the PostgreSQL connection string and Base64 JWT signing key from a secret

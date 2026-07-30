@@ -1,5 +1,6 @@
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.Sample;
+using Skopka.Hello.UI;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString(
@@ -11,14 +12,24 @@ var encodedKey = builder.Configuration[
     ?? throw new InvalidOperationException(
         "SkopkaHello:Jwt:SigningKey is required.");
 var signingKey = Convert.FromBase64String(encodedKey);
+var secureCookies = builder.Configuration.GetValue(
+    "SkopkaHello:Cookies:Secure",
+    true);
 
 var identity = builder.Services
     .AddSkopkaHello<SampleProfile>(options =>
     {
         options.ClientName = "Skopka.Hello.Sample";
-        options.SecureCookies = builder.Configuration.GetValue(
-            "SkopkaHello:Cookies:Secure",
-            true);
+        options.SecureCookies = secureCookies;
+        if (!secureCookies)
+        {
+            options.RefreshCookieName =
+                "Skopka.Hello.Refresh";
+            options.AntiforgeryCookieName =
+                "Skopka.Hello.Antiforgery";
+            options.AntiforgeryRequestCookieName =
+                "Skopka.Hello.XSRF-TOKEN";
+        }
     })
     .UsePostgreSql(connectionString)
     .UsePbkdf2PasswordHasher()
@@ -32,11 +43,24 @@ var identity = builder.Services
 
 identity.UseJwtBearerAuthentication();
 builder.Services.AddProblemDetails();
+builder.Services.AddSkopkaHelloUi<
+    SampleProfile,
+    SampleProfileUiFactory>(options =>
+{
+    options.SecureCookies = secureCookies;
+    if (!secureCookies)
+    {
+        options.AuthenticationCookieName =
+            "Skopka.Hello.UI";
+    }
+});
 
 var app = builder.Build();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapStaticAssets();
 app.MapSkopkaHello<SampleProfile>();
+app.MapSkopkaHelloUi();
 await app.RunAsync();

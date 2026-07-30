@@ -19,5 +19,6 @@
     </PackageReference>
     <ProjectReference Include="..\..\src\Skopka.Hello\Skopka.Hello.csproj" />
     <ProjectReference Include="..\..\src\Skopka.Hello.Endpoints\Skopka.Hello.Endpoints.csproj" />
+    <ProjectReference Include="..\..\src\Skopka.Hello.UI\Skopka.Hello.UI.csproj" />
   </ItemGroup>
 </Project>

@@ -44,8 +44,26 @@ deployment job, not every production replica.
 
 ```powershell
 dotnet restore .\Skopka.Hello.slnx --configfile .\NuGet.Config
-dotnet run --project .\src\Skopka.Hello.Server
+dotnet dev-certs https --trust
+dotnet run --project .\src\Skopka.Hello.Server `
+  --launch-profile https
 ```
+
+The `https` profile listens on `https://localhost:8443` and also exposes
+`http://localhost:8080` for diagnostics. Authentication routes that issue
+secure cookies must be tested through the HTTPS address. The signing key and
+database connection are still supplied through environment variables and are
+not stored in `launchSettings.json`.
+
+Open the browser UI at:
+
+```text
+https://localhost:8443/hello
+```
+
+The plain HTTP launch profile explicitly disables secure cookies for local
+testing and can be opened at `http://localhost:8080/hello`. Never copy this
+override into production.
 
 Or create `.env` from `.env.example` and run:
 
@@ -56,6 +74,13 @@ docker compose -f .\deploy\docker-compose.yml up --build
 The local compose file explicitly uses non-secure, non-`__Host-` cookie names
 because it publishes plain HTTP on localhost. Keep the production default
 (`SkopkaHello:Cookies:Secure=true`) behind TLS.
+
+Compose also mounts [deploy/customization/custom.css](../deploy/customization/custom.css)
+read-only. The server publishes it at
+`/_content/Skopka.Hello.UI/custom.css`; changes to the mounted file are visible
+without rebuilding the image.
+
+The compose UI is available at `http://localhost:8080/hello`.
 
 ## Register and authenticate
 
@@ -112,3 +137,18 @@ Authorization: Bearer <access-token>
 
 Every failure produced from an operation result uses
 `application/problem+json`, including `code` and `traceId` extensions.
+
+## Browser session behavior
+
+The Razor forms use the same `IHelloIdentityApplication<TProfile>` operations
+as the API. Form failures are rendered from `OperationResult` validation
+details. Successful login creates:
+
+- the normal rotating refresh-token cookie;
+- an encrypted `HttpOnly` Razor authentication ticket containing the
+  short-lived access token;
+- antiforgery cookies for form mutations.
+
+Protected pages validate the access token online. After access-token expiry the
+UI rotates the refresh session and renews its protected ticket without exposing
+either token to JavaScript.

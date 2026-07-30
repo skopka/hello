@@ -23,6 +23,7 @@ services:
       SkopkaHello__Jwt__SigningKey: ${SKOPKA_HELLO_JWT_SIGNING_KEY:?Set SKOPKA_HELLO_JWT_SIGNING_KEY in .env}
       SkopkaHello__Database__ApplyMigrations: "true"
       SkopkaHello__DataProtection__KeyPath: /var/lib/skopka-hello/keys
+      SkopkaHello__Customization__CssFilePath: /var/lib/skopka-hello/customization/custom.css
       SkopkaHello__Cookies__Secure: "false"
     depends_on:
       postgres:
@@ -34,6 +35,7 @@ services:
       - /tmp
     volumes:
       - data-protection:/var/lib/skopka-hello/keys
+      - ./customization:/var/lib/skopka-hello/customization:ro
     security_opt:
       - no-new-privileges:true
     healthcheck:

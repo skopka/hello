@@ -1,16 +1,11 @@
 using System.Security.Claims;
-using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Skopka.Abstraction.OperationResult;
-using Skopka.Identity;
+using Skopka.Hello;
 using Skopka.Identity.Authentication;
 using Skopka.Identity.Errors;
-using Skopka.Identity.Registration;
-using Skopka.Identity.Sessions;
-using Skopka.Identity.Users;
-using Skopka.Identity.Users.Commands;
 
 namespace Skopka.Hello.Endpoints;
 
@@ -70,17 +65,16 @@ public static class HelloEndpointRouteBuilderExtensions
 
     private static async Task<IResult> RegisterAsync<TProfile>(
         RegisterRequest<TProfile> request,
-        IIdentityRegistrationService<TProfile> registration,
+        IHelloIdentityApplication<TProfile> application,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var result = await registration.RegisterPasswordAsync(
-            new RegisterPasswordUserCommand<TProfile>(
-                new CreateUserCommand<TProfile>(
-                    request.UserName,
-                    request.Email,
-                    request.Phone,
-                    request.Profile),
+        var result = await application.RegisterAsync(
+            new HelloRegisterCommand<TProfile>(
+                request.UserName,
+                request.Email,
+                request.Phone,
+                request.Profile,
                 request.Password),
             cancellationToken);
 
@@ -93,17 +87,14 @@ public static class HelloEndpointRouteBuilderExtensions
 
     private static async Task<IResult> LoginAsync<TProfile>(
         LoginRequest request,
-        IPasswordAuthenticationService<TProfile> authentication,
-        IIdentitySessionService<TProfile> sessions,
-        Skopka.Hello.IHelloRequestContext requestContext,
-        Skopka.Hello.SkopkaHelloOptions options,
-        IAntiforgery antiforgery,
+        IHelloIdentityApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        SkopkaHelloOptions options,
+        IHelloSessionCookieManager cookies,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var transport = ValidateCookieTransport(
-            options,
-            httpContext);
+        var transport = cookies.ValidateTransport(httpContext);
         if (!transport.IsSuccess)
         {
             return OperationResultProblemMapper.ToResult(
@@ -133,51 +124,37 @@ public static class HelloEndpointRouteBuilderExtensions
                 httpContext);
         }
 
-        var authenticated = await authentication.AuthenticateAsync(
-            new AuthenticatePasswordCommand(
+        var authenticated = await application.LoginAsync(
+            new HelloLoginCommand(
                 handle,
                 request.Login,
                 request.Password,
-                requestContext.CreateClientKey(httpContext)),
-            cancellationToken);
-        if (!authenticated.IsSuccess)
-        {
-            return InvalidLogin(httpContext);
-        }
-
-        var issued = await sessions.CreateAsync(
-            new CreateIdentitySessionCommand(
-                authenticated.Value.Id,
-                authenticated.Value.SecurityStamp,
+                requestContext.CreateClientKey(httpContext),
                 requestContext.CreateSessionMetadata(
                     httpContext,
                     options.ClientName)),
             cancellationToken);
-        if (!issued.IsSuccess)
+        if (!authenticated.IsSuccess)
         {
             return OperationResultProblemMapper.ToResult(
-                issued,
+                authenticated,
                 httpContext);
         }
 
-        WriteSessionCookies(
+        cookies.WriteSessionCookies(
             httpContext,
-            antiforgery,
-            options,
-            issued.Value);
-        return TypedResults.Ok(ToSessionResponse(issued.Value));
+            authenticated.Value.Session);
+        return TypedResults.Ok(
+            ToSessionResponse(authenticated.Value.Session));
     }
 
     private static async Task<IResult> RefreshAsync<TProfile>(
-        IIdentitySessionService<TProfile> sessions,
-        Skopka.Hello.SkopkaHelloOptions options,
-        IAntiforgery antiforgery,
+        IHelloIdentityApplication<TProfile> application,
+        IHelloSessionCookieManager cookies,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var transport = ValidateCookieTransport(
-            options,
-            httpContext);
+        var transport = cookies.ValidateTransport(httpContext);
         if (!transport.IsSuccess)
         {
             return OperationResultProblemMapper.ToResult(
@@ -185,9 +162,7 @@ public static class HelloEndpointRouteBuilderExtensions
                 httpContext);
         }
 
-        var csrf = await ValidateAntiforgeryAsync(
-            antiforgery,
-            httpContext);
+        var csrf = await cookies.ValidateAntiforgeryAsync(httpContext);
         if (!csrf.IsSuccess)
         {
             return OperationResultProblemMapper.ToResult(
@@ -195,43 +170,34 @@ public static class HelloEndpointRouteBuilderExtensions
                 httpContext);
         }
 
-        if (!httpContext.Request.Cookies.TryGetValue(
-                options.RefreshCookieName,
-                out var refreshToken)
-            || string.IsNullOrWhiteSpace(refreshToken))
+        var refreshToken = cookies.ReadRefreshToken(httpContext);
+        if (refreshToken is null)
         {
             return InvalidSession(httpContext);
         }
 
-        var refreshed = await sessions.RefreshAsync(
-            new RefreshIdentitySessionCommand(refreshToken),
+        var refreshed = await application.RefreshAsync(
+            refreshToken,
             cancellationToken);
         if (!refreshed.IsSuccess)
         {
-            DeleteSessionCookies(httpContext, options);
+            cookies.DeleteSessionCookies(httpContext);
             return OperationResultProblemMapper.ToResult(
                 refreshed,
                 httpContext);
         }
 
-        WriteSessionCookies(
-            httpContext,
-            antiforgery,
-            options,
-            refreshed.Value);
+        cookies.WriteSessionCookies(httpContext, refreshed.Value);
         return TypedResults.Ok(ToSessionResponse(refreshed.Value));
     }
 
     private static async Task<IResult> LogoutAsync<TProfile>(
-        IIdentitySessionService<TProfile> sessions,
-        Skopka.Hello.SkopkaHelloOptions options,
-        IAntiforgery antiforgery,
+        IHelloIdentityApplication<TProfile> application,
+        IHelloSessionCookieManager cookies,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var transport = ValidateCookieTransport(
-            options,
-            httpContext);
+        var transport = cookies.ValidateTransport(httpContext);
         if (!transport.IsSuccess)
         {
             return OperationResultProblemMapper.ToResult(
@@ -239,9 +205,7 @@ public static class HelloEndpointRouteBuilderExtensions
                 httpContext);
         }
 
-        var csrf = await ValidateAntiforgeryAsync(
-            antiforgery,
-            httpContext);
+        var csrf = await cookies.ValidateAntiforgeryAsync(httpContext);
         if (!csrf.IsSuccess)
         {
             return OperationResultProblemMapper.ToResult(
@@ -249,19 +213,17 @@ public static class HelloEndpointRouteBuilderExtensions
                 httpContext);
         }
 
-        if (!httpContext.Request.Cookies.TryGetValue(
-                options.RefreshCookieName,
-                out var refreshToken)
-            || string.IsNullOrWhiteSpace(refreshToken))
+        var refreshToken = cookies.ReadRefreshToken(httpContext);
+        if (refreshToken is null)
         {
-            DeleteSessionCookies(httpContext, options);
+            cookies.DeleteSessionCookies(httpContext);
             return TypedResults.NoContent();
         }
 
-        var revoked = await sessions.RevokeAsync(
-            new RevokeIdentitySessionCommand(refreshToken),
+        var revoked = await application.LogoutAsync(
+            refreshToken,
             cancellationToken);
-        DeleteSessionCookies(httpContext, options);
+        cookies.DeleteSessionCookies(httpContext);
 
         return revoked.IsSuccess
             ? TypedResults.NoContent()
@@ -271,8 +233,8 @@ public static class HelloEndpointRouteBuilderExtensions
     }
 
     private static async Task<IResult> LogoutAllAsync<TProfile>(
-        IIdentitySessionService<TProfile> sessions,
-        Skopka.Hello.SkopkaHelloOptions options,
+        IHelloIdentityApplication<TProfile> application,
+        IHelloSessionCookieManager cookies,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -281,8 +243,8 @@ public static class HelloEndpointRouteBuilderExtensions
             return InvalidSession(httpContext);
         }
 
-        var revoked = await sessions.RevokeAllAsync(
-            new RevokeAllIdentitySessionsCommand(userId),
+        var revoked = await application.LogoutAllAsync(
+            userId,
             cancellationToken);
         if (!revoked.IsSuccess)
         {
@@ -291,12 +253,12 @@ public static class HelloEndpointRouteBuilderExtensions
                 httpContext);
         }
 
-        DeleteSessionCookies(httpContext, options);
+        cookies.DeleteSessionCookies(httpContext);
         return TypedResults.NoContent();
     }
 
     private static async Task<IResult> GetMeAsync<TProfile>(
-        IIdentitySessionService<TProfile> sessions,
+        IHelloIdentityApplication<TProfile> application,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -306,7 +268,7 @@ public static class HelloEndpointRouteBuilderExtensions
             return InvalidSession(httpContext);
         }
 
-        var validated = await sessions.ValidateAccessTokenAsync(
+        var validated = await application.ValidateAccessTokenAsync(
             accessToken,
             cancellationToken);
         return validated.IsSuccess
@@ -317,7 +279,7 @@ public static class HelloEndpointRouteBuilderExtensions
     }
 
     private static async Task<IResult> GetSessionsAsync<TProfile>(
-        IIdentitySessionService<TProfile> sessions,
+        IHelloIdentityApplication<TProfile> application,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -326,8 +288,8 @@ public static class HelloEndpointRouteBuilderExtensions
             return InvalidSession(httpContext);
         }
 
-        var listed = await sessions.ListAsync(
-            new ListIdentitySessionsCommand(userId),
+        var listed = await application.ListSessionsAsync(
+            userId,
             cancellationToken);
         return listed.IsSuccess
             ? TypedResults.Ok(
@@ -341,7 +303,7 @@ public static class HelloEndpointRouteBuilderExtensions
 
     private static async Task<IResult> DeleteSessionAsync<TProfile>(
         Guid sessionId,
-        IIdentitySessionService<TProfile> sessions,
+        IHelloIdentityApplication<TProfile> application,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -350,10 +312,9 @@ public static class HelloEndpointRouteBuilderExtensions
             return InvalidSession(httpContext);
         }
 
-        var revoked = await sessions.RevokeByIdAsync(
-            new RevokeIdentitySessionByIdCommand(
-                userId,
-                sessionId),
+        var revoked = await application.RevokeSessionAsync(
+            userId,
+            sessionId,
             cancellationToken);
         return revoked.IsSuccess
             ? TypedResults.NoContent()
@@ -361,56 +322,6 @@ public static class HelloEndpointRouteBuilderExtensions
                 revoked,
                 httpContext);
     }
-
-    private static async Task<OperationResult>
-        ValidateAntiforgeryAsync(
-            IAntiforgery antiforgery,
-            HttpContext httpContext)
-    {
-        try
-        {
-            await antiforgery.ValidateRequestAsync(httpContext);
-            return OperationResultFactory.Success();
-        }
-        catch (AntiforgeryValidationException)
-        {
-            return OperationResultFactory.Fail(
-                new[]
-                {
-                    new Error(
-                        "hello.csrf.invalid",
-                        "The CSRF token is missing or invalid.",
-                        ErrorType.Forbidden),
-                });
-        }
-    }
-
-    private static OperationResult ValidateCookieTransport(
-        Skopka.Hello.SkopkaHelloOptions options,
-        HttpContext httpContext)
-        => options.SecureCookies && !httpContext.Request.IsHttps
-            ? OperationResultFactory.Fail(
-                new[]
-                {
-                    new Error(
-                        "hello.https.required",
-                        "HTTPS is required for session cookies.",
-                        ErrorType.Forbidden),
-                })
-            : OperationResultFactory.Success();
-
-    private static Microsoft.AspNetCore.Http.HttpResults.ProblemHttpResult
-        InvalidLogin(HttpContext httpContext)
-        => OperationResultProblemMapper.ToResult(
-            OperationResultFactory.Fail(
-                new[]
-                {
-                    new Error(
-                        IdentityErrorCodes.InvalidCredentials,
-                        "The login or password is invalid.",
-                        ErrorType.Unauthorized),
-                }),
-            httpContext);
 
     private static Microsoft.AspNetCore.Http.HttpResults.ProblemHttpResult
         InvalidSession(HttpContext httpContext)
@@ -424,72 +335,6 @@ public static class HelloEndpointRouteBuilderExtensions
                         ErrorType.Unauthorized),
                 }),
             httpContext);
-
-    private static void WriteSessionCookies(
-        HttpContext httpContext,
-        IAntiforgery antiforgery,
-        Skopka.Hello.SkopkaHelloOptions options,
-        IssuedIdentitySession session)
-    {
-        httpContext.Response.Cookies.Append(
-            options.RefreshCookieName,
-            session.RefreshToken,
-            CreateCookieOptions(
-                options,
-                httpOnly: true,
-                session.RefreshTokenExpiresAt));
-
-        var tokens = antiforgery.GetAndStoreTokens(httpContext);
-        if (string.IsNullOrWhiteSpace(tokens.RequestToken))
-        {
-            throw new InvalidOperationException(
-                "The antiforgery service did not issue a request token.");
-        }
-
-        httpContext.Response.Cookies.Append(
-            options.AntiforgeryRequestCookieName,
-            tokens.RequestToken,
-            CreateCookieOptions(
-                options,
-                httpOnly: false,
-                session.RefreshTokenExpiresAt));
-    }
-
-    private static void DeleteSessionCookies(
-        HttpContext httpContext,
-        Skopka.Hello.SkopkaHelloOptions options)
-    {
-        var cookie = CreateCookieOptions(
-            options,
-            httpOnly: true,
-            expires: null);
-        httpContext.Response.Cookies.Delete(
-            options.RefreshCookieName,
-            cookie);
-        httpContext.Response.Cookies.Delete(
-            options.AntiforgeryCookieName,
-            cookie);
-        httpContext.Response.Cookies.Delete(
-            options.AntiforgeryRequestCookieName,
-            CreateCookieOptions(
-                options,
-                httpOnly: false,
-                expires: null));
-    }
-
-    private static CookieOptions CreateCookieOptions(
-        Skopka.Hello.SkopkaHelloOptions options,
-        bool httpOnly,
-        DateTimeOffset? expires)
-        => new()
-        {
-            HttpOnly = httpOnly,
-            Secure = options.SecureCookies,
-            IsEssential = true,
-            SameSite = options.CookieSameSite,
-            Path = "/",
-            Expires = expires,
-        };
 
     private static bool TryParseHandle(
         string? value,
@@ -543,7 +388,7 @@ public static class HelloEndpointRouteBuilderExtensions
     }
 
     private static AccountResponse<TProfile> ToAccountResponse<TProfile>(
-        IdentityUser<TProfile> user)
+        HelloAccount<TProfile> user)
         => new(
             user.Id,
             user.Flags,
@@ -558,7 +403,7 @@ public static class HelloEndpointRouteBuilderExtensions
             user.ModifiedAt);
 
     private static SessionResponse ToSessionResponse(
-        IssuedIdentitySession session)
+        HelloSession session)
         => new(
             session.SessionId,
             session.AccessToken,
@@ -566,11 +411,11 @@ public static class HelloEndpointRouteBuilderExtensions
             session.RefreshTokenExpiresAt);
 
     private static SessionInfoResponse ToSessionInfoResponse(
-        IdentitySessionInfo session)
+        HelloSessionInfo session)
         => new(
             session.SessionId,
-            session.Metadata.ClientName,
-            session.Metadata.DeviceName,
+            session.ClientName,
+            session.DeviceName,
             session.ExpiresAt,
             session.CreatedAt,
             session.LastRefreshedAt);

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Net;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.Server;
+using Skopka.Hello.UI;
 using Skopka.Identity.Ef.PostgreSql;
 
 if (args is ["--health-check"])
@@ -135,6 +136,25 @@ identity.UseJwtBearerAuthentication(options =>
 
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
+builder.Services.AddSkopkaHelloUi<
+    HelloProfile,
+    HelloProfileUiFactory>(options =>
+{
+    options.CustomCssFilePath =
+        configuration["SkopkaHello:Customization:CssFilePath"];
+    options.CustomCssRequestPath =
+        configuration["SkopkaHello:Customization:CssRequestPath"]
+        ?? SkopkaHelloUiOptions.DefaultCustomCssRequestPath;
+    options.BuiltInStylesEnabled = configuration.GetValue(
+        "SkopkaHello:Customization:BuiltInStylesEnabled",
+        true);
+    options.SecureCookies = secureCookies;
+    if (!secureCookies)
+    {
+        options.AuthenticationCookieName =
+            "Skopka.Hello.UI";
+    }
+});
 builder.Services.AddHostedService<
     IdentitySessionPruningWorker<HelloProfile>>();
 
@@ -157,6 +177,7 @@ if (configuration.GetValue(
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapStaticAssets();
 app.MapGet(
     "/",
     () => TypedResults.Ok(
@@ -178,6 +199,7 @@ app.MapGet(
             : Results.StatusCode(
                 StatusCodes.Status503ServiceUnavailable));
 app.MapSkopkaHello<HelloProfile>();
+app.MapSkopkaHelloUi();
 
 if (configuration.GetValue(
         "SkopkaHello:Database:ApplyMigrations",

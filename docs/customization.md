@@ -47,10 +47,88 @@ and atomicity are required.
 
 ## UI and styles
 
-The first vertical slice has no decorative UI. Future built-in Razor UI belongs
-in `Skopka.Hello.UI`; it must call the same application services as the API.
-CSS custom properties will be the theming contract, and hosts will be able to
-disable built-in styles.
+Register the Razor Class Library with an application-specific profile factory:
+
+```csharp
+services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
+{
+    options.CustomCssFilePath = "/themes/custom.css";
+});
+
+app.MapStaticAssets();
+app.MapSkopkaHelloUi();
+```
+
+`IHelloUiProfileFactory<TProfile>` maps the registration form profile
+(`DisplayName` and optional `Locale`) to the host's JSON profile type and
+returns `OperationResult<TProfile>`. Profile construction therefore stays
+outside Razor page models.
+
+The built-in pages are:
+
+```text
+/hello/register
+/hello/login
+/hello/account
+/hello/account/sessions
+```
+
+The custom stylesheet contract is:
+
+```text
+GET /_content/Skopka.Hello.UI/custom.css
+```
+
+The ready server reads only the file configured by
+`SkopkaHello:Customization:CssFilePath`. It does not expose the containing
+directory. The response uses `text/css`, `X-Content-Type-Options: nosniff` and
+`Cache-Control: no-cache`, so replacing the mounted file does not require an
+application restart.
+
+The compose stack mounts `deploy/customization` read-only:
+
+```yaml
+volumes:
+  - ./customization:/var/lib/skopka-hello/customization:ro
+```
+
+Edit `deploy/customization/custom.css`, or mount another host directory:
+
+```shell
+docker run \
+  --mount type=bind,source=/host/my-theme,target=/var/lib/skopka-hello/customization,readonly \
+  -e SkopkaHello__Customization__CssFilePath=/var/lib/skopka-hello/customization/custom.css \
+  skopka-hello:local
+```
+
+The custom file is linked after the packaged stylesheet, so its declarations
+win at equal specificity. The primary theme variables are:
+
+```css
+:root {
+  --skopka-hello-color-background: #f5f6fb;
+  --skopka-hello-color-surface: #ffffff;
+  --skopka-hello-color-text: #202235;
+  --skopka-hello-color-muted: #676b7d;
+  --skopka-hello-color-primary: #6658d3;
+  --skopka-hello-color-primary-hover: #5548bd;
+  --skopka-hello-color-danger: #b42318;
+  --skopka-hello-color-border: #dcdfea;
+  --skopka-hello-color-focus: #8f84eb;
+  --skopka-hello-font-family: system-ui, sans-serif;
+  --skopka-hello-radius: 0.8rem;
+  --skopka-hello-shadow: 0 1rem 3rem rgb(39 42 68 / 10%);
+}
+```
+
+Set `BuiltInStylesEnabled = false` in `AddSkopkaHelloUi` to retain the
+page markup and custom stylesheet without loading the packaged CSS. The ready
+server also accepts
+`SkopkaHello__Customization__BuiltInStylesEnabled=false`.
+
+The public custom CSS request URL can be changed with
+`SkopkaHello:Customization:CssRequestPath`. It must be an absolute path without
+a query string or fragment.
 
 ## OAuth/OIDC and external providers
 

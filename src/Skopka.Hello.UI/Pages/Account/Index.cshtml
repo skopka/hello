@@ -1,0 +1,49 @@
+@page "/hello/account"
+@model AccountModel
+@{
+    ViewData["Title"] = "Account";
+}
+
+<section class="hello-page-heading">
+    <p class="hello-eyebrow">Account</p>
+    <h1>Hello, @Model.DisplayName</h1>
+    <p class="hello-muted">
+        This page is authenticated by a protected browser session backed by
+        Skopka.Identity.
+    </p>
+</section>
+
+<section class="hello-card">
+    <h2>Profile</h2>
+    <dl class="hello-details">
+        <div>
+            <dt>User ID</dt>
+            <dd><code>@Model.UserId</code></dd>
+        </div>
+        <div>
+            <dt>User name</dt>
+            <dd>@(Model.UserName ?? "Not set")</dd>
+        </div>
+        <div>
+            <dt>Email</dt>
+            <dd>@(Model.Email ?? "Not set")</dd>
+        </div>
+        <div>
+            <dt>Email status</dt>
+            <dd>@(Model.EmailConfirmed ? "Confirmed" : "Not confirmed")</dd>
+        </div>
+    </dl>
+
+    <div class="hello-actions">
+        <a class="hello-button"
+           href="@HelloUiDefaults.SessionsPath">
+            Manage sessions
+        </a>
+        <form method="post" asp-page-handler="Logout">
+            <button class="hello-button hello-button-secondary"
+                    type="submit">
+                Sign out
+            </button>
+        </form>
+    </div>
+</section>

@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
     <Description>Razor Class Library boundary for the optional Skopka.Hello UI.</Description>
   </PropertyGroup>
 

@@ -2,8 +2,8 @@
 
 Skopka.Hello is an open-source ASP.NET Core host layer for
 [Skopka.Identity](https://github.com/skopka/identity). It supplies HTTP
-contracts, secure browser token transport, host composition and future package
-boundaries for account UI, administration and OAuth/OIDC. Identity users,
+contracts, secure browser token transport, Razor account UI, host composition
+and package boundaries for administration and OAuth/OIDC. Identity users,
 credentials, roles, external logins, verification and refresh-session state stay
 in Skopka.Identity.
 
@@ -15,20 +15,24 @@ The current `0.1.0` vertical slice contains:
 - rotating refresh tokens in `Secure`, `HttpOnly` cookies;
 - antiforgery protection for refresh and cookie logout;
 - account and active-session endpoints protected by bearer authentication;
+- Razor registration, login, account and active-session pages;
+- online validation and transparent rotation for the protected UI session;
 - PostgreSQL persistence and packaged Skopka.Identity migrations;
-- one `OperationResult` to RFC 9457 `ProblemDetails` mapping;
+- shared `OperationResult` application operations mapped to either RFC 9457
+  `ProblemDetails` or Razor validation;
+- CSS custom-property theming with optional built-in styles;
+- a read-only Docker volume hook for host-provided custom CSS;
 - a ready-to-run server, sample host, Docker image and Testcontainers coverage.
 
-OAuth/OIDC, Razor UI and administration have explicit package boundaries but are
-intentionally deferred beyond this first vertical slice.
+OAuth/OIDC, recovery/verification UI and administration remain deferred.
 
 ## Packages
 
 | Project | Responsibility |
 | --- | --- |
-| `Skopka.Hello` | Facade, `AddSkopkaHello<TProfile>()`, options and host contracts |
+| `Skopka.Hello` | Facade, shared application operations, secure cookie transport and host contracts |
 | `Skopka.Hello.Endpoints` | Minimal API routes, HTTP DTOs and ProblemDetails |
-| `Skopka.Hello.UI` | Razor Class Library boundary for future account UI |
+| `Skopka.Hello.UI` | Razor registration/login/account/session pages and theming |
 | `Skopka.Hello.Oidc` | Future authorization-server/provider adapter boundary |
 | `Skopka.Hello.Admin` | Future administration API/UI boundary |
 | `Skopka.Hello.Server` | Executable PostgreSQL host and Docker image |
@@ -52,8 +56,25 @@ implemented as separate user creation and password mutation. Login calls
 `IPasswordAuthenticationService<TProfile>`, then creates a session through
 `IIdentitySessionService<TProfile>`.
 
+## Browser UI
+
+The ready server exposes:
+
+| Path | Purpose |
+| --- | --- |
+| `/hello/register` | Atomic password registration |
+| `/hello/login` | Password login |
+| `/hello/account` | Current account summary |
+| `/hello/account/sessions` | List and revoke active sessions |
+
+API and Razor handlers share `IHelloIdentityApplication<TProfile>`. The UI uses
+an encrypted `HttpOnly` authentication cookie, keeps the refresh token in its
+separate `HttpOnly` cookie, validates the access token online and rotates the
+refresh session after access-token expiry.
+
 See [getting started](docs/getting-started.md) for configuration and requests,
 [architecture](docs/architecture.md) for boundaries and
+[customization](docs/customization.md) for custom CSS volumes, and
 [security](docs/security.md) before deploying.
 
 ## Build and test

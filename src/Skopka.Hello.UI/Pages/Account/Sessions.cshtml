@@ -1,0 +1,76 @@
+@page "/hello/account/sessions"
+@model SessionsModel
+@{
+    ViewData["Title"] = "Sessions";
+}
+
+<section class="hello-page-heading">
+    <p class="hello-eyebrow">Security</p>
+    <h1>Active sessions</h1>
+    <p class="hello-muted">
+        Revoke devices you no longer use. Revoking this session signs this
+        browser out.
+    </p>
+</section>
+
+<div asp-validation-summary="ModelOnly"
+     class="hello-validation"
+     role="alert"></div>
+
+@if (Model.Sessions.Count == 0)
+{
+    <section class="hello-card">
+        <p>No active refresh sessions were found.</p>
+    </section>
+}
+else
+{
+    <div class="hello-session-list">
+        @foreach (var session in Model.Sessions)
+        {
+            <article class="hello-card hello-session">
+                <div>
+                    <h2>
+                        @(session.ClientName ?? "Unknown client")
+                        @if (session.SessionId == Model.CurrentSessionId)
+                        {
+                            <span class="hello-badge">Current</span>
+                        }
+                    </h2>
+                    <p>@(session.DeviceName ?? "Unknown device")</p>
+                    <dl class="hello-session-meta">
+                        <div>
+                            <dt>Last refreshed</dt>
+                            <dd>@session.LastRefreshedAt.ToLocalTime()</dd>
+                        </div>
+                        <div>
+                            <dt>Expires</dt>
+                            <dd>@session.ExpiresAt.ToLocalTime()</dd>
+                        </div>
+                    </dl>
+                </div>
+                <form method="post" asp-page-handler="Revoke">
+                    <input type="hidden"
+                           name="sessionId"
+                           value="@session.SessionId" />
+                    <button class="hello-button hello-button-danger"
+                            type="submit">
+                        Revoke
+                    </button>
+                </form>
+            </article>
+        }
+    </div>
+}
+
+<form method="post"
+      asp-page-handler="LogoutAll"
+      class="hello-danger-zone">
+    <div>
+        <h2>Sign out everywhere</h2>
+        <p>Revokes every active refresh session for this account.</p>
+    </div>
+    <button class="hello-button hello-button-danger" type="submit">
+        Revoke all sessions
+    </button>
+</form>

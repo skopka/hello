@@ -12,31 +12,34 @@ Skopka.Identity architecture from this repository.
 
 Expected identity failures use
 `Skopka.Abstraction.OperationResult.OperationResult`; map them to the common
-ProblemDetails contract and do not turn them into HTTP 500 responses.
+ProblemDetails or Razor validation contract and do not turn them into HTTP 500
+responses.
 
 ## Current vertical
 
-The implemented endpoints are register, login, refresh, logout, logout-all,
-current account, active sessions and revoke-by-id. Registration must remain
-atomic through `IIdentityRegistrationService<TProfile>`. Endpoints may call
-identity application services, never EF stores.
+The implemented surfaces are the register/login/session/account Minimal API and
+the Razor registration, login, account and active-session UI. Registration must
+remain atomic through `IIdentityRegistrationService<TProfile>`. HTTP handlers
+call `IHelloIdentityApplication<TProfile>` or Skopka.Identity application
+services, never EF stores.
 
 Refresh tokens stay only in `Secure`, `HttpOnly` cookies. Cookie-authorized
-mutations require antiforgery validation. Access tokens are JSON/bearer tokens.
-Client keys come from trusted server request context, not request DTOs.
+mutations require antiforgery validation. API access tokens are returned as
+JSON/bearer tokens. The protected Razor UI ticket carries its access token in
+an encrypted `HttpOnly` cookie and validates it online. Client keys come from
+trusted server request context, not request DTOs.
 
 ## Modules
 
-- `src/Skopka.Hello` — facade, DI, options, request context, event/outbox
-  contracts.
-- `src/Skopka.Hello.Endpoints` — Minimal API, DTOs, cookie transport and
-  ProblemDetails.
-- `src/Skopka.Hello.UI` — future Razor Class Library, no identity business
-  logic.
-- `src/Skopka.Hello.Oidc` — future maintained OAuth/OIDC adapter, never a
+- `src/Skopka.Hello` - facade, shared identity application operations, cookie
+  transport, request context and event/outbox contracts.
+- `src/Skopka.Hello.Endpoints` - Minimal API, DTOs and ProblemDetails.
+- `src/Skopka.Hello.UI` - Razor registration/login/account/session pages and
+  theming, with no identity business logic.
+- `src/Skopka.Hello.Oidc` - future maintained OAuth/OIDC adapter, never a
   home-grown protocol.
-- `src/Skopka.Hello.Admin` — future authorized admin workflows.
-- `src/Skopka.Hello.Server` — executable composition and Docker image.
+- `src/Skopka.Hello.Admin` - future authorized admin workflows.
+- `src/Skopka.Hello.Server` - executable composition and Docker image.
 
 Read the local `AGENTS.md` before editing any module.
 

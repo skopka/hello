@@ -3,13 +3,16 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Skopka.Abstraction.OperationResult;
 using Skopka.Hello.Endpoints;
+using Skopka.Hello.UI;
 using Skopka.Identity.Ef.PostgreSql;
 using Testcontainers.PostgreSql;
 
@@ -24,6 +27,7 @@ public sealed class AuthenticationFlowTests
     private const string AntiforgeryRequestCookieName =
         "__Host-Skopka.Hello.XSRF-TOKEN";
     private const string AntiforgeryHeaderName = "X-CSRF-TOKEN";
+    private const string UiCookieName = "__Host-Skopka.Hello.UI";
 
     [Fact]
     public async Task CompleteAuthenticationAndSessionFlow()
@@ -126,6 +130,223 @@ public sealed class AuthenticationFlowTests
             allLoggedOut.StatusCode);
     }
 
+    [Fact]
+    public async Task CompleteRazorUiFlow()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString());
+        using var client = app.CreateClient(
+            allowAutoRedirect: false);
+        Dictionary<string, string> cookies =
+            new(StringComparer.Ordinal);
+
+        using var registerPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/register",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, registerPage.StatusCode);
+        MergeCookies(cookies, registerPage);
+        var registerHtml =
+            await registerPage.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "/_content/Skopka.Hello.UI/css/hello.css",
+            registerHtml,
+            StringComparison.Ordinal);
+        var registerToken = ReadInputValue(
+            registerHtml,
+            "__RequestVerificationToken");
+
+        using var register = await SendFormAsync(
+            client,
+            "/hello/register",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["Input.DisplayName"] = "Browser Alice",
+                ["Input.Email"] = "browser-alice@example.test",
+                ["Input.UserName"] = "browser-alice",
+                ["Input.Phone"] = string.Empty,
+                ["Input.Locale"] = "en",
+                ["Input.Password"] =
+                    "correct horse battery staple",
+                ["Input.ConfirmPassword"] =
+                    "correct horse battery staple",
+                ["__RequestVerificationToken"] = registerToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, register.StatusCode);
+        Assert.StartsWith(
+            "/hello/login",
+            register.Headers.Location?.OriginalString,
+            StringComparison.Ordinal);
+        MergeCookies(cookies, register);
+
+        using var loginPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/login",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, loginPage.StatusCode);
+        MergeCookies(cookies, loginPage);
+        var loginHtml = await loginPage.Content.ReadAsStringAsync();
+        var loginToken = ReadInputValue(
+            loginHtml,
+            "__RequestVerificationToken");
+
+        using var login = await SendFormAsync(
+            client,
+            "/hello/login",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["Input.Handle"] = "email",
+                ["Input.Login"] =
+                    "browser-alice@example.test",
+                ["Input.Password"] =
+                    "correct horse battery staple",
+                ["__RequestVerificationToken"] = loginToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, login.StatusCode);
+        Assert.Equal(
+            "/hello/account",
+            login.Headers.Location?.OriginalString);
+        MergeCookies(cookies, login);
+        Assert.True(cookies.ContainsKey(UiCookieName));
+        Assert.True(cookies.ContainsKey(RefreshCookieName));
+
+        using var account = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/account",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, account.StatusCode);
+        var accountHtml = await account.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "Browser Alice",
+            accountHtml,
+            StringComparison.Ordinal);
+        MergeCookies(cookies, account);
+
+        using var sessionsPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/account/sessions",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, sessionsPage.StatusCode);
+        MergeCookies(cookies, sessionsPage);
+        var sessionsHtml =
+            await sessionsPage.Content.ReadAsStringAsync();
+        var sessionId = ReadInputValue(
+            sessionsHtml,
+            "sessionId");
+        var revokeToken = ReadInputValue(
+            sessionsHtml,
+            "__RequestVerificationToken");
+
+        using var revoke = await SendFormAsync(
+            client,
+            "/hello/account/sessions?handler=Revoke",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["sessionId"] = sessionId,
+                ["__RequestVerificationToken"] = revokeToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, revoke.StatusCode);
+        Assert.Equal(
+            "/hello/login",
+            revoke.Headers.Location?.OriginalString);
+    }
+
+    private static async Task<HttpResponseMessage> SendFormAsync(
+        HttpClient client,
+        string path,
+        IReadOnlyDictionary<string, string> cookies,
+        IReadOnlyDictionary<string, string> form)
+    {
+        var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            path)
+        {
+            Content = new FormUrlEncodedContent(form),
+        };
+        AddCookies(request, cookies);
+        return await client.SendAsync(request);
+    }
+
+    private static async Task<HttpResponseMessage> SendAsync(
+        HttpClient client,
+        HttpMethod method,
+        string path,
+        IReadOnlyDictionary<string, string> cookies)
+    {
+        var request = new HttpRequestMessage(method, path);
+        AddCookies(request, cookies);
+        return await client.SendAsync(request);
+    }
+
+    private static void AddCookies(
+        HttpRequestMessage request,
+        IReadOnlyDictionary<string, string> cookies)
+    {
+        if (cookies.Count == 0)
+        {
+            return;
+        }
+
+        request.Headers.TryAddWithoutValidation(
+            "Cookie",
+            string.Join(
+                "; ",
+                cookies
+                    .Where(pair => pair.Value.Length > 0)
+                    .Select(pair => $"{pair.Key}={pair.Value}")));
+    }
+
+    private static void MergeCookies(
+        Dictionary<string, string> cookies,
+        HttpResponseMessage response)
+    {
+        if (!response.Headers.TryGetValues(
+                "Set-Cookie",
+                out var values))
+        {
+            return;
+        }
+
+        foreach (var value in values)
+        {
+            var pair = value.Split(';', 2)[0];
+            var separator = pair.IndexOf('=');
+            if (separator <= 0)
+            {
+                continue;
+            }
+
+            cookies[pair[..separator]] =
+                pair[(separator + 1)..];
+        }
+    }
+
+    private static string ReadInputValue(
+        string html,
+        string name)
+    {
+        var match = Regex.Match(
+            html,
+            $"<input[^>]*name=\"{Regex.Escape(name)}\"[^>]*value=\"([^\"]+)\"",
+            RegexOptions.CultureInvariant);
+        Assert.True(
+            match.Success,
+            $"Input '{name}' was not found in the rendered page.");
+        return WebUtility.HtmlDecode(match.Groups[1].Value);
+    }
+
     private static async Task<LoginResult> LoginAsync(
         HttpClient client)
     {
@@ -206,6 +427,21 @@ public sealed class AuthenticationFlowTests
     private sealed record IntegrationProfile(
         string DisplayName,
         string? Locale);
+
+    private sealed class IntegrationProfileUiFactory
+        : IHelloUiProfileFactory<IntegrationProfile>
+    {
+        public OperationResult<IntegrationProfile> Create(
+            HelloUiRegistrationProfile profile)
+            => OperationResultFactory.Success(
+                new IntegrationProfile(
+                    profile.DisplayName,
+                    profile.Locale));
+
+        public string GetDisplayName(
+            IntegrationProfile profile)
+            => profile.DisplayName;
+    }
 
     private sealed record SessionPayload(
         Guid SessionId,
@@ -323,6 +559,9 @@ public sealed class AuthenticationFlowTests
                     });
             identity.UseJwtBearerAuthentication();
             builder.Services.AddProblemDetails();
+            builder.Services.AddSkopkaHelloUi<
+                IntegrationProfile,
+                IntegrationProfileUiFactory>();
 
             var application = builder.Build();
             application.UseExceptionHandler();
@@ -336,6 +575,7 @@ public sealed class AuthenticationFlowTests
             application.UseAuthentication();
             application.UseAuthorization();
             application.MapSkopkaHello<IntegrationProfile>();
+            application.MapSkopkaHelloUi();
 
             await using (var scope =
                 application.Services.CreateAsyncScope())
@@ -351,7 +591,8 @@ public sealed class AuthenticationFlowTests
             return new TestApplication(application);
         }
 
-        public HttpClient CreateClient()
+        public HttpClient CreateClient(
+            bool allowAutoRedirect = true)
         {
             var server = application.Services
                 .GetRequiredService<IServer>();
@@ -364,6 +605,8 @@ public sealed class AuthenticationFlowTests
             var handler = new HttpClientHandler
             {
                 UseProxy = false,
+                UseCookies = false,
+                AllowAutoRedirect = allowAutoRedirect,
             };
 
             return new HttpClient(handler)

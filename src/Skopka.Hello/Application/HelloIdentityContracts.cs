@@ -1,0 +1,88 @@
+using Skopka.Abstraction.OperationResult;
+using Skopka.Identity.Authentication;
+using Skopka.Identity.Sessions;
+using Skopka.Identity.Users;
+
+namespace Skopka.Hello;
+
+public sealed record HelloRegisterCommand<TProfile>(
+    string? UserName,
+    string? Email,
+    string? Phone,
+    TProfile Profile,
+    string Password);
+
+public sealed record HelloLoginCommand(
+    PasswordLoginHandle Handle,
+    string Login,
+    string Password,
+    string? ClientKey,
+    IdentitySessionMetadata SessionMetadata);
+
+public sealed record HelloAccount<TProfile>(
+    Guid Id,
+    UserFlags Flags,
+    string? UserName,
+    string? Email,
+    bool EmailConfirmed,
+    string? Phone,
+    bool PhoneConfirmed,
+    TProfile Profile,
+    long Version,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset ModifiedAt);
+
+public sealed record HelloSession(
+    Guid SessionId,
+    string AccessToken,
+    DateTimeOffset AccessTokenExpiresAt,
+    string RefreshToken,
+    DateTimeOffset RefreshTokenExpiresAt);
+
+public sealed record HelloSignIn<TProfile>(
+    HelloAccount<TProfile> Account,
+    HelloSession Session);
+
+public sealed record HelloSessionInfo(
+    Guid SessionId,
+    string? ClientName,
+    string? DeviceName,
+    DateTimeOffset ExpiresAt,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset LastRefreshedAt);
+
+public interface IHelloIdentityApplication<TProfile>
+{
+    Task<OperationResult<HelloAccount<TProfile>>> RegisterAsync(
+        HelloRegisterCommand<TProfile> command,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloSignIn<TProfile>>> LoginAsync(
+        HelloLoginCommand command,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloSession>> RefreshAsync(
+        string refreshToken,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloAccount<TProfile>>> ValidateAccessTokenAsync(
+        string accessToken,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult> LogoutAsync(
+        string refreshToken,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult> LogoutAllAsync(
+        Guid userId,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult<IReadOnlyList<HelloSessionInfo>>> ListSessionsAsync(
+        Guid userId,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult> RevokeSessionAsync(
+        Guid userId,
+        Guid sessionId,
+        CancellationToken cancellationToken);
+}

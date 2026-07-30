@@ -83,13 +83,15 @@ Skopka.Identity. Tokens, recipient addresses and passwords are not logged.
 Keep these values outside source control:
 
 - JWT signing key, at least 32 random bytes and Base64 encoded for configuration;
+- rate-limit HMAC keys, at least 32 random bytes per version;
 - PostgreSQL credentials;
 - persisted ASP.NET Core Data Protection key ring and its protection material;
 - SMTP credentials;
-- any future password pepper, OTP HMAC key or rate-limit partition key.
+- any future password pepper or OTP HMAC key.
 
 Do not reuse keys between purposes. Multiple replicas must share the JWT key and
-Data Protection key ring. Configure
+Data Protection key ring, and must overlap rate-limit key versions during
+rotation. Configure
 `SkopkaHello:DataProtection:KeyPath` to a protected persistent location.
 
 ## Logging and responses
@@ -106,10 +108,12 @@ error details.
 - Restrict trusted proxy configuration.
 - Apply migrations as a controlled deployment step; do not let every replica
   race to migrate.
-- Keep the bounded session-pruning worker running on at least one replica.
+- Keep the bounded session and rate-limit pruning workers running on at least
+  one replica.
 - Persist and protect Data Protection keys.
 - Choose deliberately between stateless and online bearer validation.
-- Add persistent rate limiting before exposing login publicly.
+- Keep persistent account/client rate limiting enabled before exposing login
+  publicly.
 - Keep access-token lifetimes short.
 - Configure a trusted public origin and rate-limit anonymous account-message
   requests.

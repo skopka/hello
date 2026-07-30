@@ -21,6 +21,7 @@ The current `0.1.0` vertical slice contains:
 - Razor registration, login, account and active-session pages;
 - online validation and transparent rotation for the protected UI session;
 - PostgreSQL persistence and packaged Skopka.Identity migrations;
+- persistent versioned account/client rate limiting with bounded pruning;
 - shared `OperationResult` application operations mapped to either RFC 9457
   `ProblemDetails` or Razor validation;
 - CSS custom-property theming with optional built-in styles;

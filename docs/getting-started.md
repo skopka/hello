@@ -5,7 +5,7 @@
 - .NET SDK 10.0.101 or a compatible patch;
 - PostgreSQL;
 - Docker Engine for integration tests and the provided compose stack;
-- published Skopka.Identity `0.3.0` packages.
+- published Skopka.Identity `0.4.0` packages.
 
 ## Configure the server
 
@@ -14,10 +14,11 @@ Required configuration:
 ```text
 ConnectionStrings__Identity=Host=localhost;Port=5432;Database=skopka_hello;Username=skopka;Password=...
 SkopkaHello__Jwt__SigningKey=<Base64 encoded 32+ random bytes>
+SkopkaHello__RateLimiting__Keys__v1=<different Base64 encoded 32+ random bytes>
 SkopkaHello__PublicOrigin=https://localhost:8443
 ```
 
-Generate a development signing key in PowerShell:
+Generate each development key independently in PowerShell:
 
 ```powershell
 [Convert]::ToBase64String(
@@ -30,6 +31,7 @@ Optional settings:
 SkopkaHello__Jwt__Issuer=https://localhost:8080
 SkopkaHello__Jwt__Audience=skopka-hello-api
 SkopkaHello__Jwt__ValidateSessionOnEveryRequest=false
+SkopkaHello__RateLimiting__CurrentVersion=v1
 SkopkaHello__Database__ApplyMigrations=false
 SkopkaHello__DataProtection__KeyPath=/protected/data-protection
 ```
@@ -59,6 +61,9 @@ messages must survive a process restart.
 
 `ApplyMigrations=true` is intended for local development or a single controlled
 deployment job, not every production replica.
+
+Rate-limit key versions are non-secret stable identifiers. Never reuse the JWT
+signing key as a rate-limit key.
 
 ## Run
 

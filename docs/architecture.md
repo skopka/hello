@@ -32,6 +32,9 @@ var identity = services
         jwt.Audience = audience;
     });
 
+identity.UseHmacRateLimiting(
+    currentVersion,
+    versionedRateLimitKeys);
 identity.UseJwtBearerAuthentication();
 ```
 
@@ -58,6 +61,7 @@ Skopka.Identity owns:
 - user/profile, credentials and normalized handles;
 - security stamps and optimistic concurrency;
 - refresh chains and JWT/refresh token providers;
+- versioned persistent account/client rate limiting;
 - persistence entities, PostgreSQL mappings and migrations.
 
 Skopka.Hello owns:
@@ -67,6 +71,7 @@ Skopka.Hello owns:
 - refresh, UI authentication and antiforgery cookies;
 - trusted request-derived client/session display context;
 - server configuration and migration composition;
+- trusted client partition derivation and scheduled bounded pruning;
 - account-message link construction and delivery orchestration;
 - security-event request enrichment and audit-outbox contracts.
 

@@ -3,9 +3,14 @@
 Read `../../AGENTS.md` first.
 
 This executable composes PostgreSQL, the selected password hasher, JWT sessions,
-bearer validation, endpoints, health checks and Docker behavior. Keep secrets
-outside source and appsettings. Migrations run only behind the explicit
-configuration switch and must not race across production replicas.
+versioned persistent rate limiting, bearer validation, endpoints, health checks
+and Docker behavior. Keep secrets outside source and appsettings. Migrations run
+only behind the explicit configuration switch and must not race across
+production replicas.
+
+Rate-limit HMAC keys use a current version and optional overlapping historical
+versions. All replicas must share the configured key material during overlap.
+Keep both session and rate-limit bounded pruning workers registered.
 
 Action-token links require configured `SkopkaHello:PublicOrigin`. SMTP remains
 optional and credentials come from secrets/environment configuration; omitting

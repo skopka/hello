@@ -1,22 +1,24 @@
+using Skopka.Hello;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.Sample;
 using Skopka.Hello.UI;
 
 var builder = WebApplication.CreateBuilder(args);
-var connectionString = builder.Configuration.GetConnectionString(
+var configuration = builder.Configuration;
+var connectionString = configuration.GetConnectionString(
         "Identity")
     ?? throw new InvalidOperationException(
         "ConnectionStrings:Identity is required.");
-var encodedKey = builder.Configuration[
+var encodedKey = configuration[
         "SkopkaHello:Jwt:SigningKey"]
     ?? throw new InvalidOperationException(
         "SkopkaHello:Jwt:SigningKey is required.");
 var signingKey = Convert.FromBase64String(encodedKey);
-var secureCookies = builder.Configuration.GetValue(
+var secureCookies = configuration.GetValue(
     "SkopkaHello:Cookies:Secure",
     true);
 var publicOrigin = new Uri(
-    builder.Configuration["SkopkaHello:PublicOrigin"]
+    configuration["SkopkaHello:PublicOrigin"]
         ?? "https://localhost:8443",
     UriKind.Absolute);
 
@@ -46,6 +48,15 @@ var identity = builder.Services
             options.Issuer = "https://sample.skopka.local";
             options.Audience = "skopka-hello-sample";
         });
+
+using (var rateLimitKeys = IdentityRateLimitKeySet.Load(
+    configuration.GetSection(
+        "SkopkaHello:RateLimiting")))
+{
+    identity.UseHmacRateLimiting(
+        rateLimitKeys.CurrentVersion,
+        rateLimitKeys.Keys);
+}
 
 identity.UseJwtBearerAuthentication();
 builder.Services.AddProblemDetails();

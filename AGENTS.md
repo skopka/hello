@@ -30,6 +30,10 @@ JSON/bearer tokens. The protected Razor UI ticket carries its access token in
 an encrypted `HttpOnly` cookie and validates it online. Client keys come from
 trusted server request context, not request DTOs.
 
+The ready Server enables persistent account/client rate limiting with
+versioned HMAC keys from configuration. Key material stays outside source;
+rotation retains overlapping versions, and a bounded worker prunes old buckets.
+
 Anonymous account-message requests suppress exact-lookup not-found results and
 return the same accepted response for every well-formed email. Links use a
 configured public origin, confirmation GET requests never mutate state, and

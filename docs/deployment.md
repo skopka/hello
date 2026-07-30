@@ -22,9 +22,10 @@ static asset; the mounted custom stylesheet is linked after it.
 
 ## Configuration
 
-Inject the PostgreSQL connection string and Base64 JWT signing key from a secret
-manager. Do not bake `.env`, database passwords or signing material into the
-image. Use a protected persistent volume for Data Protection keys.
+Inject the PostgreSQL connection string, Base64 JWT signing key and versioned
+rate-limit HMAC keys from a secret manager. Do not bake `.env`, database
+passwords or signing material into the image. Use a protected persistent volume
+for Data Protection keys.
 
 Set `SkopkaHello:PublicOrigin` to the public TLS origin used in account-message
 links. Configure SMTP credentials from a secret manager. The built-in SMTP
@@ -67,7 +68,20 @@ Every replica must share:
 - PostgreSQL;
 - JWT signing configuration;
 - Data Protection keys;
-- future rate-limit and verification keys.
+- the same current and overlapping historical rate-limit key versions;
+- future verification keys.
+
+To rotate a rate-limit key, deploy the new key as another entry under
+`SkopkaHello:RateLimiting:Keys`, set `CurrentVersion` to its version and retain
+the previous entry. After every old-only replica has stopped, wait at least the
+longest active rate-limit window before removing the previous key. A deployment
+without an overlapping version cannot preserve active counters.
+
+```text
+SkopkaHello__RateLimiting__CurrentVersion=v2
+SkopkaHello__RateLimiting__Keys__v1=<previous Base64 key>
+SkopkaHello__RateLimiting__Keys__v2=<new Base64 key>
+```
 
 The default JWT check is stateless. A revoked refresh session cannot mint new
 access tokens, but an already issued access token remains valid until expiry.
@@ -79,6 +93,7 @@ extra database read.
 - poll `/health/live` for process liveness;
 - poll `/health/ready` for PostgreSQL connectivity;
 - monitor the hourly bounded refresh-session pruning worker;
+- monitor the hourly bounded rate-limit bucket pruning worker;
 - monitor authentication failures and rate-limit decisions without submitted
   secrets;
 - monitor background account-message failures by safe error code;

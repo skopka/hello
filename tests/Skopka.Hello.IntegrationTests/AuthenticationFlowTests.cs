@@ -15,6 +15,7 @@ using Skopka.Abstraction.OperationResult;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.UI;
 using Skopka.Identity.Ef.PostgreSql;
+using Skopka.Identity.Errors;
 using Testcontainers.PostgreSql;
 
 namespace Skopka.Hello.IntegrationTests;
@@ -441,6 +442,73 @@ public sealed class AuthenticationFlowTests
             newPassword.AccessToken);
     }
 
+    [Fact]
+    public async Task PasswordFailuresUseVersionedPersistentRateLimiting()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString());
+        using var client = app.CreateClient();
+        using var registration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "limited-alice",
+                email = "limited-alice@example.test",
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Limited Alice",
+                    locale = "en",
+                },
+                password = "correct horse battery staple",
+            });
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            using var rejected = await client.PostAsJsonAsync(
+                "/auth/login",
+                new
+                {
+                    handle = "email",
+                    login = "limited-alice@example.test",
+                    password =
+                        "incorrect horse battery staple",
+                });
+            Assert.Equal(
+                HttpStatusCode.Unauthorized,
+                rejected.StatusCode);
+        }
+
+        using var limited = await client.PostAsJsonAsync(
+            "/auth/login",
+            new
+            {
+                handle = "email",
+                login = "limited-alice@example.test",
+                password = "correct horse battery staple",
+            });
+
+        Assert.Equal(
+            HttpStatusCode.TooManyRequests,
+            limited.StatusCode);
+        using var problem = JsonDocument.Parse(
+            await limited.Content.ReadAsStringAsync());
+        Assert.Equal(
+            IdentityErrorCodes.RateLimitExceeded,
+            problem.RootElement.GetProperty("code").GetString());
+        Assert.True(limited.Headers.Contains("Retry-After"));
+        Assert.Equal(
+            ["v1", "v2"],
+            await app.GetRateLimitVersionsAsync(
+                "password.account"));
+    }
+
     private static async Task<HttpResponseMessage> SendFormAsync(
         HttpClient client,
         string path,
@@ -807,6 +875,25 @@ public sealed class AuthenticationFlowTests
                         options.Audience =
                             "skopka-hello-integration";
                     });
+            var rateLimitKeys = new Dictionary<string, byte[]>
+            {
+                ["v1"] = RandomNumberGenerator.GetBytes(32),
+                ["v2"] = RandomNumberGenerator.GetBytes(32),
+            };
+            try
+            {
+                identity.UseHmacRateLimiting(
+                    "v2",
+                    rateLimitKeys);
+            }
+            finally
+            {
+                foreach (var key in rateLimitKeys.Values)
+                {
+                    CryptographicOperations.ZeroMemory(key);
+                }
+            }
+
             identity.UseJwtBearerAuthentication();
             builder.Services.AddProblemDetails();
             builder.Services.AddSkopkaHelloUi<
@@ -866,6 +953,24 @@ public sealed class AuthenticationFlowTests
                 BaseAddress = new Uri(address),
                 Timeout = TimeSpan.FromSeconds(30),
             };
+        }
+
+        public async Task<string[]> GetRateLimitVersionsAsync(
+            string scope)
+        {
+            await using var serviceScope =
+                application.Services.CreateAsyncScope();
+            var database = serviceScope.ServiceProvider
+                .GetRequiredService<
+                    PostgreSqlIdentityDbContext<
+                        IntegrationProfile>>();
+            return await database.RateLimitBuckets
+                .AsNoTracking()
+                .Where(bucket => bucket.Scope == scope)
+                .Select(bucket => bucket.PartitionVersion)
+                .Distinct()
+                .OrderBy(version => version)
+                .ToArrayAsync();
         }
 
         public async ValueTask DisposeAsync()

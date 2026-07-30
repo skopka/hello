@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
+using Skopka.Hello;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.Server;
 using Skopka.Hello.UI;
@@ -134,6 +135,15 @@ var identity = builder.Services
             options.Audience = audience;
         });
 
+using (var rateLimitKeys = IdentityRateLimitKeySet.Load(
+    configuration.GetSection(
+        "SkopkaHello:RateLimiting")))
+{
+    identity.UseHmacRateLimiting(
+        rateLimitKeys.CurrentVersion,
+        rateLimitKeys.Keys);
+}
+
 identity.UseJwtBearerAuthentication(options =>
 {
     options.ValidateSessionOnEveryRequest = configuration.GetValue(
@@ -172,6 +182,8 @@ builder.Services.AddSkopkaHelloUi<
 });
 builder.Services.AddHostedService<
     IdentitySessionPruningWorker<HelloProfile>>();
+builder.Services.AddHostedService<
+    IdentityRateLimitPruningWorker<HelloProfile>>();
 
 var app = builder.Build();
 

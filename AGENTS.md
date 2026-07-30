@@ -17,17 +17,23 @@ responses.
 
 ## Current vertical
 
-The implemented surfaces are the register/login/session/account Minimal API and
-the Razor registration, login, account and active-session UI. Registration must
-remain atomic through `IIdentityRegistrationService<TProfile>`. HTTP handlers
-call `IHelloIdentityApplication<TProfile>` or Skopka.Identity application
-services, never EF stores.
+The implemented surfaces are registration, login, sessions, account,
+password-reset and email-confirmation Minimal APIs plus their Razor UI.
+Registration must remain atomic through
+`IIdentityRegistrationService<TProfile>`. HTTP handlers call
+`IHelloIdentityApplication<TProfile>` or Skopka.Identity application services,
+never EF stores.
 
 Refresh tokens stay only in `Secure`, `HttpOnly` cookies. Cookie-authorized
 mutations require antiforgery validation. API access tokens are returned as
 JSON/bearer tokens. The protected Razor UI ticket carries its access token in
 an encrypted `HttpOnly` cookie and validates it online. Client keys come from
 trusted server request context, not request DTOs.
+
+Anonymous account-message requests suppress exact-lookup not-found results and
+return the same accepted response for every well-formed email. Links use a
+configured public origin, confirmation GET requests never mutate state, and
+delivery stays behind `IHelloAccountMessageSender`.
 
 ## Modules
 

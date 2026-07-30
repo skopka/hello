@@ -49,6 +49,11 @@ var audience = configuration["SkopkaHello:Jwt:Audience"]
 var secureCookies = configuration.GetValue(
     "SkopkaHello:Cookies:Secure",
     true);
+var publicOrigin = new Uri(
+    configuration["SkopkaHello:PublicOrigin"]
+        ?? throw new InvalidOperationException(
+            "SkopkaHello:PublicOrigin is required."),
+    UriKind.Absolute);
 var useForwardedHeaders = configuration.GetValue(
     "SkopkaHello:ForwardedHeaders:Enabled",
     false);
@@ -102,6 +107,7 @@ var identity = builder.Services
     {
         options.SecureCookies = secureCookies;
         options.ClientName = "Skopka.Hello.Server";
+        options.PublicOrigin = publicOrigin;
         if (!secureCookies)
         {
             options.RefreshCookieName =
@@ -119,6 +125,7 @@ var identity = builder.Services
     })
     .UsePostgreSql(connectionString)
     .UsePbkdf2PasswordHasher()
+    .UseDataProtectionActionTokens()
     .UseJwtSessions(
         signingKey,
         options =>
@@ -133,6 +140,14 @@ identity.UseJwtBearerAuthentication(options =>
         "SkopkaHello:Jwt:ValidateSessionOnEveryRequest",
         false);
 });
+
+var smtpSection = configuration.GetSection(
+    "SkopkaHello:Delivery:Smtp");
+if (!string.IsNullOrWhiteSpace(smtpSection["Host"]))
+{
+    builder.Services.AddSkopkaHelloSmtpDelivery(
+        options => smtpSection.Bind(options));
+}
 
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();

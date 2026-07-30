@@ -1,0 +1,98 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+
+namespace Skopka.Hello.Tests;
+
+public sealed class HelloSmtpOptionsTests
+{
+    [Fact]
+    public void ValidateAcceptsAnonymousSmtpConfiguration()
+    {
+        var options = CreateValidOptions();
+
+        options.Validate();
+    }
+
+    [Fact]
+    public void ValidateAcceptsAuthenticatedSmtpConfiguration()
+    {
+        var options = CreateValidOptions();
+        options.UserName = "mailer";
+        options.Password = "secret";
+
+        options.Validate();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(65536)]
+    public void ValidateRejectsInvalidPort(int port)
+    {
+        var options = CreateValidOptions();
+        options.Port = port;
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Fact]
+    public void ValidateRejectsPartialCredentials()
+    {
+        var options = CreateValidOptions();
+        options.UserName = "mailer";
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(10001)]
+    public void ValidateRejectsInvalidQueueCapacity(int capacity)
+    {
+        var options = CreateValidOptions();
+        options.QueueCapacity = capacity;
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Fact]
+    public void ValidateRejectsInvalidFromAddress()
+    {
+        var options = CreateValidOptions();
+        options.FromAddress = "not-an-address";
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Fact]
+    public void RegistrationUsesQueuedSenderAndBackgroundWorker()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSkopkaHelloSmtpDelivery(options =>
+        {
+            options.Host = "smtp.example.test";
+            options.FromAddress = "accounts@example.test";
+        });
+        using var provider = services.BuildServiceProvider(
+            new ServiceProviderOptions
+            {
+                ValidateOnBuild = true,
+                ValidateScopes = true,
+            });
+
+        Assert.IsType<QueuedHelloAccountMessageSender>(
+            provider.GetRequiredService<
+                IHelloAccountMessageSender>());
+        Assert.Contains(
+            provider.GetServices<IHostedService>(),
+            service =>
+                service is SmtpHelloAccountMessageWorker);
+    }
+
+    private static HelloSmtpOptions CreateValidOptions()
+        => new()
+        {
+            Host = "smtp.example.test",
+            FromAddress = "accounts@example.test",
+        };
+}

@@ -11,6 +11,9 @@ The current `0.1.0` vertical slice contains:
 
 - atomic password registration;
 - password login without user enumeration;
+- enumeration-safe email confirmation and password-reset requests;
+- purpose-bound email confirmation and password-reset action tokens;
+- optional bounded background SMTP delivery;
 - short-lived JWT access tokens in JSON;
 - rotating refresh tokens in `Secure`, `HttpOnly` cookies;
 - antiforgery protection for refresh and cookie logout;
@@ -24,7 +27,7 @@ The current `0.1.0` vertical slice contains:
 - a read-only Docker volume hook for host-provided custom CSS;
 - a ready-to-run server, sample host, Docker image and Testcontainers coverage.
 
-OAuth/OIDC, recovery/verification UI and administration remain deferred.
+OAuth/OIDC, step-up verification UI and administration remain deferred.
 
 ## Packages
 
@@ -46,6 +49,10 @@ OAuth/OIDC, recovery/verification UI and administration remain deferred.
 | `POST` | `/auth/refresh` | Refresh cookie + CSRF header |
 | `POST` | `/auth/logout` | Refresh cookie + CSRF header |
 | `POST` | `/auth/logout-all` | Bearer |
+| `POST` | `/auth/password-reset/request` | Anonymous |
+| `POST` | `/auth/password-reset/confirm` | Anonymous action token |
+| `POST` | `/auth/email-confirmation/request` | Anonymous |
+| `POST` | `/auth/email-confirmation/confirm` | Anonymous action token |
 | `GET` | `/account/me` | Bearer |
 | `GET` | `/account/sessions` | Bearer |
 | `DELETE` | `/account/sessions/{sessionId}` | Bearer |
@@ -64,6 +71,10 @@ The ready server exposes:
 | --- | --- |
 | `/hello/register` | Atomic password registration |
 | `/hello/login` | Password login |
+| `/hello/forgot-password` | Request a password-reset link |
+| `/hello/reset-password` | Apply a password-reset token |
+| `/hello/resend-confirmation` | Request an email-confirmation link |
+| `/hello/confirm-email` | Confirm an email after an explicit POST |
 | `/hello/account` | Current account summary |
 | `/hello/account/sessions` | List and revoke active sessions |
 

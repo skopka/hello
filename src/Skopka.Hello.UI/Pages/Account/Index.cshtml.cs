@@ -22,7 +22,46 @@ public sealed class AccountModel(
 
     public bool EmailConfirmed { get; private set; }
 
+    public bool ConfirmationRequested { get; private set; }
+
     public IActionResult OnGet()
+        => LoadAccount();
+
+    public async Task<IActionResult>
+        OnPostRequestEmailConfirmationAsync(
+            CancellationToken cancellationToken)
+    {
+        var loaded = LoadAccount();
+        if (loaded is not PageResult)
+        {
+            return loaded;
+        }
+
+        if (string.IsNullOrWhiteSpace(Email))
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                "The account does not have an email address.");
+            return Page();
+        }
+
+        var result =
+            await application.RequestEmailConfirmationAsync(
+                Email,
+                cancellationToken);
+        if (!result.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors);
+            return Page();
+        }
+
+        ConfirmationRequested = true;
+        return Page();
+    }
+
+    private IActionResult LoadAccount()
     {
         if (!HelloUiPrincipalFactory.TryGetUserId(
                 User,

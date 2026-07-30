@@ -42,6 +42,26 @@ public static class HelloEndpointRouteBuilderExtensions
             .RequireAuthorization()
             .WithName("SkopkaHelloLogoutAll");
 
+        endpoints.MapPost(
+                "/auth/password-reset/request",
+                RequestPasswordResetAsync<TProfile>)
+            .WithName("SkopkaHelloRequestPasswordReset");
+
+        endpoints.MapPost(
+                "/auth/password-reset/confirm",
+                ResetPasswordAsync<TProfile>)
+            .WithName("SkopkaHelloResetPassword");
+
+        endpoints.MapPost(
+                "/auth/email-confirmation/request",
+                RequestEmailConfirmationAsync<TProfile>)
+            .WithName("SkopkaHelloRequestEmailConfirmation");
+
+        endpoints.MapPost(
+                "/auth/email-confirmation/confirm",
+                ConfirmEmailAsync<TProfile>)
+            .WithName("SkopkaHelloConfirmEmail");
+
         endpoints.MapGet(
                 "/account/me",
                 GetMeAsync<TProfile>)
@@ -255,6 +275,82 @@ public static class HelloEndpointRouteBuilderExtensions
 
         cookies.DeleteSessionCookies(httpContext);
         return TypedResults.NoContent();
+    }
+
+    private static async Task<IResult> RequestPasswordResetAsync<TProfile>(
+        RequestAccountMessageRequest request,
+        IHelloIdentityApplication<TProfile> application,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var result = await application.RequestPasswordResetAsync(
+            request.Email,
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Accepted((string?)null)
+            : OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+    }
+
+    private static async Task<IResult> ResetPasswordAsync<TProfile>(
+        ResetPasswordRequest request,
+        IHelloIdentityApplication<TProfile> application,
+        IHelloSessionCookieManager cookies,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var result = await application.ResetPasswordAsync(
+            new HelloResetPasswordCommand(
+                request.UserId,
+                request.Token,
+                request.NewPassword),
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+        }
+
+        cookies.DeleteSessionCookies(httpContext);
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<IResult>
+        RequestEmailConfirmationAsync<TProfile>(
+            RequestAccountMessageRequest request,
+            IHelloIdentityApplication<TProfile> application,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        var result = await application.RequestEmailConfirmationAsync(
+            request.Email,
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Accepted((string?)null)
+            : OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+    }
+
+    private static async Task<IResult> ConfirmEmailAsync<TProfile>(
+        ConfirmEmailRequest request,
+        IHelloIdentityApplication<TProfile> application,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var result = await application.ConfirmEmailAsync(
+            new HelloConfirmEmailCommand(
+                request.UserId,
+                request.Email,
+                request.Token),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.NoContent()
+            : OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
     }
 
     private static async Task<IResult> GetMeAsync<TProfile>(

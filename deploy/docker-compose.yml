@@ -21,6 +21,7 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Identity: Host=postgres;Port=5432;Database=${POSTGRES_DB:-skopka_hello};Username=${POSTGRES_USER:-skopka};Password=${POSTGRES_PASSWORD}
       SkopkaHello__Jwt__SigningKey: ${SKOPKA_HELLO_JWT_SIGNING_KEY:?Set SKOPKA_HELLO_JWT_SIGNING_KEY in .env}
+      SkopkaHello__PublicOrigin: ${SKOPKA_HELLO_PUBLIC_ORIGIN:-http://localhost:8080}
       SkopkaHello__Database__ApplyMigrations: "true"
       SkopkaHello__DataProtection__KeyPath: /var/lib/skopka-hello/keys
       SkopkaHello__Customization__CssFilePath: /var/lib/skopka-hello/customization/custom.css

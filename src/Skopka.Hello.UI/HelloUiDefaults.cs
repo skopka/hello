@@ -16,6 +16,18 @@ public static class HelloUiDefaults
 
     public const string RegisterPath = "/hello/register";
 
+    public const string ForgotPasswordPath =
+        "/hello/forgot-password";
+
+    public const string ResetPasswordPath =
+        "/hello/reset-password";
+
+    public const string ResendConfirmationPath =
+        "/hello/resend-confirmation";
+
+    public const string ConfirmEmailPath =
+        "/hello/confirm-email";
+
     public const string AccountPath = "/hello/account";
 
     public const string SessionsPath = "/hello/account/sessions";

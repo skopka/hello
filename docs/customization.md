@@ -69,6 +69,10 @@ The built-in pages are:
 ```text
 /hello/register
 /hello/login
+/hello/forgot-password
+/hello/reset-password
+/hello/resend-confirmation
+/hello/confirm-email
 /hello/account
 /hello/account/sessions
 ```

@@ -15,12 +15,17 @@ var signingKey = Convert.FromBase64String(encodedKey);
 var secureCookies = builder.Configuration.GetValue(
     "SkopkaHello:Cookies:Secure",
     true);
+var publicOrigin = new Uri(
+    builder.Configuration["SkopkaHello:PublicOrigin"]
+        ?? "https://localhost:8443",
+    UriKind.Absolute);
 
 var identity = builder.Services
     .AddSkopkaHello<SampleProfile>(options =>
     {
         options.ClientName = "Skopka.Hello.Sample";
         options.SecureCookies = secureCookies;
+        options.PublicOrigin = publicOrigin;
         if (!secureCookies)
         {
             options.RefreshCookieName =
@@ -33,6 +38,7 @@ var identity = builder.Services
     })
     .UsePostgreSql(connectionString)
     .UsePbkdf2PasswordHasher()
+    .UseDataProtectionActionTokens()
     .UseJwtSessions(
         signingKey,
         options =>

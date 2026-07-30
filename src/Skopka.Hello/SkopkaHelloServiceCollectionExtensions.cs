@@ -39,6 +39,9 @@ public static class SkopkaHelloServiceCollectionExtensions
             Skopka.Hello.IHelloSecurityEventSink,
             Skopka.Hello.NullHelloSecurityEventSink>();
         services.TryAddSingleton<
+            Skopka.Hello.IHelloAccountMessageSender,
+            Skopka.Hello.NullHelloAccountMessageSender>();
+        services.TryAddSingleton<
             IIdentitySecurityEventObserver,
             Skopka.Hello.HelloIdentitySecurityEventObserver>();
         services.TryAddScoped<

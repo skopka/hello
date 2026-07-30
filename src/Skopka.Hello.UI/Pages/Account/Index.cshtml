@@ -15,6 +15,18 @@
 
 <section class="hello-card">
     <h2>Profile</h2>
+    <div asp-validation-summary="ModelOnly"
+         class="hello-validation"
+         role="alert"></div>
+
+    @if (Model.ConfirmationRequested)
+    {
+        <p class="hello-status" role="status">
+            If the address still needs confirmation, a new link has
+            been sent.
+        </p>
+    }
+
     <dl class="hello-details">
         <div>
             <dt>User ID</dt>
@@ -45,5 +57,15 @@
                 Sign out
             </button>
         </form>
+        @if (!Model.EmailConfirmed && Model.Email is not null)
+        {
+            <form method="post"
+                  asp-page-handler="RequestEmailConfirmation">
+                <button class="hello-button hello-button-secondary"
+                        type="submit">
+                    Send confirmation link
+                </button>
+            </form>
+        }
     </div>
 </section>

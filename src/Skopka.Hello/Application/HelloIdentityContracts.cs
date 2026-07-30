@@ -19,6 +19,16 @@ public sealed record HelloLoginCommand(
     string? ClientKey,
     IdentitySessionMetadata SessionMetadata);
 
+public sealed record HelloResetPasswordCommand(
+    Guid UserId,
+    string Token,
+    string NewPassword);
+
+public sealed record HelloConfirmEmailCommand(
+    Guid UserId,
+    string Email,
+    string Token);
+
 public sealed record HelloAccount<TProfile>(
     Guid Id,
     UserFlags Flags,
@@ -84,5 +94,21 @@ public interface IHelloIdentityApplication<TProfile>
     Task<OperationResult> RevokeSessionAsync(
         Guid userId,
         Guid sessionId,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult> RequestPasswordResetAsync(
+        string email,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult> ResetPasswordAsync(
+        HelloResetPasswordCommand command,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult> RequestEmailConfirmationAsync(
+        string email,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloAccount<TProfile>>> ConfirmEmailAsync(
+        HelloConfirmEmailCommand command,
         CancellationToken cancellationToken);
 }

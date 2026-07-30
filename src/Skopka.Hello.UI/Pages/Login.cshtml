@@ -15,6 +15,13 @@
         </p>
     }
 
+    @if (Model.PasswordReset)
+    {
+        <p class="hello-status" role="status">
+            Your password was changed. Sign in with the new password.
+        </p>
+    }
+
     <form method="post" class="hello-form">
         <input asp-for="ReturnUrl" type="hidden" />
         <div asp-validation-summary="ModelOnly"
@@ -40,6 +47,11 @@
         <span asp-validation-for="Input.Password"
               class="hello-field-error"></span>
 
+        <a class="hello-form-help"
+           href="@HelloUiDefaults.ForgotPasswordPath">
+            Forgot your password?
+        </a>
+
         <button class="hello-button" type="submit">
             Sign in
         </button>
@@ -48,5 +60,9 @@
     <p class="hello-card-footer">
         Need an account?
         <a href="@HelloUiDefaults.RegisterPath">Register</a>
+        <br />
+        <a href="@HelloUiDefaults.ResendConfirmationPath">
+            Resend email confirmation
+        </a>
     </p>
 </section>

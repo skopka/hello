@@ -18,6 +18,7 @@ Required configuration:
 ```text
 ConnectionStrings__Identity=Host=localhost;Port=5432;Database=skopka_hello;Username=skopka;Password=...
 SkopkaHello__Jwt__SigningKey=<Base64 encoded 32+ random bytes>
+SkopkaHello__PublicOrigin=https://localhost:8443
 ```
 
 Generate a development signing key in PowerShell:
@@ -36,6 +37,29 @@ SkopkaHello__Jwt__ValidateSessionOnEveryRequest=false
 SkopkaHello__Database__ApplyMigrations=false
 SkopkaHello__DataProtection__KeyPath=/protected/data-protection
 ```
+
+`PublicOrigin` is the externally reachable HTTP(S) origin used to build
+confirmation and password-reset links. It must not contain credentials, a path,
+query or fragment. It is configuration, never inferred from the request `Host`
+header.
+
+To enable the built-in background SMTP sender:
+
+```text
+SkopkaHello__Delivery__Smtp__Host=smtp.example.com
+SkopkaHello__Delivery__Smtp__Port=587
+SkopkaHello__Delivery__Smtp__EnableSsl=true
+SkopkaHello__Delivery__Smtp__UserName=...
+SkopkaHello__Delivery__Smtp__Password=...
+SkopkaHello__Delivery__Smtp__FromAddress=accounts@example.com
+SkopkaHello__Delivery__Smtp__FromName=Example Accounts
+SkopkaHello__Delivery__Smtp__QueueCapacity=256
+```
+
+Omit `Host` to leave delivery disabled, or register a custom
+`IHelloAccountMessageSender` before `AddSkopkaHello<TProfile>()`. The built-in
+queue is bounded and in-memory; use a durable application queue when account
+messages must survive a process restart.
 
 `ApplyMigrations=true` is intended for local development or a single controlled
 deployment job, not every production replica.
@@ -137,6 +161,27 @@ Authorization: Bearer <access-token>
 
 Every failure produced from an operation result uses
 `application/problem+json`, including `code` and `traceId` extensions.
+
+## Confirm email and reset a password
+
+Request endpoints accept an email and always return `202 Accepted` for a
+well-formed address, whether or not an active account exists:
+
+```http
+POST /auth/password-reset/request
+Content-Type: application/json
+
+{ "email": "alice@example.test" }
+```
+
+The email link opens a no-store Razor page. Confirmation links require a
+button-backed antiforgery POST so automated mail scanners cannot mutate the
+account by following a GET. API clients can submit the link values directly to
+`/auth/password-reset/confirm` or `/auth/email-confirmation/confirm`.
+
+A successful password reset rotates the security stamp. Refresh sessions can no
+longer be used; stateless access tokens remain valid only until their short
+expiry unless online validation is enabled.
 
 ## Browser session behavior
 

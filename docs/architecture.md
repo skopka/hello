@@ -25,6 +25,7 @@ var identity = services
     .AddSkopkaHello<MyProfile>()
     .UsePostgreSql(connectionString)
     .UsePbkdf2PasswordHasher()
+    .UseDataProtectionActionTokens()
     .UseJwtSessions(signingKey, jwt =>
     {
         jwt.Issuer = issuer;
@@ -44,6 +45,14 @@ the returned user id and current security stamp to session creation. Refresh
 delegates strict rotation to Skopka.Identity. Minimal API and Razor handlers
 call the same operations and never call EF stores directly.
 
+Password-reset and email-confirmation requests use the exact normalized
+`IIdentityUserLookupService<TProfile>` contract. The application suppresses
+not-found and delivery outcomes at the anonymous boundary, issues a
+purpose-bound Identity action token, builds the link from configured
+`PublicOrigin` and hands the message to `IHelloAccountMessageSender`. The
+built-in SMTP adapter enqueues to a bounded background worker; applications can
+replace it with a durable delivery producer.
+
 Skopka.Identity owns:
 
 - user/profile, credentials and normalized handles;
@@ -58,6 +67,7 @@ Skopka.Hello owns:
 - refresh, UI authentication and antiforgery cookies;
 - trusted request-derived client/session display context;
 - server configuration and migration composition;
+- account-message link construction and delivery orchestration;
 - security-event request enrichment and audit-outbox contracts.
 
 ## Errors
@@ -110,7 +120,7 @@ claimed.
 
 ## Deferred modules
 
-Recovery, confirmation, credential/external-login management and admin pages
+Credential/external-login management, step-up verification UI and admin pages
 remain deferred. `Skopka.Hello.Oidc` and `Skopka.Hello.Admin` are real package
 boundaries, but contain no speculative protocol or identity logic. OAuth/OIDC
 will use a maintained protocol library only after target-framework support and

@@ -57,6 +57,27 @@ Bearer-authorized account mutations do not derive authority from cookies.
 Razor form mutations use the framework antiforgery hidden field and cookie.
 Login and registration are also antiforgery protected.
 
+## Account messages and action tokens
+
+Password-reset and email-confirmation request endpoints return the same
+`202 Accepted` response for every well-formed address. Exact normalized lookup
+is performed through Skopka.Identity, but a not-found result is suppressed at
+the public boundary. Rate-limit these endpoints at the deployment edge.
+
+The built-in SMTP implementation places messages in a bounded background queue,
+so SMTP network latency is not exposed in the anonymous request. This queue is
+best-effort and in-memory. Applications requiring durable delivery should
+replace `IHelloAccountMessageSender` with a durable queue producer.
+
+Action links are built only from configured `SkopkaHello:PublicOrigin`; request
+host headers are not trusted. Token pages set `Cache-Control: no-store`,
+`Referrer-Policy: no-referrer` and `X-Robots-Tag: noindex, nofollow`.
+Email confirmation is a POST mutation, preventing link-preview and mail-scanner
+GET requests from confirming an address.
+
+Action tokens are purpose-, user-, target-, security-stamp- and expiry-bound by
+Skopka.Identity. Tokens, recipient addresses and passwords are not logged.
+
 ## Secrets
 
 Keep these values outside source control:
@@ -64,6 +85,7 @@ Keep these values outside source control:
 - JWT signing key, at least 32 random bytes and Base64 encoded for configuration;
 - PostgreSQL credentials;
 - persisted ASP.NET Core Data Protection key ring and its protection material;
+- SMTP credentials;
 - any future password pepper, OTP HMAC key or rate-limit partition key.
 
 Do not reuse keys between purposes. Multiple replicas must share the JWT key and
@@ -89,4 +111,7 @@ error details.
 - Choose deliberately between stateless and online bearer validation.
 - Add persistent rate limiting before exposing login publicly.
 - Keep access-token lifetimes short.
+- Configure a trusted public origin and rate-limit anonymous account-message
+  requests.
+- Use a durable delivery queue when message loss during restart is unacceptable.
 - Scan images and dependencies and perform an application-specific review.

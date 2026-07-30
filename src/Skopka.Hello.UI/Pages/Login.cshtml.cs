@@ -18,7 +18,11 @@ public sealed class LoginModel(
 
     public bool Registered { get; private set; }
 
-    public async Task<IActionResult> OnGetAsync(bool registered)
+    public bool PasswordReset { get; private set; }
+
+    public async Task<IActionResult> OnGetAsync(
+        bool registered,
+        bool passwordReset)
     {
         var authentication = await HttpContext.AuthenticateAsync(
             HelloUiDefaults.AuthenticationScheme);
@@ -28,6 +32,7 @@ public sealed class LoginModel(
         }
 
         Registered = registered;
+        PasswordReset = passwordReset;
         return Page();
     }
 

@@ -33,4 +33,29 @@ public sealed class SkopkaHelloOptionsTests
 
         options.Validate();
     }
+
+    [Fact]
+    public void ValidateAllowsPublicHttpOriginWithoutPath()
+    {
+        var options = new SkopkaHelloOptions
+        {
+            PublicOrigin = new Uri("https://accounts.example.test"),
+        };
+
+        options.Validate();
+    }
+
+    [Theory]
+    [InlineData("https://accounts.example.test/hello")]
+    [InlineData("https://user@example.test/")]
+    [InlineData("ftp://accounts.example.test/")]
+    public void ValidateRejectsUnsafePublicOrigin(string value)
+    {
+        var options = new SkopkaHelloOptions
+        {
+            PublicOrigin = new Uri(value),
+        };
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
 }

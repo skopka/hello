@@ -7,6 +7,10 @@ summary and active-session revocation. Pages call the shared application
 service, contain no identity business logic and protect every form mutation
 with antiforgery.
 
+Recovery and confirmation token pages are no-store/no-referrer. A GET may
+render a token form but must never confirm an address or reset a password;
+mutation happens only through an antiforgery-protected POST.
+
 The protected UI cookie contains an encrypted authentication ticket, never a
 plain refresh token. Online access-token validation and refresh rotation happen
 in the cookie event handler. Keep the UI authorization policy on all account

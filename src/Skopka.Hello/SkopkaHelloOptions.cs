@@ -18,6 +18,8 @@ public sealed class SkopkaHelloOptions
 
     public string ClientName { get; set; } = "Skopka.Hello";
 
+    public Uri? PublicOrigin { get; set; }
+
     public bool SecureCookies { get; set; } = true;
 
     public SameSiteMode CookieSameSite { get; set; } =
@@ -31,6 +33,19 @@ public sealed class SkopkaHelloOptions
             AntiforgeryRequestCookieName);
         ArgumentException.ThrowIfNullOrWhiteSpace(AntiforgeryHeaderName);
         ArgumentException.ThrowIfNullOrWhiteSpace(ClientName);
+
+        if (PublicOrigin is not null
+            && (!PublicOrigin.IsAbsoluteUri
+                || (PublicOrigin.Scheme != Uri.UriSchemeHttps
+                    && PublicOrigin.Scheme != Uri.UriSchemeHttp)
+                || PublicOrigin.UserInfo.Length > 0
+                || PublicOrigin.Query.Length > 0
+                || PublicOrigin.Fragment.Length > 0
+                || PublicOrigin.AbsolutePath != "/"))
+        {
+            throw new InvalidOperationException(
+                "PublicOrigin must be an absolute HTTP(S) origin without credentials, path, query or fragment.");
+        }
 
         if (!SecureCookies
             && new[]

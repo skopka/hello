@@ -21,6 +21,16 @@ public sealed record HelloUiSignIn(
     ClaimsPrincipal Principal,
     HelloSession Session);
 
+public sealed record HelloUiResetPasswordCommand(
+    Guid UserId,
+    string Token,
+    string NewPassword);
+
+public sealed record HelloUiConfirmEmailCommand(
+    Guid UserId,
+    string Email,
+    string Token);
+
 public interface IHelloUiApplication
 {
     Task<OperationResult> RegisterAsync(
@@ -30,6 +40,22 @@ public interface IHelloUiApplication
     Task<OperationResult<HelloUiSignIn>> LoginAsync(
         HelloUiLoginCommand command,
         HttpContext httpContext,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult> RequestPasswordResetAsync(
+        string email,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult> ResetPasswordAsync(
+        HelloUiResetPasswordCommand command,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult> RequestEmailConfirmationAsync(
+        string email,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult> ConfirmEmailAsync(
+        HelloUiConfirmEmailCommand command,
         CancellationToken cancellationToken);
 
     Task<OperationResult<IReadOnlyList<HelloSessionInfo>>> ListSessionsAsync(

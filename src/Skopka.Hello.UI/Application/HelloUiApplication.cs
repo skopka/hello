@@ -87,6 +87,51 @@ internal sealed class HelloUiApplication<TProfile>(
                 result.Errors);
     }
 
+    public Task<OperationResult> RequestPasswordResetAsync(
+        string email,
+        CancellationToken cancellationToken)
+        => application.RequestPasswordResetAsync(
+            email,
+            cancellationToken);
+
+    public Task<OperationResult> ResetPasswordAsync(
+        HelloUiResetPasswordCommand command,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        return application.ResetPasswordAsync(
+            new HelloResetPasswordCommand(
+                command.UserId,
+                command.Token,
+                command.NewPassword),
+            cancellationToken);
+    }
+
+    public Task<OperationResult> RequestEmailConfirmationAsync(
+        string email,
+        CancellationToken cancellationToken)
+        => application.RequestEmailConfirmationAsync(
+            email,
+            cancellationToken);
+
+    public async Task<OperationResult> ConfirmEmailAsync(
+        HelloUiConfirmEmailCommand command,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        var result = await application.ConfirmEmailAsync(
+            new HelloConfirmEmailCommand(
+                command.UserId,
+                command.Email,
+                command.Token),
+            cancellationToken);
+        return result.IsSuccess
+            ? OperationResultFactory.Success()
+            : OperationResultFactory.Fail(result.Errors);
+    }
+
     public Task<OperationResult<IReadOnlyList<HelloSessionInfo>>>
         ListSessionsAsync(
             Guid userId,

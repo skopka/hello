@@ -1,0 +1,41 @@
+@page "/hello/resend-confirmation"
+@model ResendConfirmationModel
+@{
+    ViewData["Title"] = "Confirm email";
+}
+
+<section class="hello-card hello-auth-card">
+    <p class="hello-eyebrow">Email confirmation</p>
+    <h1>Send a confirmation link</h1>
+
+    @if (Model.Sent)
+    {
+        <p class="hello-status" role="status">
+            If that email belongs to an unconfirmed active account, a
+            confirmation link has been sent.
+        </p>
+    }
+    else
+    {
+        <form method="post" class="hello-form">
+            <div asp-validation-summary="ModelOnly"
+                 class="hello-validation"
+                 role="alert"></div>
+
+            <label asp-for="Input.Email"></label>
+            <input asp-for="Input.Email"
+                   autocomplete="email"
+                   inputmode="email" />
+            <span asp-validation-for="Input.Email"
+                  class="hello-field-error"></span>
+
+            <button class="hello-button" type="submit">
+                Send confirmation link
+            </button>
+        </form>
+    }
+
+    <p class="hello-card-footer">
+        <a href="@HelloUiDefaults.LoginPath">Back to sign in</a>
+    </p>
+</section>

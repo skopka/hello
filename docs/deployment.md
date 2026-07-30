@@ -26,6 +26,12 @@ Inject the PostgreSQL connection string and Base64 JWT signing key from a secret
 manager. Do not bake `.env`, database passwords or signing material into the
 image. Use a protected persistent volume for Data Protection keys.
 
+Set `SkopkaHello:PublicOrigin` to the public TLS origin used in account-message
+links. Configure SMTP credentials from a secret manager. The built-in SMTP
+worker uses an in-memory bounded queue; replace
+`IHelloAccountMessageSender` with a durable broker producer when restart-safe
+delivery is required.
+
 Expose the app through TLS. If TLS terminates at a reverse proxy, configure
 ASP.NET Core forwarded headers with explicit known proxies/networks; otherwise
 remote address-derived rate-limit context is untrusted.
@@ -75,6 +81,7 @@ extra database read.
 - monitor the hourly bounded refresh-session pruning worker;
 - monitor authentication failures and rate-limit decisions without submitted
   secrets;
+- monitor background account-message failures by safe error code;
 - keep container base images and NuGet dependencies patched;
 - run Release build, unit tests, Testcontainers integration tests and Docker
   build for each release.

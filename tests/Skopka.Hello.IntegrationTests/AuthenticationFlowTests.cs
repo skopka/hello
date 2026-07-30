@@ -11,11 +11,13 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.UI;
 using Skopka.Identity.Ef.PostgreSql;
 using Skopka.Identity.Errors;
+using Skopka.Identity.Verification;
 using Testcontainers.PostgreSql;
 
 namespace Skopka.Hello.IntegrationTests;
@@ -133,6 +135,233 @@ public sealed class AuthenticationFlowTests
     }
 
     [Fact]
+    public async Task PasswordChangeRequiresConfirmedEmailAndOneTimeStepUp()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString());
+        using var client = app.CreateClient(
+            allowAutoRedirect: false);
+        const string email = "step-up-alice@example.test";
+        const string currentPassword =
+            "correct horse battery staple";
+        const string newPassword =
+            "new correct horse battery staple";
+
+        using var registration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "step-up-alice",
+                email,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Step-up Alice",
+                    locale = "en",
+                },
+                password = currentPassword,
+            });
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+
+        var unconfirmedLogin = await LoginAsync(
+            client,
+            email,
+            currentPassword);
+        using var unconfirmedChallenge = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/account/password/change/challenge");
+        unconfirmedChallenge.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                unconfirmedLogin.AccessToken);
+        using var rejected =
+            await client.SendAsync(unconfirmedChallenge);
+        Assert.Equal(HttpStatusCode.Forbidden, rejected.StatusCode);
+
+        using var confirmationRequest =
+            await client.PostAsJsonAsync(
+                "/auth/email-confirmation/request",
+                new { email });
+        Assert.Equal(
+            HttpStatusCode.Accepted,
+            confirmationRequest.StatusCode);
+        var confirmationMessage = Assert.Single(
+            app.Messages,
+            message =>
+                message.Kind
+                == HelloAccountMessageKind.EmailConfirmation);
+        var confirmationActionUrl = Assert.IsType<Uri>(
+            confirmationMessage.ActionUrl);
+        var confirmationQuery = QueryHelpers.ParseQuery(
+            confirmationActionUrl.Query);
+        using var confirmation = await client.PostAsJsonAsync(
+            "/auth/email-confirmation/confirm",
+            new
+            {
+                userId = Guid.Parse(
+                    confirmationQuery["userId"].Single()!),
+                email = confirmationQuery["email"].Single(),
+                token = confirmationQuery["token"].Single(),
+            });
+        Assert.Equal(
+            HttpStatusCode.NoContent,
+            confirmation.StatusCode);
+
+        var login = await LoginAsync(
+            client,
+            email,
+            currentPassword);
+        using var challengeRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/account/password/change/challenge");
+        challengeRequest.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                login.AccessToken);
+        using var challengeResponse =
+            await client.SendAsync(challengeRequest);
+        Assert.Equal(
+            HttpStatusCode.OK,
+            challengeResponse.StatusCode);
+        var challengeJson =
+            await challengeResponse.Content.ReadAsStringAsync();
+        using var challengeDocument =
+            JsonDocument.Parse(challengeJson);
+        var challengeId = challengeDocument.RootElement
+            .GetProperty("challengeId")
+            .GetGuid();
+
+        var verificationMessage = Assert.Single(
+            app.Messages,
+            message =>
+                message.Kind
+                == HelloAccountMessageKind.StepUpVerification);
+        Assert.Equal(email, verificationMessage.RecipientAddress);
+        Assert.Null(verificationMessage.ActionUrl);
+        var verificationCode = Assert.IsType<string>(
+            verificationMessage.VerificationCode);
+        Assert.Matches("^[0-9]{6}$", verificationCode);
+        Assert.DoesNotContain(
+            verificationCode,
+            challengeJson,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            email,
+            challengeJson,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "$kid=v2$",
+            await app.GetVerificationVerifierAsync(challengeId),
+            StringComparison.Ordinal);
+        var invalidCode = string.Equals(
+            verificationCode,
+            "000000",
+            StringComparison.Ordinal)
+            ? "111111"
+            : "000000";
+
+        using var invalidChange = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/account/password/change")
+        {
+            Content = JsonContent.Create(
+                new
+                {
+                    challengeId,
+                    verificationCode = invalidCode,
+                    currentPassword,
+                    newPassword,
+                }),
+        };
+        invalidChange.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                login.AccessToken);
+        using var invalidChangeResponse =
+            await client.SendAsync(invalidChange);
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            invalidChangeResponse.StatusCode);
+
+        using var change = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/account/password/change")
+        {
+            Content = JsonContent.Create(
+                new
+                {
+                    challengeId,
+                    verificationCode,
+                    currentPassword,
+                    newPassword,
+                }),
+        };
+        change.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                login.AccessToken);
+        using var changed = await client.SendAsync(change);
+        Assert.Equal(HttpStatusCode.NoContent, changed.StatusCode);
+
+        using var oldSessionRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/account/me");
+        oldSessionRequest.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                login.AccessToken);
+        using var oldSession =
+            await client.SendAsync(oldSessionRequest);
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            oldSession.StatusCode);
+
+        using var oldPasswordLogin = await client.PostAsJsonAsync(
+            "/auth/login",
+            new
+            {
+                handle = "email",
+                login = email,
+                password = currentPassword,
+            });
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            oldPasswordLogin.StatusCode);
+
+        var newLogin = await LoginAsync(
+            client,
+            email,
+            newPassword);
+        using var replay = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/account/password/change")
+        {
+            Content = JsonContent.Create(
+                new
+                {
+                    challengeId,
+                    verificationCode,
+                    currentPassword = newPassword,
+                    newPassword =
+                        "another correct horse battery staple",
+                }),
+        };
+        replay.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                newLogin.AccessToken);
+        using var replayed = await client.SendAsync(replay);
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            replayed.StatusCode);
+    }
+
+    [Fact]
     public async Task CompleteRazorUiFlow()
     {
         await using var postgres = new PostgreSqlBuilder(
@@ -188,6 +417,35 @@ public sealed class AuthenticationFlowTests
             StringComparison.Ordinal);
         MergeCookies(cookies, register);
 
+        using var confirmationRequest =
+            await client.PostAsJsonAsync(
+                "/auth/email-confirmation/request",
+                new { email = "browser-alice@example.test" });
+        Assert.Equal(
+            HttpStatusCode.Accepted,
+            confirmationRequest.StatusCode);
+        var confirmationMessage = Assert.Single(
+            app.Messages,
+            message =>
+                message.Kind
+                == HelloAccountMessageKind.EmailConfirmation);
+        var confirmationActionUrl = Assert.IsType<Uri>(
+            confirmationMessage.ActionUrl);
+        var confirmationQuery = QueryHelpers.ParseQuery(
+            confirmationActionUrl.Query);
+        using var confirmation = await client.PostAsJsonAsync(
+            "/auth/email-confirmation/confirm",
+            new
+            {
+                userId = Guid.Parse(
+                    confirmationQuery["userId"].Single()!),
+                email = confirmationQuery["email"].Single(),
+                token = confirmationQuery["token"].Single(),
+            });
+        Assert.Equal(
+            HttpStatusCode.NoContent,
+            confirmation.StatusCode);
+
         using var loginPage = await SendAsync(
             client,
             HttpMethod.Get,
@@ -234,6 +492,10 @@ public sealed class AuthenticationFlowTests
             StringComparison.Ordinal);
         MergeCookies(cookies, account);
 
+        var secondaryLogin = await LoginAsync(
+            client,
+            "browser-alice@example.test",
+            "correct horse battery staple");
         using var sessionsPage = await SendAsync(
             client,
             HttpMethod.Get,
@@ -243,9 +505,6 @@ public sealed class AuthenticationFlowTests
         MergeCookies(cookies, sessionsPage);
         var sessionsHtml =
             await sessionsPage.Content.ReadAsStringAsync();
-        var sessionId = ReadInputValue(
-            sessionsHtml,
-            "sessionId");
         var revokeToken = ReadInputValue(
             sessionsHtml,
             "__RequestVerificationToken");
@@ -256,13 +515,88 @@ public sealed class AuthenticationFlowTests
             cookies,
             new Dictionary<string, string>
             {
-                ["sessionId"] = sessionId,
+                ["sessionId"] =
+                    secondaryLogin.SessionId.ToString("D"),
                 ["__RequestVerificationToken"] = revokeToken,
             });
         Assert.Equal(HttpStatusCode.Redirect, revoke.StatusCode);
         Assert.Equal(
-            "/hello/login",
+            "/hello/account/sessions",
             revoke.Headers.Location?.OriginalString);
+        MergeCookies(cookies, revoke);
+
+        using var changePage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/account/change-password",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, changePage.StatusCode);
+        Assert.Contains(
+            "no-store",
+            changePage.Headers.CacheControl?.ToString(),
+            StringComparison.OrdinalIgnoreCase);
+        MergeCookies(cookies, changePage);
+        var requestCodeHtml =
+            await changePage.Content.ReadAsStringAsync();
+        var requestCodeToken = ReadInputValue(
+            requestCodeHtml,
+            "__RequestVerificationToken");
+
+        using var requestCode = await SendFormAsync(
+            client,
+            "/hello/account/change-password?handler=RequestCode",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] =
+                    requestCodeToken,
+            });
+        Assert.Equal(HttpStatusCode.OK, requestCode.StatusCode);
+        MergeCookies(cookies, requestCode);
+        var changeHtml =
+            await requestCode.Content.ReadAsStringAsync();
+        var challengeId = ReadInputValue(
+            changeHtml,
+            "Input.ChallengeId");
+        var changeToken = ReadInputValue(
+            changeHtml,
+            "__RequestVerificationToken");
+        var verificationMessage = Assert.Single(
+            app.Messages,
+            message =>
+                message.Kind
+                == HelloAccountMessageKind.StepUpVerification);
+        var verificationCode = Assert.IsType<string>(
+            verificationMessage.VerificationCode);
+
+        using var changedPassword = await SendFormAsync(
+            client,
+            "/hello/account/change-password?handler=Change",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["Input.ChallengeId"] = challengeId,
+                ["Input.VerificationCode"] = verificationCode,
+                ["Input.CurrentPassword"] =
+                    "correct horse battery staple",
+                ["Input.NewPassword"] =
+                    "new correct horse battery staple",
+                ["Input.ConfirmPassword"] =
+                    "new correct horse battery staple",
+                ["__RequestVerificationToken"] = changeToken,
+            });
+        Assert.Equal(
+            HttpStatusCode.Redirect,
+            changedPassword.StatusCode);
+        Assert.StartsWith(
+            "/hello/login",
+            changedPassword.Headers.Location?.OriginalString,
+            StringComparison.Ordinal);
+
+        await LoginAsync(
+            client,
+            "browser-alice@example.test",
+            "new correct horse battery staple");
     }
 
     [Fact]
@@ -322,6 +656,8 @@ public sealed class AuthenticationFlowTests
             message =>
                 message.Kind
                 == HelloAccountMessageKind.EmailConfirmation);
+        var confirmationActionUrl = Assert.IsType<Uri>(
+            confirmationMessage.ActionUrl);
 
         var loginBeforeConfirmation = await LoginAsync(
             client,
@@ -333,7 +669,7 @@ public sealed class AuthenticationFlowTests
         Assert.False(ReadEmailConfirmed(beforeConfirmation));
 
         using var confirmationPage = await client.GetAsync(
-            confirmationMessage.ActionUrl.PathAndQuery);
+            confirmationActionUrl.PathAndQuery);
         Assert.Equal(HttpStatusCode.OK, confirmationPage.StatusCode);
         Assert.Contains(
             "no-store",
@@ -351,7 +687,7 @@ public sealed class AuthenticationFlowTests
         Assert.False(ReadEmailConfirmed(stillUnconfirmed));
 
         var confirmationQuery = QueryHelpers.ParseQuery(
-            confirmationMessage.ActionUrl.Query);
+            confirmationActionUrl.Query);
         using var confirmed = await client.PostAsJsonAsync(
             "/auth/email-confirmation/confirm",
             new
@@ -400,9 +736,11 @@ public sealed class AuthenticationFlowTests
             message =>
                 message.Kind
                 == HelloAccountMessageKind.PasswordReset);
+        var resetActionUrl = Assert.IsType<Uri>(
+            resetMessage.ActionUrl);
 
         using var resetPage = await client.GetAsync(
-            resetMessage.ActionUrl.PathAndQuery);
+            resetActionUrl.PathAndQuery);
         Assert.Equal(HttpStatusCode.OK, resetPage.StatusCode);
 
         var loginAfterGet = await LoginAsync(
@@ -411,7 +749,7 @@ public sealed class AuthenticationFlowTests
             "correct horse battery staple");
 
         var resetQuery = QueryHelpers.ParseQuery(
-            resetMessage.ActionUrl.Query);
+            resetActionUrl.Query);
         using var reset = await client.PostAsJsonAsync(
             "/auth/password-reset/confirm",
             new
@@ -894,6 +1232,34 @@ public sealed class AuthenticationFlowTests
                 }
             }
 
+            var verificationKeys =
+                new Dictionary<string, byte[]>
+                {
+                    ["v1"] = RandomNumberGenerator.GetBytes(32),
+                    ["v2"] = RandomNumberGenerator.GetBytes(32),
+                };
+            try
+            {
+                var verificationKeyProvider =
+                    new StaticVerificationCodeKeyProvider(
+                        "v2",
+                        verificationKeys);
+                identity.UseHmacOneTimeCodes(
+                    verificationKeyProvider);
+                identity.Services.RemoveAll<
+                    IVerificationCodeKeyProvider>();
+                identity.Services.AddSingleton<
+                    IVerificationCodeKeyProvider>(
+                    _ => verificationKeyProvider);
+            }
+            finally
+            {
+                foreach (var key in verificationKeys.Values)
+                {
+                    CryptographicOperations.ZeroMemory(key);
+                }
+            }
+
             identity.UseJwtBearerAuthentication();
             builder.Services.AddProblemDetails();
             builder.Services.AddSkopkaHelloUi<
@@ -971,6 +1337,23 @@ public sealed class AuthenticationFlowTests
                 .Distinct()
                 .OrderBy(version => version)
                 .ToArrayAsync();
+        }
+
+        public async Task<string> GetVerificationVerifierAsync(
+            Guid challengeId)
+        {
+            await using var serviceScope =
+                application.Services.CreateAsyncScope();
+            var database = serviceScope.ServiceProvider
+                .GetRequiredService<
+                    PostgreSqlIdentityDbContext<
+                        IntegrationProfile>>();
+            return await database.VerificationChallenges
+                .AsNoTracking()
+                .Where(challenge =>
+                    challenge.Id == challengeId)
+                .Select(challenge => challenge.Verifier)
+                .SingleAsync();
         }
 
         public async ValueTask DisposeAsync()

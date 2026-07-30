@@ -51,6 +51,9 @@ public static class SkopkaHelloServiceCollectionExtensions
             Skopka.Hello.IHelloSessionCookieManager,
             Skopka.Hello.HelloSessionCookieManager>();
 
-        return services.AddSkopkaIdentity<TProfile>();
+        return services
+            .AddSkopkaIdentity<TProfile>()
+            .AddStepUpAuthorization<
+                Skopka.Hello.HelloStepUpPolicyProvider<TProfile>>();
     }
 }

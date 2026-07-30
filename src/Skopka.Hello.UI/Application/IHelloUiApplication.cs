@@ -31,6 +31,12 @@ public sealed record HelloUiConfirmEmailCommand(
     string Email,
     string Token);
 
+public sealed record HelloUiCompletePasswordChangeCommand(
+    Guid ChallengeId,
+    string VerificationCode,
+    string CurrentPassword,
+    string NewPassword);
+
 public interface IHelloUiApplication
 {
     Task<OperationResult> RegisterAsync(
@@ -73,5 +79,15 @@ public interface IHelloUiApplication
 
     Task<OperationResult> LogoutAllAsync(
         Guid userId,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloStepUpChallenge>>
+        BeginPasswordChangeAsync(
+            HttpContext httpContext,
+            CancellationToken cancellationToken);
+
+    Task<OperationResult> CompletePasswordChangeAsync(
+        HelloUiCompletePasswordChangeCommand command,
+        HttpContext httpContext,
         CancellationToken cancellationToken);
 }

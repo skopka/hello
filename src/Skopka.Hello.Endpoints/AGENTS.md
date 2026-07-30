@@ -16,3 +16,8 @@ Password-reset and email-confirmation request endpoints return `202` for known
 and unknown well-formed addresses. Token application endpoints map structured
 Identity failures normally. Do not put action tokens, recipient addresses or
 passwords in logs or response details.
+
+Password-change endpoints remain independently bearer-authorized and perform
+online token validation in the shared application operation. Never accept the
+step-up action, binding, user id, recipient address or expected version from an
+HTTP DTO, and never return the OTP delivery code.

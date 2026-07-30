@@ -29,6 +29,21 @@ public sealed record HelloConfirmEmailCommand(
     string Email,
     string Token);
 
+public sealed record HelloBeginPasswordChangeCommand(
+    string AccessToken,
+    string? ClientKey);
+
+public sealed record HelloCompletePasswordChangeCommand(
+    string AccessToken,
+    Guid ChallengeId,
+    string VerificationCode,
+    string CurrentPassword,
+    string NewPassword);
+
+public sealed record HelloStepUpChallenge(
+    Guid ChallengeId,
+    DateTimeOffset ExpiresAt);
+
 public sealed record HelloAccount<TProfile>(
     Guid Id,
     UserFlags Flags,
@@ -110,5 +125,14 @@ public interface IHelloIdentityApplication<TProfile>
 
     Task<OperationResult<HelloAccount<TProfile>>> ConfirmEmailAsync(
         HelloConfirmEmailCommand command,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloStepUpChallenge>>
+        BeginPasswordChangeAsync(
+            HelloBeginPasswordChangeCommand command,
+            CancellationToken cancellationToken);
+
+    Task<OperationResult> CompletePasswordChangeAsync(
+        HelloCompletePasswordChangeCommand command,
         CancellationToken cancellationToken);
 }

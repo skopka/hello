@@ -15,6 +15,7 @@ Required configuration:
 ConnectionStrings__Identity=Host=localhost;Port=5432;Database=skopka_hello;Username=skopka;Password=...
 SkopkaHello__Jwt__SigningKey=<Base64 encoded 32+ random bytes>
 SkopkaHello__RateLimiting__Keys__v1=<different Base64 encoded 32+ random bytes>
+SkopkaHello__Verification__Keys__v1=<third Base64 encoded 32+ random bytes>
 SkopkaHello__PublicOrigin=https://localhost:8443
 ```
 
@@ -32,6 +33,7 @@ SkopkaHello__Jwt__Issuer=https://localhost:8080
 SkopkaHello__Jwt__Audience=skopka-hello-api
 SkopkaHello__Jwt__ValidateSessionOnEveryRequest=false
 SkopkaHello__RateLimiting__CurrentVersion=v1
+SkopkaHello__Verification__CurrentVersion=v1
 SkopkaHello__Database__ApplyMigrations=false
 SkopkaHello__DataProtection__KeyPath=/protected/data-protection
 ```
@@ -57,13 +59,16 @@ SkopkaHello__Delivery__Smtp__QueueCapacity=256
 Omit `Host` to leave delivery disabled, or register a custom
 `IHelloAccountMessageSender` before `AddSkopkaHello<TProfile>()`. The built-in
 queue is bounded and in-memory; use a durable application queue when account
-messages must survive a process restart.
+messages must survive a process restart. Email confirmation, password reset and
+password-change OTP delivery all use this adapter; password-change challenge
+requests report a delivery error when no sender is configured.
 
 `ApplyMigrations=true` is intended for local development or a single controlled
 deployment job, not every production replica.
 
-Rate-limit key versions are non-secret stable identifiers. Never reuse the JWT
-signing key as a rate-limit key.
+Rate-limit and verification key versions are non-secret stable identifiers.
+Generate each purpose's key independently; never reuse the JWT signing key,
+rate-limit key or verification key for another purpose.
 
 ## Run
 
@@ -183,6 +188,40 @@ account by following a GET. API clients can submit the link values directly to
 A successful password reset rotates the security stamp. Refresh sessions can no
 longer be used; stateless access tokens remain valid only until their short
 expiry unless online validation is enabled.
+
+## Change an authenticated password
+
+Password change requires an active bearer session and a confirmed email
+address. First request an OTP challenge:
+
+```http
+POST /account/password/change/challenge
+Authorization: Bearer <access-token>
+```
+
+The response contains only `challengeId` and `expiresAt`. The OTP is delivered
+through `IHelloAccountMessageSender` and is never returned by HTTP. Submit it
+with both passwords:
+
+```http
+POST /account/password/change
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "challengeId": "00000000-0000-0000-0000-000000000000",
+  "verificationCode": "123456",
+  "currentPassword": "current sufficiently long passphrase",
+  "newPassword": "new sufficiently long passphrase"
+}
+```
+
+The action, user and resource binding are created by the server from the
+online-validated access token; clients cannot select them. The proof is
+single-use. A successful change rotates the security stamp, revokes all
+sessions and requires a fresh login. The Razor page at
+`/hello/account/change-password` uses the same application operation and
+antiforgery-protected POSTs.
 
 ## Browser session behavior
 

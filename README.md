@@ -13,6 +13,7 @@ The current `0.1.0` vertical slice contains:
 - password login without user enumeration;
 - enumeration-safe email confirmation and password-reset requests;
 - purpose-bound email confirmation and password-reset action tokens;
+- confirmed-email password changes protected by a one-time step-up code;
 - optional bounded background SMTP delivery;
 - short-lived JWT access tokens in JSON;
 - rotating refresh tokens in `Secure`, `HttpOnly` cookies;
@@ -28,7 +29,7 @@ The current `0.1.0` vertical slice contains:
 - a read-only Docker volume hook for host-provided custom CSS;
 - a ready-to-run server, sample host, Docker image and Testcontainers coverage.
 
-OAuth/OIDC, step-up verification UI and administration remain deferred.
+OAuth/OIDC, external-login management and administration remain deferred.
 
 ## Packages
 
@@ -57,6 +58,8 @@ OAuth/OIDC, step-up verification UI and administration remain deferred.
 | `GET` | `/account/me` | Bearer |
 | `GET` | `/account/sessions` | Bearer |
 | `DELETE` | `/account/sessions/{sessionId}` | Bearer |
+| `POST` | `/account/password/change/challenge` | Bearer |
+| `POST` | `/account/password/change` | Bearer + one-time code |
 
 Registration calls
 `IIdentityRegistrationService<TProfile>.RegisterPasswordAsync`; it is never
@@ -78,6 +81,7 @@ The ready server exposes:
 | `/hello/confirm-email` | Confirm an email after an explicit POST |
 | `/hello/account` | Current account summary |
 | `/hello/account/sessions` | List and revoke active sessions |
+| `/hello/account/change-password` | Change password after email OTP step-up |
 
 API and Razor handlers share `IHelloIdentityApplication<TProfile>`. The UI uses
 an encrypted `HttpOnly` authentication cookie, keeps the refresh token in its

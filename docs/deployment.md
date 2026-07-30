@@ -22,10 +22,10 @@ static asset; the mounted custom stylesheet is linked after it.
 
 ## Configuration
 
-Inject the PostgreSQL connection string, Base64 JWT signing key and versioned
-rate-limit HMAC keys from a secret manager. Do not bake `.env`, database
-passwords or signing material into the image. Use a protected persistent volume
-for Data Protection keys.
+Inject the PostgreSQL connection string, Base64 JWT signing key and independent
+versioned rate-limit and verification-code HMAC keys from a secret manager. Do
+not bake `.env`, database passwords or signing material into the image. Use a
+protected persistent volume for Data Protection keys.
 
 Set `SkopkaHello:PublicOrigin` to the public TLS origin used in account-message
 links. Configure SMTP credentials from a secret manager. The built-in SMTP
@@ -69,7 +69,7 @@ Every replica must share:
 - JWT signing configuration;
 - Data Protection keys;
 - the same current and overlapping historical rate-limit key versions;
-- future verification keys.
+- the same current and overlapping historical verification key versions.
 
 To rotate a rate-limit key, deploy the new key as another entry under
 `SkopkaHello:RateLimiting:Keys`, set `CurrentVersion` to its version and retain
@@ -82,6 +82,20 @@ SkopkaHello__RateLimiting__CurrentVersion=v2
 SkopkaHello__RateLimiting__Keys__v1=<previous Base64 key>
 SkopkaHello__RateLimiting__Keys__v2=<new Base64 key>
 ```
+
+Verification keys use the same overlap pattern under
+`SkopkaHello:Verification:Keys`. Retain every key version referenced by an
+unexpired verification challenge; removing it earlier invalidates that
+challenge. Key ids are stored inside the HMAC verifier in PostgreSQL, while raw
+keys remain only in host configuration.
+
+```text
+SkopkaHello__Verification__CurrentVersion=v2
+SkopkaHello__Verification__Keys__v1=<previous Base64 key>
+SkopkaHello__Verification__Keys__v2=<new Base64 key>
+```
+
+Never reuse a JWT, rate-limit or verification key for another purpose.
 
 The default JWT check is stateless. A revoked refresh session cannot mint new
 access tokens, but an already issued access token remains valid until expiry.

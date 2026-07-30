@@ -3,12 +3,12 @@ using Microsoft.Extensions.Configuration;
 
 namespace Skopka.Hello;
 
-internal sealed class IdentityRateLimitKeySet : IDisposable
+internal sealed class VersionedSecretKeySet : IDisposable
 {
     private readonly Dictionary<string, byte[]> keys;
     private bool disposed;
 
-    private IdentityRateLimitKeySet(
+    private VersionedSecretKeySet(
         string currentVersion,
         Dictionary<string, byte[]> keys)
     {
@@ -20,7 +20,7 @@ internal sealed class IdentityRateLimitKeySet : IDisposable
 
     public IReadOnlyDictionary<string, byte[]> Keys => keys;
 
-    public static IdentityRateLimitKeySet Load(
+    public static VersionedSecretKeySet Load(
         IConfigurationSection section)
     {
         ArgumentNullException.ThrowIfNull(section);
@@ -86,7 +86,7 @@ internal sealed class IdentityRateLimitKeySet : IDisposable
                     $"{section.Path}:CurrentVersion must identify a configured key.");
             }
 
-            return new IdentityRateLimitKeySet(
+            return new VersionedSecretKeySet(
                 currentVersion,
                 keys);
         }

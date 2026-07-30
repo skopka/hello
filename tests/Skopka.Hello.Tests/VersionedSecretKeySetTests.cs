@@ -3,7 +3,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace Skopka.Hello.Tests;
 
-public sealed class IdentityRateLimitKeySetTests
+public sealed class VersionedSecretKeySetTests
 {
     [Fact]
     public void LoadReadsVersionedKeysAndDisposeClearsThem()
@@ -18,7 +18,7 @@ public sealed class IdentityRateLimitKeySetTests
                 ["Keys:v2"] = Convert.ToBase64String(current),
             });
 
-        var keySet = IdentityRateLimitKeySet.Load(configuration);
+        var keySet = VersionedSecretKeySet.Load(configuration);
         var currentCopy = keySet.Keys["v2"];
         var previousCopy = keySet.Keys["v1"];
 
@@ -44,7 +44,7 @@ public sealed class IdentityRateLimitKeySetTests
             });
 
         var exception = Assert.Throws<InvalidOperationException>(
-            () => IdentityRateLimitKeySet.Load(configuration));
+            () => VersionedSecretKeySet.Load(configuration));
 
         Assert.Contains(
             "CurrentVersion must identify a configured key",
@@ -70,9 +70,9 @@ public sealed class IdentityRateLimitKeySetTests
             });
 
         Assert.Throws<InvalidOperationException>(
-            () => IdentityRateLimitKeySet.Load(malformed));
+            () => VersionedSecretKeySet.Load(malformed));
         Assert.Throws<InvalidOperationException>(
-            () => IdentityRateLimitKeySet.Load(
+            () => VersionedSecretKeySet.Load(
                 shortKeyConfiguration));
     }
 
@@ -80,12 +80,12 @@ public sealed class IdentityRateLimitKeySetTests
         IReadOnlyDictionary<string, string?> values)
     {
         var prefixed = values.ToDictionary(
-            entry => $"SkopkaHello:RateLimiting:{entry.Key}",
+            entry => $"SkopkaHello:Secrets:{entry.Key}",
             entry => entry.Value,
             StringComparer.Ordinal);
         return new ConfigurationBuilder()
             .AddInMemoryCollection(prefixed)
             .Build()
-            .GetSection("SkopkaHello:RateLimiting");
+            .GetSection("SkopkaHello:Secrets");
     }
 }

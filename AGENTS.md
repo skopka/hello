@@ -18,7 +18,8 @@ responses.
 ## Current vertical
 
 The implemented surfaces are registration, login, sessions, account,
-password-reset and email-confirmation Minimal APIs plus their Razor UI.
+password-reset, email-confirmation and step-up password-change Minimal APIs
+plus their Razor UI.
 Registration must remain atomic through
 `IIdentityRegistrationService<TProfile>`. HTTP handlers call
 `IHelloIdentityApplication<TProfile>` or Skopka.Identity application services,
@@ -38,6 +39,10 @@ Anonymous account-message requests suppress exact-lookup not-found results and
 return the same accepted response for every well-formed email. Links use a
 configured public origin, confirmation GET requests never mutate state, and
 delivery stays behind `IHelloAccountMessageSender`.
+
+Password change requires an online-validated session, confirmed email and
+Identity-owned OTP step-up. User, action, binding and optimistic version are
+server-derived; the OTP is delivered out of band and never returned by HTTP.
 
 ## Modules
 

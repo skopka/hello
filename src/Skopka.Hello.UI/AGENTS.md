@@ -3,9 +3,9 @@
 Read `../../AGENTS.md` first.
 
 The implemented UI contains Razor pages for registration, login, account
-summary and active-session revocation. Pages call the shared application
-service, contain no identity business logic and protect every form mutation
-with antiforgery.
+summary, active-session revocation and OTP-protected password change. Pages
+call the shared application service, contain no identity business logic and
+protect every form mutation with antiforgery.
 
 Recovery and confirmation token pages are no-store/no-referrer. A GET may
 render a token form but must never confirm an address or reset a password;

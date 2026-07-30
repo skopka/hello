@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authentication;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Identity.Authentication;
 using Skopka.Identity.Errors;
@@ -162,6 +163,75 @@ internal sealed class HelloUiApplication<TProfile>(
         => application.LogoutAllAsync(
             userId,
             cancellationToken);
+
+    public async Task<OperationResult<HelloStepUpChallenge>>
+        BeginPasswordChangeAsync(
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession<HelloStepUpChallenge>();
+        }
+
+        return await application.BeginPasswordChangeAsync(
+            new HelloBeginPasswordChangeCommand(
+                accessToken,
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+    }
+
+    public async Task<OperationResult> CompletePasswordChangeAsync(
+        HelloUiCompletePasswordChangeCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession();
+        }
+
+        return await application.CompletePasswordChangeAsync(
+            new HelloCompletePasswordChangeCommand(
+                accessToken,
+                command.ChallengeId,
+                command.VerificationCode,
+                command.CurrentPassword,
+                command.NewPassword),
+            cancellationToken);
+    }
+
+    private static async Task<string?> ReadAccessTokenAsync(
+        HttpContext httpContext)
+    {
+        var authentication = await httpContext.AuthenticateAsync(
+            HelloUiDefaults.AuthenticationScheme);
+        return authentication.Succeeded
+            ? authentication.Properties?.GetTokenValue(
+                HelloUiDefaults.AccessTokenName)
+            : null;
+    }
+
+    private static OperationResult InvalidSession()
+        => OperationResultFactory.Fail(
+            new Error(
+                IdentityErrorCodes.RefreshTokenInvalid,
+                "The session is invalid or expired.",
+                ErrorType.Unauthorized));
+
+    private static OperationResult<T> InvalidSession<T>()
+        => OperationResultFactory.Fail<T>(
+            new Error(
+                IdentityErrorCodes.RefreshTokenInvalid,
+                "The session is invalid or expired.",
+                ErrorType.Unauthorized));
 
     private static bool TryParseHandle(
         string? value,

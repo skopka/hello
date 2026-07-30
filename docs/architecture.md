@@ -35,6 +35,8 @@ var identity = services
 identity.UseHmacRateLimiting(
     currentVersion,
     versionedRateLimitKeys);
+identity.UseHmacOneTimeCodes(
+    verificationKeyProvider);
 identity.UseJwtBearerAuthentication();
 ```
 
@@ -56,12 +58,22 @@ purpose-bound Identity action token, builds the link from configured
 built-in SMTP adapter enqueues to a bounded background worker; applications can
 replace it with a durable delivery producer.
 
+Authenticated password change validates the access token online, derives the
+user id, optimistic-concurrency version, action and binding on the server, and
+uses Skopka.Identity step-up verification before calling
+`IPasswordCredentialService<TProfile>.ChangePasswordAsync`. API and Razor UI
+share this operation. The transport receives only a safe challenge id and
+expiry; the OTP is sent through `IHelloAccountMessageSender`. A successful
+change revokes all sessions after Identity rotates the security stamp.
+
 Skopka.Identity owns:
 
 - user/profile, credentials and normalized handles;
 - security stamps and optimistic concurrency;
 - refresh chains and JWT/refresh token providers;
 - versioned persistent account/client rate limiting;
+- verification challenges/proofs, OTP HMAC key ids and one-time consumption;
+- step-up policy enforcement and password credential mutation;
 - persistence entities, PostgreSQL mappings and migrations.
 
 Skopka.Hello owns:
@@ -73,6 +85,7 @@ Skopka.Hello owns:
 - server configuration and migration composition;
 - trusted client partition derivation and scheduled bounded pruning;
 - account-message link construction and delivery orchestration;
+- password-change action/binding derivation and OTP message delivery;
 - security-event request enrichment and audit-outbox contracts.
 
 ## Errors
@@ -125,7 +138,7 @@ claimed.
 
 ## Deferred modules
 
-Credential/external-login management, step-up verification UI and admin pages
+Remaining credential lifecycle, external-login management and admin pages
 remain deferred. `Skopka.Hello.Oidc` and `Skopka.Hello.Admin` are real package
 boundaries, but contain no speculative protocol or identity logic. OAuth/OIDC
 will use a maintained protocol library only after target-framework support and

@@ -1,12 +1,14 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Net;
 using Skopka.Hello;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.Server;
 using Skopka.Hello.UI;
 using Skopka.Identity.Ef.PostgreSql;
+using Skopka.Identity.Verification;
 
 if (args is ["--health-check"])
 {
@@ -135,13 +137,27 @@ var identity = builder.Services
             options.Audience = audience;
         });
 
-using (var rateLimitKeys = IdentityRateLimitKeySet.Load(
+using (var rateLimitKeys = VersionedSecretKeySet.Load(
     configuration.GetSection(
         "SkopkaHello:RateLimiting")))
 {
     identity.UseHmacRateLimiting(
         rateLimitKeys.CurrentVersion,
         rateLimitKeys.Keys);
+}
+
+using (var verificationKeys = VersionedSecretKeySet.Load(
+    configuration.GetSection(
+        "SkopkaHello:Verification")))
+{
+    var verificationKeyProvider =
+        new StaticVerificationCodeKeyProvider(
+            verificationKeys.CurrentVersion,
+            verificationKeys.Keys);
+    identity.UseHmacOneTimeCodes(verificationKeyProvider);
+    identity.Services.RemoveAll<IVerificationCodeKeyProvider>();
+    identity.Services.AddSingleton<IVerificationCodeKeyProvider>(
+        _ => verificationKeyProvider);
 }
 
 identity.UseJwtBearerAuthentication(options =>

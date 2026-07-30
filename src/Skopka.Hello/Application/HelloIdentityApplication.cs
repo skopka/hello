@@ -8,9 +8,12 @@ using Skopka.Identity.Credentials;
 using Skopka.Identity.Errors;
 using Skopka.Identity.Registration;
 using Skopka.Identity.Sessions;
+using Skopka.Identity.StepUp;
+using Skopka.Identity.StepUp.Commands;
 using Skopka.Identity.Tokens;
 using Skopka.Identity.Users;
 using Skopka.Identity.Users.Commands;
+using Skopka.Identity.Verification;
 
 namespace Skopka.Hello;
 
@@ -21,6 +24,8 @@ internal sealed partial class HelloIdentityApplication<TProfile>(
     IPasswordCredentialService<TProfile> credentials,
     IIdentityUserService<TProfile> users,
     IIdentityUserLookupService<TProfile> userLookup,
+    IIdentityStepUpService<TProfile> stepUp,
+    IIdentityVerificationService<TProfile> verification,
     IEnumerable<IIdentityActionTokenIssuer<TProfile>> actionTokenIssuers,
     IHelloAccountMessageSender messageSender,
     SkopkaHelloOptions options,
@@ -206,6 +211,131 @@ internal sealed partial class HelloIdentityApplication<TProfile>(
                 result.Errors);
     }
 
+    public async Task<OperationResult<HelloStepUpChallenge>>
+        BeginPasswordChangeAsync(
+            HelloBeginPasswordChangeCommand command,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        var validated = await sessions.ValidateAccessTokenAsync(
+            command.AccessToken,
+            cancellationToken);
+        if (!validated.IsSuccess)
+        {
+            return OperationResultFactory.Fail<HelloStepUpChallenge>(
+                validated.Errors);
+        }
+
+        var user = validated.Value;
+        if (!HasConfirmedEmail(user))
+        {
+            return OperationResultFactory.Fail<HelloStepUpChallenge>(
+                HelloAccountSecurity.ConfirmedEmailRequired());
+        }
+
+        var issued = await stepUp.BeginAsync(
+            new BeginStepUpCommand(
+                user.Id,
+                HelloAccountSecurity.PasswordChangeAction,
+                HelloAccountSecurity.CreateBinding(user.Id),
+                VerificationMethods.OneTimeCode,
+                command.ClientKey),
+            cancellationToken);
+        if (!issued.IsSuccess)
+        {
+            return OperationResultFactory.Fail<HelloStepUpChallenge>(
+                issued.Errors);
+        }
+
+        if (string.IsNullOrWhiteSpace(issued.Value.DeliveryCode))
+        {
+            return OperationResultFactory.Fail<HelloStepUpChallenge>(
+                new Error(
+                    IdentityErrorCodes.VerificationMethodUnavailable,
+                    "The verification code could not be delivered.",
+                    ErrorType.Failure));
+        }
+
+        var delivered = await messageSender.SendAsync(
+            new HelloAccountMessage(
+                HelloAccountMessageKind.StepUpVerification,
+                user.Email!,
+                null,
+                issued.Value.ExpiresAt,
+                issued.Value.DeliveryCode),
+            cancellationToken);
+        return delivered.IsSuccess
+            ? OperationResultFactory.Success(
+                new HelloStepUpChallenge(
+                    issued.Value.ChallengeId,
+                    issued.Value.ExpiresAt))
+            : OperationResultFactory.Fail<HelloStepUpChallenge>(
+                delivered.Errors);
+    }
+
+    public async Task<OperationResult> CompletePasswordChangeAsync(
+        HelloCompletePasswordChangeCommand command,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        var validated = await sessions.ValidateAccessTokenAsync(
+            command.AccessToken,
+            cancellationToken);
+        if (!validated.IsSuccess)
+        {
+            return OperationResultFactory.Fail(validated.Errors);
+        }
+
+        var user = validated.Value;
+        if (!HasConfirmedEmail(user))
+        {
+            return OperationResultFactory.Fail(
+                HelloAccountSecurity.ConfirmedEmailRequired());
+        }
+
+        var verified = await verification.VerifyAsync(
+            new VerifyVerificationChallengeCommand(
+                command.ChallengeId,
+                user.Id,
+                command.VerificationCode),
+            cancellationToken);
+        if (!verified.IsSuccess)
+        {
+            return OperationResultFactory.Fail(verified.Errors);
+        }
+
+        var authorized = await stepUp.AuthorizeAsync(
+            new AuthorizeStepUpCommand(
+                user.Id,
+                HelloAccountSecurity.PasswordChangeAction,
+                HelloAccountSecurity.CreateBinding(user.Id),
+                command.ChallengeId,
+                verified.Value.Token),
+            cancellationToken);
+        if (!authorized.IsSuccess)
+        {
+            return OperationResultFactory.Fail(authorized.Errors);
+        }
+
+        var changed = await credentials.ChangePasswordAsync(
+            new ChangePasswordCommand(
+                user.Id,
+                user.Version,
+                command.CurrentPassword,
+                command.NewPassword),
+            cancellationToken);
+        if (!changed.IsSuccess)
+        {
+            return OperationResultFactory.Fail(changed.Errors);
+        }
+
+        return await sessions.RevokeAllAsync(
+            new RevokeAllIdentitySessionsCommand(user.Id),
+            cancellationToken);
+    }
+
     private async Task<OperationResult> RequestAccountMessageAsync(
         string email,
         HelloAccountMessageKind kind,
@@ -345,6 +475,11 @@ internal sealed partial class HelloIdentityApplication<TProfile>(
 
         return null;
     }
+
+    private static bool HasConfirmedEmail(
+        IdentityUser<TProfile> user)
+        => user.EmailConfirmed
+            && !string.IsNullOrWhiteSpace(user.Email);
 
     private void LogSuppressed(
         HelloAccountMessageKind kind,

@@ -31,4 +31,7 @@ public static class HelloUiDefaults
     public const string AccountPath = "/hello/account";
 
     public const string SessionsPath = "/hello/account/sessions";
+
+    public const string ChangePasswordPath =
+        "/hello/account/change-password";
 }

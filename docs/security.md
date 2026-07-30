@@ -78,20 +78,42 @@ GET requests from confirming an address.
 Action tokens are purpose-, user-, target-, security-stamp- and expiry-bound by
 Skopka.Identity. Tokens, recipient addresses and passwords are not logged.
 
+## Authenticated password change and step-up
+
+Changing a password requires a confirmed email and an OTP challenge issued by
+Skopka.Identity. The application validates the bearer or protected UI access
+token online and derives the user id, action and binding itself. None of these
+values or the user's optimistic-concurrency version are accepted from the
+request.
+
+The HTTP response contains only the challenge id and expiry. The OTP is passed
+directly to `IHelloAccountMessageSender`, is HMAC-protected at rest and is never
+logged or serialized to the client. Identity rate-limits challenge issuance
+and attempts, binds the proof to the password-change action and user, and
+consumes it once before the credential mutation.
+
+After a successful change Identity rotates the security stamp and Hello revokes
+all refresh sessions. The UI clears both local cookies. Because bearer mode can
+otherwise be stateless, enable
+`SkopkaHello:Jwt:ValidateSessionOnEveryRequest=true` when every already-issued
+API access token must stop authorizing ordinary protected endpoints
+immediately.
+
 ## Secrets
 
 Keep these values outside source control:
 
 - JWT signing key, at least 32 random bytes and Base64 encoded for configuration;
 - rate-limit HMAC keys, at least 32 random bytes per version;
+- verification-code HMAC keys, at least 32 random bytes per version;
 - PostgreSQL credentials;
 - persisted ASP.NET Core Data Protection key ring and its protection material;
 - SMTP credentials;
-- any future password pepper or OTP HMAC key.
+- any future password pepper.
 
 Do not reuse keys between purposes. Multiple replicas must share the JWT key and
-Data Protection key ring, and must overlap rate-limit key versions during
-rotation. Configure
+Data Protection key ring, and must overlap rate-limit and verification key
+versions during rotation. Configure
 `SkopkaHello:DataProtection:KeyPath` to a protected persistent location.
 
 ## Logging and responses

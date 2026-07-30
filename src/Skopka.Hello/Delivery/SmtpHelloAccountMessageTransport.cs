@@ -53,6 +53,12 @@ internal sealed class SmtpHelloAccountMessageTransport(
     private MailMessage CreateMessage(
         HelloAccountMessage message)
     {
+        if (message.Kind
+            == HelloAccountMessageKind.StepUpVerification)
+        {
+            return CreateVerificationMessage(message);
+        }
+
         var (subject, introduction, linkText) = message.Kind switch
         {
             HelloAccountMessageKind.PasswordReset => (
@@ -68,6 +74,12 @@ internal sealed class SmtpHelloAccountMessageTransport(
                 message.Kind,
                 "The account message kind is unsupported."),
         };
+        if (message.ActionUrl is null)
+        {
+            throw new InvalidOperationException(
+                "An action URL is required for this account message.");
+        }
+
         var encodedUrl = WebUtility.HtmlEncode(
             message.ActionUrl.AbsoluteUri);
         var encodedIntroduction = WebUtility.HtmlEncode(
@@ -88,6 +100,37 @@ internal sealed class SmtpHelloAccountMessageTransport(
                 <p>{encodedIntroduction}</p>
                 <p><a href="{encodedUrl}">{encodedLinkText}</a></p>
                 <p>This link expires at {expires} UTC.</p>
+                <p>If you did not request this action, ignore this message.</p>
+                """,
+        };
+    }
+
+    private MailMessage CreateVerificationMessage(
+        HelloAccountMessage message)
+    {
+        if (string.IsNullOrWhiteSpace(message.VerificationCode))
+        {
+            throw new InvalidOperationException(
+                "A verification code is required for this account message.");
+        }
+
+        var encodedCode = WebUtility.HtmlEncode(
+            message.VerificationCode);
+        var expires = WebUtility.HtmlEncode(
+            message.ExpiresAt.ToUniversalTime().ToString("u"));
+
+        return new MailMessage
+        {
+            From = new MailAddress(
+                options.FromAddress,
+                options.FromName),
+            To = { new MailAddress(message.RecipientAddress) },
+            Subject = "Confirm your password change",
+            IsBodyHtml = true,
+            Body = $"""
+                <p>Use this verification code to change your password:</p>
+                <p><strong>{encodedCode}</strong></p>
+                <p>This code expires at {expires} UTC.</p>
                 <p>If you did not request this action, ignore this message.</p>
                 """,
         };

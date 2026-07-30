@@ -80,6 +80,18 @@ public static class HelloEndpointRouteBuilderExtensions
             .RequireAuthorization()
             .WithName("SkopkaHelloDeleteSession");
 
+        endpoints.MapPost(
+                "/account/password/change/challenge",
+                BeginPasswordChangeAsync<TProfile>)
+            .RequireAuthorization()
+            .WithName("SkopkaHelloBeginPasswordChange");
+
+        endpoints.MapPost(
+                "/account/password/change",
+                CompletePasswordChangeAsync<TProfile>)
+            .RequireAuthorization()
+            .WithName("SkopkaHelloCompletePasswordChange");
+
         return endpoints;
     }
 
@@ -417,6 +429,67 @@ public static class HelloEndpointRouteBuilderExtensions
             : OperationResultProblemMapper.ToResult(
                 revoked,
                 httpContext);
+    }
+
+    private static async Task<IResult>
+        BeginPasswordChangeAsync<TProfile>(
+            IHelloIdentityApplication<TProfile> application,
+            IHelloRequestContext requestContext,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.BeginPasswordChangeAsync(
+            new HelloBeginPasswordChangeCommand(
+                accessToken,
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Ok(
+                new StepUpChallengeResponse(
+                    result.Value.ChallengeId,
+                    result.Value.ExpiresAt))
+            : OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+    }
+
+    private static async Task<IResult>
+        CompletePasswordChangeAsync<TProfile>(
+            ChangePasswordRequest request,
+            IHelloIdentityApplication<TProfile> application,
+            IHelloSessionCookieManager cookies,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.CompletePasswordChangeAsync(
+            new HelloCompletePasswordChangeCommand(
+                accessToken,
+                request.ChallengeId,
+                request.VerificationCode,
+                request.CurrentPassword,
+                request.NewPassword),
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+        }
+
+        cookies.DeleteSessionCookies(httpContext);
+        return TypedResults.NoContent();
     }
 
     private static Microsoft.AspNetCore.Http.HttpResults.ProblemHttpResult

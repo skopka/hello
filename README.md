@@ -90,12 +90,9 @@ See [getting started](docs/getting-started.md) for configuration and requests,
 
 ## Build and test
 
-When developing beside the Skopka.Identity repository, copy its locally packed
-NuGet artifacts into the ignored local feed:
+Restore the published Skopka.Identity packages from NuGet:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\sync-local-identity-packages.ps1
 dotnet restore .\Skopka.Hello.slnx --configfile .\NuGet.Config
 dotnet build .\Skopka.Hello.slnx -c Release --no-restore
 dotnet test .\tests\Skopka.Hello.Tests -c Release --no-build

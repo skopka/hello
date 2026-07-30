@@ -5,11 +5,7 @@
 - .NET SDK 10.0.101 or a compatible patch;
 - PostgreSQL;
 - Docker Engine for integration tests and the provided compose stack;
-- Skopka.Identity `0.1.0` packages.
-
-For adjacent source repositories, run
-`scripts/sync-local-identity-packages.ps1`. The copied `.nupkg` files are ignored
-by Git and feed restore plus the Docker build.
+- published Skopka.Identity `0.3.0` packages.
 
 ## Configure the server
 

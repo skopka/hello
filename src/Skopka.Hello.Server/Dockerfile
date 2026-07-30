@@ -2,7 +2,6 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 COPY NuGet.Config Directory.Build.props Directory.Packages.props ./
-COPY packages/local ./packages/local
 COPY src/Skopka.Hello/Skopka.Hello.csproj src/Skopka.Hello/
 COPY src/Skopka.Hello.Endpoints/Skopka.Hello.Endpoints.csproj src/Skopka.Hello.Endpoints/
 COPY src/Skopka.Hello.UI/Skopka.Hello.UI.csproj src/Skopka.Hello.UI/

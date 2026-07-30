@@ -11,4 +11,5 @@
 .env
 deploy/secrets
 artifacts
+packages
 tests

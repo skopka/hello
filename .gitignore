@@ -16,7 +16,6 @@ artifacts/
 coverage*/
 *.nupkg
 *.snupkg
-!packages/local/.gitkeep
 
 # Local configuration and secrets
 .env

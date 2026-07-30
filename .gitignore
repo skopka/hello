@@ -1,85 +1,29 @@
-# This .gitignore is tailored for .NET (including ASP.NET Core), Visual Studio, and JetBrains Rider
-# Based on GitHub’s standard templates, trimmed to common essentials
-
-# Build results
+# Build and IDE output
 [Bb]in/
 [Oo]bj/
-**/[Bb]in/
-**/[Oo]bj/
-
-# Rider
-.idea/
-*.sln.iml
-
-# Visual Studio
 .vs/
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
-
-# Visual Studio Code (optional workspace settings)
+.idea/
 .vscode/
+*.user
+*.suo
+*.DotSettings.user
 
-# Test results, coverage, benchmarking
+# Test and package output
 TestResults/
+artifacts/
 *.coverage
 *.coveragexml
-coverage*
-.coverage/
-BenchmarkDotNet.Artifacts/
-
-# NuGet
+coverage*/
 *.nupkg
 *.snupkg
-# Uncomment if you have local packages folder
-# packages/
-# NuGet Restore info
-project.lock.json
-project.fragment.lock.json
-artifacts/
+!packages/local/.gitkeep
 
-# MSBuild / Logs
-*.log
-msbuild.log
-msbuild.binlog
-
-# ReSharper / DotCover / DotTrace (JetBrains)
-_ReSharper*/
-*.[Rr]e[Ss]harper
-*.DotSettings.user
-.dotCover
-
-# Azure / publish
-.publishsettings
-*.pubxml.user
-
-# IIS / ASP.NET generated files
-App_Data/
-aspnet_client/
-
-# User-specific files
-*.user
-*.rsuser
-*.suo
-*.userprefs
-
-# OS-specific
-.DS_Store
-Thumbs.db
-
-# Environment / local overrides
+# Local configuration and secrets
 .env
 *.local.json
+secrets/
+deploy/secrets/
 
-# Entity Framework (keep Migrations/, but ignore design-time cache)
-# Migrations/  <-- keep migrations in VCS
-**/obj/Debug/net*/ref/
-
-# Rider & solution caches (defensive)
-.idea/.name
-.idea/workspace.xml
-
-# Docker
-**/.dockerignore
-**/docker-compose.override.yml
+# OS files
+.DS_Store
+Thumbs.db

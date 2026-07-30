@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <Description>Administration API and UI boundary for Skopka.Hello.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\Skopka.Hello\Skopka.Hello.csproj" />
+    <ProjectReference Include="..\Skopka.Hello.Endpoints\Skopka.Hello.Endpoints.csproj" />
+  </ItemGroup>
+</Project>

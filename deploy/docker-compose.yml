@@ -1,95 +1,47 @@
-﻿version: "3.9"
-
 services:
   postgres:
-    image: postgres:16-alpine
-    container_name: authx-postgres
-    restart: unless-stopped
+    image: postgres:17-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-authx}
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB:-skopka_hello}
+      POSTGRES_USER: ${POSTGRES_USER:-skopka}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 20
 
-  redis:
-    image: redis:7-alpine
-    container_name: authx-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  web:
+  server:
     build:
       context: ..
-      dockerfile: src/Skopka.Hello/Dockerfile
-    image: skopka.hello:dev
-    container_name: skopka-hello
+      dockerfile: src/Skopka.Hello.Server/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Identity: Host=postgres;Port=5432;Database=${POSTGRES_DB:-skopka_hello};Username=${POSTGRES_USER:-skopka};Password=${POSTGRES_PASSWORD}
+      SkopkaHello__Jwt__SigningKey: ${SKOPKA_HELLO_JWT_SIGNING_KEY:?Set SKOPKA_HELLO_JWT_SIGNING_KEY in .env}
+      SkopkaHello__Database__ApplyMigrations: "true"
+      SkopkaHello__DataProtection__KeyPath: /var/lib/skopka-hello/keys
+      SkopkaHello__Cookies__Secure: "false"
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      db-migrator:
-        condition: service_completed_successfully
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      CONNECTIONSTRINGS__DEFAULT: Host=postgres;Port=5432;Database=${POSTGRES_DB:-authx};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
-      REDIS_CONNECTION: redis:6379
-      ADMIN_API_KEY: ${ADMIN_API_KEY}
-      CORS__ORIGINS: ${CORS__ORIGINS:-http://localhost:5173}
-      SIGNING__ALGORITHM: ${SIGNING__ALGORITHM:-ES256}
-      SIGNING__KID: ${SIGNING__KID:-dev-key}
-      SIGNING__PEMFILE: ${SIGNING__PEMFILE:-/config/secrets/signing-key.pem}
-      FEATURES__INTROSPECTION: ${FEATURES__INTROSPECTION:-false}
     ports:
       - "8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
     volumes:
-      - type: bind
-        source: ../deploy/settings
-        target: /config/settings
-      - type: bind
-        source: ../deploy/secrets
-        target: /config/secrets
+      - data-protection:/var/lib/skopka-hello/keys
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-
-  db-migrator:
-    image: skopka.hello:dev
-    container_name: skopka-hello-migrator
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      CONNECTIONSTRINGS__DEFAULT: Host=postgres;Port=5432;Database=${POSTGRES_DB:-authx};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
-      MIGRATIONS__APPLY: "true"
-      MIGRATIONS__EXITAFTER: "true"
-    command: ["dotnet","Skopka.Hello.dll"]
-    volumes:
-      - type: bind
-        source: ../deploy/settings
-        target: /config/settings
-      - type: bind
-        source: ../deploy/secrets
-        target: /config/secrets
-    restart: "no"
+      test: ["CMD", "dotnet", "Skopka.Hello.Server.dll", "--health-check"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
 
 volumes:
-  pgdata:
+  postgres-data:
+  data-protection:

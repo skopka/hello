@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>Skopka.Hello.Server</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Skopka.Identity" />
+    <PackageReference Include="Skopka.Identity.Abstractions" />
+    <PackageReference Include="Skopka.Identity.Ef.PostgreSql" />
+    <PackageReference Include="Skopka.Identity.Infrastructure" />
+    <ProjectReference Include="..\Skopka.Hello\Skopka.Hello.csproj" />
+    <ProjectReference Include="..\Skopka.Hello.Endpoints\Skopka.Hello.Endpoints.csproj" />
+  </ItemGroup>
+</Project>

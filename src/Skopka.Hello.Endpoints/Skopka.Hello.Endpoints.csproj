@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>true</IsPackable>
-    <Description>Composition facade and host contracts for Skopka.Hello.</Description>
+    <Description>Minimal API endpoints and HTTP contracts for Skopka.Hello.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Skopka.Abstraction.OperationResult" />
-    <PackageReference Include="Skopka.Identity" />
     <PackageReference Include="Skopka.Identity.Abstractions" />
+    <ProjectReference Include="..\Skopka.Hello\Skopka.Hello.csproj" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Skopka.Hello/Skopka.Hello.csproj" />
+    <Project Path="src/Skopka.Hello.Admin/Skopka.Hello.Admin.csproj" />
+    <Project Path="src/Skopka.Hello.Endpoints/Skopka.Hello.Endpoints.csproj" />
+    <Project Path="src/Skopka.Hello.Oidc/Skopka.Hello.Oidc.csproj" />
+    <Project Path="src/Skopka.Hello.Server/Skopka.Hello.Server.csproj" />
+    <Project Path="src/Skopka.Hello.UI/Skopka.Hello.UI.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Skopka.Hello.Sample/Skopka.Hello.Sample.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Skopka.Hello.IntegrationTests/Skopka.Hello.IntegrationTests.csproj" />
+    <Project Path="tests/Skopka.Hello.Tests/Skopka.Hello.Tests.csproj" />
+  </Folder>
+</Solution>

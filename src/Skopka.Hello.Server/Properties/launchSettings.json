@@ -9,6 +9,7 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "SkopkaHello__Cookies__Secure": "false",
+        "SkopkaHello__ExternalOidc__Providers__google__Enabled": "false",
         "SkopkaHello__PublicOrigin": "http://localhost:8080"
       }
     },
@@ -19,6 +20,7 @@
       "applicationUrl": "https://localhost:8443;http://localhost:8080",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "SkopkaHello__ExternalOidc__Providers__google__RequireHttpsMetadata": "true",
         "SkopkaHello__Jwt__Issuer": "https://localhost:8443",
         "SkopkaHello__PublicOrigin": "https://localhost:8443"
       }

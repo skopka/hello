@@ -1,0 +1,790 @@
+using System.Collections.Concurrent;
+using System.Net;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text.RegularExpressions;
+using Microsoft.AspNetCore;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using OpenIddict.Abstractions;
+using OpenIddict.Server.AspNetCore;
+using Skopka.Abstraction.OperationResult;
+using Skopka.Hello.Endpoints;
+using Skopka.Hello.Oidc;
+using Skopka.Hello.UI;
+using Skopka.Identity.Ef.PostgreSql;
+using Testcontainers.PostgreSql;
+using static OpenIddict.Abstractions.OpenIddictConstants;
+
+namespace Skopka.Hello.IntegrationTests;
+
+public sealed class ExternalOidcFlowTests
+{
+    private const string ProviderId = "integration";
+    private const string ClientId = "skopka-hello-integration";
+    private const string ClientSecret =
+        "test-client-secret-that-is-long-enough";
+    private const string Subject = "external-subject-42";
+    private const string UiCookieName = "__Host-Skopka.Hello.UI";
+    private const string RefreshCookieName =
+        "__Host-Skopka.Hello.Refresh";
+    private static readonly Uri PublicOrigin =
+        new("https://hello.test/");
+    private static readonly Uri AuthorityOrigin =
+        new("https://oidc.test/");
+
+    [Fact]
+    public async Task AuthorizationCodeFlowRegistersAndReusesExternalIdentity()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var authority =
+            await TestOidcAuthority.CreateAsync();
+        await using var hello = await TestHelloApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            authority);
+        using var helloClient = hello.CreateClient();
+
+        Dictionary<string, string> firstCookies =
+            new(StringComparer.Ordinal);
+        var first = await CompleteProviderChallengeAsync(
+            helloClient,
+            authority,
+            firstCookies);
+
+        Assert.Equal(
+            HelloUiDefaults.ExternalRegistrationPath,
+            first.CompletionLocation);
+        AssertAuthorizationRequest(first.AuthorizationRequest);
+        Assert.Equal(
+            first.AuthorizationRequest.State,
+            first.CallbackState);
+        Assert.False(string.IsNullOrWhiteSpace(first.AuthorizationCode));
+
+        using var registrationPage = await SendHelloAsync(
+            helloClient,
+            HttpMethod.Get,
+            HelloUiDefaults.ExternalRegistrationPath,
+            firstCookies);
+        Assert.Equal(HttpStatusCode.OK, registrationPage.StatusCode);
+        var registrationHtml =
+            await registrationPage.Content.ReadAsStringAsync();
+        Assert.Equal(
+            "external@example.test",
+            ReadInputValue(registrationHtml, "Input.Email"));
+        var registrationToken = ReadInputValue(
+            registrationHtml,
+            "__RequestVerificationToken");
+
+        using var registration = await SendHelloFormAsync(
+            helloClient,
+            HelloUiDefaults.ExternalRegistrationPath,
+            firstCookies,
+            new Dictionary<string, string>
+            {
+                ["Input.DisplayName"] = "External Alice",
+                ["Input.Email"] = "external@example.test",
+                ["Input.UserName"] = "external-alice",
+                ["Input.Phone"] = string.Empty,
+                ["Input.Locale"] = "en",
+                ["__RequestVerificationToken"] = registrationToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, registration.StatusCode);
+        Assert.Equal(
+            HelloUiDefaults.AccountPath,
+            registration.Headers.Location?.OriginalString);
+        Assert.Contains(UiCookieName, firstCookies.Keys);
+        Assert.Contains(RefreshCookieName, firstCookies.Keys);
+
+        using var firstAccount = await SendHelloAsync(
+            helloClient,
+            HttpMethod.Get,
+            HelloUiDefaults.AccountPath,
+            firstCookies);
+        Assert.Equal(HttpStatusCode.OK, firstAccount.StatusCode);
+        Assert.Contains(
+            "External Alice",
+            await firstAccount.Content.ReadAsStringAsync(),
+            StringComparison.Ordinal);
+
+        var afterRegistration = await hello.ReadIdentityStateAsync();
+        Assert.Equal(1, afterRegistration.UserCount);
+        Assert.Equal(1, afterRegistration.ExternalLoginCount);
+        Assert.Equal(1, afterRegistration.SessionCount);
+        Assert.Equal("INTEGRATION", afterRegistration.Provider);
+        Assert.Equal(Subject, afterRegistration.Subject);
+
+        Dictionary<string, string> repeatedCookies =
+            new(StringComparer.Ordinal);
+        var repeated = await CompleteProviderChallengeAsync(
+            helloClient,
+            authority,
+            repeatedCookies);
+
+        Assert.Equal(
+            HelloUiDefaults.AccountPath,
+            repeated.CompletionLocation);
+        AssertAuthorizationRequest(repeated.AuthorizationRequest);
+        Assert.Equal(
+            repeated.AuthorizationRequest.State,
+            repeated.CallbackState);
+        Assert.False(string.IsNullOrWhiteSpace(repeated.AuthorizationCode));
+        Assert.Contains(UiCookieName, repeatedCookies.Keys);
+        Assert.Contains(RefreshCookieName, repeatedCookies.Keys);
+
+        using var repeatedAccount = await SendHelloAsync(
+            helloClient,
+            HttpMethod.Get,
+            HelloUiDefaults.AccountPath,
+            repeatedCookies);
+        Assert.Equal(HttpStatusCode.OK, repeatedAccount.StatusCode);
+
+        var afterRepeatedLogin = await hello.ReadIdentityStateAsync();
+        Assert.Equal(1, afterRepeatedLogin.UserCount);
+        Assert.Equal(1, afterRepeatedLogin.ExternalLoginCount);
+        Assert.Equal(2, afterRepeatedLogin.SessionCount);
+        Assert.Equal("INTEGRATION", afterRepeatedLogin.Provider);
+        Assert.Equal(Subject, afterRepeatedLogin.Subject);
+    }
+
+    private static void AssertAuthorizationRequest(
+        RecordedAuthorizationRequest request)
+    {
+        Assert.Equal("code", request.ResponseType);
+        Assert.Equal("form_post", request.ResponseMode);
+        Assert.Equal("S256", request.CodeChallengeMethod);
+        Assert.False(string.IsNullOrWhiteSpace(request.CodeChallenge));
+        Assert.False(string.IsNullOrWhiteSpace(request.Nonce));
+        Assert.False(string.IsNullOrWhiteSpace(request.State));
+        Assert.Equal(
+            new Uri(
+                PublicOrigin,
+                $"{HelloOidcDefaults.CallbackPathPrefix.TrimStart('/')}"
+                    + ProviderId),
+            request.RedirectUri);
+    }
+
+    private static async Task<CompletedProviderChallenge>
+        CompleteProviderChallengeAsync(
+            HttpClient helloClient,
+            TestOidcAuthority authority,
+            Dictionary<string, string> cookies)
+    {
+        using var loginPage = await SendHelloAsync(
+            helloClient,
+            HttpMethod.Get,
+            $"{HelloUiDefaults.LoginPath}?ReturnUrl=%2Fhello%2Faccount",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, loginPage.StatusCode);
+        var loginHtml = await loginPage.Content.ReadAsStringAsync();
+        var antiforgeryToken = ReadInputValue(
+            loginHtml,
+            "__RequestVerificationToken");
+
+        using var challenge = await SendHelloFormAsync(
+            helloClient,
+            $"{HelloUiDefaults.LoginPath}?handler=External"
+                + "&ReturnUrl=%2Fhello%2Faccount",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["providerId"] = ProviderId,
+                ["ReturnUrl"] = HelloUiDefaults.AccountPath,
+                ["__RequestVerificationToken"] = antiforgeryToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, challenge.StatusCode);
+        var authorizationLocation = Assert.IsType<Uri>(
+            challenge.Headers.Location);
+        Assert.Equal(AuthorityOrigin.Host, authorizationLocation.Host);
+
+        var challengeQuery = QueryHelpers.ParseQuery(
+            authorizationLocation.Query);
+        Assert.Equal("code", ReadQuery(challengeQuery, "response_type"));
+        Assert.Equal("form_post", ReadQuery(
+            challengeQuery,
+            "response_mode"));
+        Assert.Equal("S256", ReadQuery(
+            challengeQuery,
+            "code_challenge_method"));
+        Assert.False(string.IsNullOrWhiteSpace(
+            ReadQuery(challengeQuery, "code_challenge")));
+        Assert.False(string.IsNullOrWhiteSpace(
+            ReadQuery(challengeQuery, "nonce")));
+        Assert.False(string.IsNullOrWhiteSpace(
+            ReadQuery(challengeQuery, "state")));
+
+        using var authorization = await authority.Client.GetAsync(
+            authorizationLocation.PathAndQuery);
+        Assert.Equal(HttpStatusCode.OK, authorization.StatusCode);
+        var authorizationHtml =
+            await authorization.Content.ReadAsStringAsync();
+        var callbackLocation = new Uri(
+            ReadFormAction(authorizationHtml),
+            UriKind.Absolute);
+        Assert.Equal(PublicOrigin.Host, callbackLocation.Host);
+        Assert.Equal(
+            HelloOidcDefaults.CallbackPathPrefix + ProviderId,
+            callbackLocation.AbsolutePath);
+        var callbackForm = ReadHiddenForm(authorizationHtml);
+        var authorizationCode = callbackForm["code"];
+        var callbackState = callbackForm["state"];
+
+        using var callback = await SendHelloFormAsync(
+            helloClient,
+            callbackLocation.PathAndQuery,
+            cookies,
+            callbackForm);
+        Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
+        Assert.Equal(
+            HelloOidcDefaults.CompletionPath,
+            callback.Headers.Location?.OriginalString);
+
+        using var completionPage = await SendHelloAsync(
+            helloClient,
+            HttpMethod.Get,
+            HelloOidcDefaults.CompletionPath,
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, completionPage.StatusCode);
+        var completionToken = ReadInputValue(
+            await completionPage.Content.ReadAsStringAsync(),
+            "__RequestVerificationToken");
+
+        using var completion = await SendHelloFormAsync(
+            helloClient,
+            HelloOidcDefaults.CompletionPath,
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = completionToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, completion.StatusCode);
+
+        return new CompletedProviderChallenge(
+            Assert.IsType<Uri>(completion.Headers.Location)
+                .OriginalString,
+            authority.DequeueAuthorizationRequest(),
+            authorizationCode,
+            callbackState);
+    }
+
+    private static async Task<HttpResponseMessage> SendHelloFormAsync(
+        HttpClient client,
+        string path,
+        Dictionary<string, string> cookies,
+        IReadOnlyDictionary<string, string> form)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = new FormUrlEncodedContent(form),
+        };
+        AddCookies(request, cookies);
+        var response = await client.SendAsync(request);
+        MergeCookies(cookies, response);
+        return response;
+    }
+
+    private static async Task<HttpResponseMessage> SendHelloAsync(
+        HttpClient client,
+        HttpMethod method,
+        string path,
+        Dictionary<string, string> cookies)
+    {
+        using var request = new HttpRequestMessage(method, path);
+        AddCookies(request, cookies);
+        var response = await client.SendAsync(request);
+        MergeCookies(cookies, response);
+        return response;
+    }
+
+    private static void AddCookies(
+        HttpRequestMessage request,
+        Dictionary<string, string> cookies)
+    {
+        if (cookies.Count == 0)
+        {
+            return;
+        }
+
+        request.Headers.TryAddWithoutValidation(
+            "Cookie",
+            string.Join(
+                "; ",
+                cookies
+                    .Where(pair => pair.Value.Length > 0)
+                    .Select(pair => $"{pair.Key}={pair.Value}")));
+    }
+
+    private static void MergeCookies(
+        Dictionary<string, string> cookies,
+        HttpResponseMessage response)
+    {
+        if (!response.Headers.TryGetValues("Set-Cookie", out var values))
+        {
+            return;
+        }
+
+        foreach (var value in values)
+        {
+            var pair = value.Split(';', 2)[0];
+            var separator = pair.IndexOf('=');
+            if (separator > 0)
+            {
+                cookies[pair[..separator]] = pair[(separator + 1)..];
+            }
+        }
+    }
+
+    private static string ReadInputValue(string html, string name)
+    {
+        var match = Regex.Match(
+            html,
+            $"<input[^>]*name=\"{Regex.Escape(name)}\"[^>]*value=\"([^\"]+)\"",
+            RegexOptions.CultureInvariant);
+        Assert.True(
+            match.Success,
+            $"Input '{name}' was not found in the rendered page.");
+        return WebUtility.HtmlDecode(match.Groups[1].Value);
+    }
+
+    private static string ReadFormAction(string html)
+    {
+        var match = Regex.Match(
+            html,
+            "<form[^>]*action=[\"']([^\"']+)[\"']",
+            RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        Assert.True(match.Success, "The OIDC form_post action was not found.");
+        return WebUtility.HtmlDecode(match.Groups[1].Value);
+    }
+
+    private static Dictionary<string, string> ReadHiddenForm(string html)
+    {
+        Dictionary<string, string> values = new(StringComparer.Ordinal);
+        foreach (Match input in Regex.Matches(
+                     html,
+                     "<input[^>]*>",
+                     RegexOptions.CultureInvariant
+                         | RegexOptions.IgnoreCase))
+        {
+            var name = ReadAttribute(input.Value, "name");
+            var value = ReadAttribute(input.Value, "value");
+            if (name is not null && value is not null)
+            {
+                values[name] = value;
+            }
+        }
+
+        Assert.Contains("code", values.Keys);
+        Assert.Contains("state", values.Keys);
+        return values;
+    }
+
+    private static string? ReadAttribute(string element, string name)
+    {
+        var match = Regex.Match(
+            element,
+            $"{Regex.Escape(name)}=[\"']([^\"']*)[\"']",
+            RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        return match.Success
+            ? WebUtility.HtmlDecode(match.Groups[1].Value)
+            : null;
+    }
+
+    private static string ReadQuery(
+        Dictionary<string, Microsoft.Extensions.Primitives.StringValues> query,
+        string name)
+    {
+        Assert.True(query.TryGetValue(name, out var values));
+        return Assert.Single(values.ToArray())!;
+    }
+
+    private sealed record IntegrationProfile(
+        string DisplayName,
+        string? Locale);
+
+    private sealed class IntegrationProfileUiFactory
+        : IHelloUiProfileFactory<IntegrationProfile>
+    {
+        public OperationResult<IntegrationProfile> Create(
+            HelloUiRegistrationProfile profile)
+            => OperationResultFactory.Success(
+                new IntegrationProfile(
+                    profile.DisplayName,
+                    profile.Locale));
+
+        public string GetDisplayName(IntegrationProfile profile)
+            => profile.DisplayName;
+    }
+
+    private sealed record CompletedProviderChallenge(
+        string CompletionLocation,
+        RecordedAuthorizationRequest AuthorizationRequest,
+        string AuthorizationCode,
+        string CallbackState);
+
+    private sealed record RecordedAuthorizationRequest(
+        string? ResponseType,
+        string? ResponseMode,
+        string? CodeChallenge,
+        string? CodeChallengeMethod,
+        string? Nonce,
+        string? State,
+        Uri? RedirectUri);
+
+    private sealed record IdentityState(
+        int UserCount,
+        int ExternalLoginCount,
+        int SessionCount,
+        string Provider,
+        string Subject);
+
+    private sealed class AuthorityRequestRecorder
+    {
+        private readonly ConcurrentQueue<RecordedAuthorizationRequest>
+            requests = new();
+
+        public void Record(OpenIddictRequest request)
+            => requests.Enqueue(
+                new RecordedAuthorizationRequest(
+                    request.ResponseType,
+                    request.ResponseMode,
+                    request.CodeChallenge,
+                    request.CodeChallengeMethod,
+                    request.Nonce,
+                    request.State,
+                    Uri.TryCreate(
+                        request.RedirectUri,
+                        UriKind.Absolute,
+                        out var redirectUri)
+                            ? redirectUri
+                            : null));
+
+        public RecordedAuthorizationRequest Dequeue()
+            => requests.TryDequeue(out var request)
+                ? request
+                : throw new InvalidOperationException(
+                    "The authority did not observe an authorization request.");
+    }
+
+    private sealed class TestOidcDbContext(
+        DbContextOptions<TestOidcDbContext> options)
+        : DbContext(options)
+    {
+    }
+
+    private sealed class TestOidcAuthority : IAsyncDisposable
+    {
+        private readonly WebApplication application;
+        private readonly SqliteConnection connection;
+        private readonly AuthorityRequestRecorder recorder;
+
+        private TestOidcAuthority(
+            WebApplication application,
+            SqliteConnection connection,
+            AuthorityRequestRecorder recorder,
+            HttpClient client)
+        {
+            this.application = application;
+            this.connection = connection;
+            this.recorder = recorder;
+            Client = client;
+        }
+
+        public HttpClient Client { get; }
+
+        public static async Task<TestOidcAuthority> CreateAsync()
+        {
+            var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            var recorder = new AuthorityRequestRecorder();
+
+            var builder = WebApplication.CreateBuilder(
+                new WebApplicationOptions
+                {
+                    EnvironmentName = "IntegrationTests",
+                });
+            builder.WebHost.UseTestServer();
+            builder.Services.AddSingleton(recorder);
+            builder.Services.AddDbContext<TestOidcDbContext>(options =>
+            {
+                options.UseSqlite(connection);
+                options.UseOpenIddict();
+            });
+            builder.Services.AddAuthorization();
+            builder.Services.AddOpenIddict()
+                .AddCore(options =>
+                    options.UseEntityFrameworkCore()
+                        .UseDbContext<TestOidcDbContext>())
+                .AddServer(options =>
+                {
+                    options.SetIssuer(AuthorityOrigin);
+                    options.SetAuthorizationEndpointUris(
+                        "connect/authorize");
+                    options.SetTokenEndpointUris("connect/token");
+                    options.AllowAuthorizationCodeFlow();
+                    options.RequireProofKeyForCodeExchange();
+                    options.RegisterScopes(
+                        Scopes.Email,
+                        Scopes.Profile);
+                    options.AddEphemeralEncryptionKey();
+                    options.AddEphemeralSigningKey();
+                    options.UseAspNetCore()
+                        .EnableAuthorizationEndpointPassthrough();
+                });
+
+            var application = builder.Build();
+            application.UseAuthentication();
+            application.UseAuthorization();
+            application.MapMethods(
+                "/connect/authorize",
+                [HttpMethods.Get, HttpMethods.Post],
+                (HttpContext context, AuthorityRequestRecorder capture) =>
+                {
+                    var request = context.GetOpenIddictServerRequest()
+                        ?? throw new InvalidOperationException(
+                            "OpenIddict did not expose the authorization request.");
+                    capture.Record(request);
+
+                    var identity = new ClaimsIdentity(
+                        OpenIddictServerAspNetCoreDefaults
+                            .AuthenticationScheme);
+                    identity.AddClaim(new Claim(Claims.Subject, Subject));
+                    identity.AddClaim(
+                        new Claim(Claims.Name, "Provider Alice")
+                            .SetDestinations(Destinations.IdentityToken));
+                    identity.AddClaim(
+                        new Claim(
+                            Claims.Email,
+                            "external@example.test")
+                            .SetDestinations(Destinations.IdentityToken));
+                    identity.AddClaim(
+                        new Claim(
+                            Claims.EmailVerified,
+                            "true",
+                            ClaimValueTypes.Boolean)
+                            .SetDestinations(Destinations.IdentityToken));
+                    identity.AddClaim(
+                        new Claim(Claims.Locale, "en")
+                            .SetDestinations(Destinations.IdentityToken));
+
+                    var principal = new ClaimsPrincipal(identity);
+                    principal.SetScopes(request.GetScopes());
+                    return Results.SignIn(
+                        principal,
+                        authenticationScheme:
+                            OpenIddictServerAspNetCoreDefaults
+                                .AuthenticationScheme);
+                });
+
+            await using (var scope =
+                application.Services.CreateAsyncScope())
+            {
+                var database = scope.ServiceProvider
+                    .GetRequiredService<TestOidcDbContext>();
+                await database.Database.EnsureCreatedAsync();
+
+                var manager = scope.ServiceProvider
+                    .GetRequiredService<IOpenIddictApplicationManager>();
+                var descriptor = new OpenIddictApplicationDescriptor
+                {
+                    ClientId = ClientId,
+                    ClientSecret = ClientSecret,
+                    ClientType = ClientTypes.Confidential,
+                    ConsentType = ConsentTypes.Implicit,
+                    DisplayName = "Skopka.Hello integration client",
+                };
+                descriptor.RedirectUris.Add(
+                    new Uri(
+                        PublicOrigin,
+                        $"{HelloOidcDefaults.CallbackPathPrefix.TrimStart('/')}"
+                            + ProviderId));
+                descriptor.Permissions.UnionWith(
+                    [
+                        Permissions.Endpoints.Authorization,
+                        Permissions.Endpoints.Token,
+                        Permissions.GrantTypes.AuthorizationCode,
+                        Permissions.ResponseTypes.Code,
+                        Permissions.Scopes.Email,
+                        Permissions.Scopes.Profile,
+                    ]);
+                descriptor.Requirements.Add(
+                    Requirements.Features.ProofKeyForCodeExchange);
+                await manager.CreateAsync(descriptor);
+            }
+
+            await application.StartAsync();
+            var client = application.GetTestClient();
+            client.BaseAddress = AuthorityOrigin;
+            return new TestOidcAuthority(
+                application,
+                connection,
+                recorder,
+                client);
+        }
+
+        public HttpMessageHandler CreateBackchannelHandler()
+            => application.GetTestServer().CreateHandler();
+
+        public RecordedAuthorizationRequest DequeueAuthorizationRequest()
+            => recorder.Dequeue();
+
+        public async ValueTask DisposeAsync()
+        {
+            Client.Dispose();
+            await application.DisposeAsync();
+            await connection.DisposeAsync();
+        }
+    }
+
+    private sealed class TestHelloApplication : IAsyncDisposable
+    {
+        private readonly WebApplication application;
+
+        private TestHelloApplication(WebApplication application)
+        {
+            this.application = application;
+        }
+
+        public static async Task<TestHelloApplication> CreateAsync(
+            string connectionString,
+            TestOidcAuthority authority)
+        {
+            var builder = WebApplication.CreateBuilder(
+                new WebApplicationOptions
+                {
+                    EnvironmentName = "IntegrationTests",
+                });
+            builder.WebHost.ConfigureKestrel(options =>
+                options.Listen(IPAddress.Loopback, 0));
+
+            var identity = builder.Services
+                .AddSkopkaHello<IntegrationProfile>(options =>
+                {
+                    options.PublicOrigin = PublicOrigin;
+                })
+                .UsePostgreSql(connectionString)
+                .UsePbkdf2PasswordHasher(options =>
+                {
+                    options.Iterations = 1_000;
+                    options.MaximumAcceptedIterations = 1_000;
+                })
+                .UseDataProtectionActionTokens()
+                .UseJwtSessions(
+                    RandomNumberGenerator.GetBytes(32),
+                    options =>
+                    {
+                        options.Issuer = PublicOrigin.AbsoluteUri;
+                        options.Audience =
+                            "skopka-hello-oidc-integration";
+                    });
+            identity.UseJwtBearerAuthentication();
+
+            builder.Services.AddSkopkaHelloOidc<IntegrationProfile>(
+                options =>
+                {
+                    options.PublicOrigin = PublicOrigin;
+                    options.Providers[ProviderId] =
+                        new HelloOidcProviderOptions
+                        {
+                            DisplayName = "Integration authority",
+                            Authority = AuthorityOrigin.AbsoluteUri,
+                            ClientId = ClientId,
+                            ClientSecret = ClientSecret,
+                        };
+                });
+            builder.Services.Configure<OpenIdConnectOptions>(
+                HelloOidcDefaults.ProviderSchemePrefix + ProviderId,
+                options => options.BackchannelHttpHandler =
+                    authority.CreateBackchannelHandler());
+            builder.Services.AddProblemDetails();
+            builder.Services.AddSkopkaHelloUi<
+                IntegrationProfile,
+                IntegrationProfileUiFactory>();
+
+            var application = builder.Build();
+            application.UseExceptionHandler();
+            application.UseStatusCodePages();
+            application.Use(
+                static (context, next) =>
+                {
+                    context.Request.Scheme = "https";
+                    context.Request.Host = new HostString(
+                        PublicOrigin.Host);
+                    return next(context);
+                });
+            application.UseAuthentication();
+            application.UseAuthorization();
+            application.MapSkopkaHello<IntegrationProfile>();
+            application.MapSkopkaHelloUi();
+
+            await using (var scope =
+                application.Services.CreateAsyncScope())
+            {
+                var database = scope.ServiceProvider
+                    .GetRequiredService<
+                        PostgreSqlIdentityDbContext<IntegrationProfile>>();
+                await database.Database.MigrateAsync();
+            }
+
+            await application.StartAsync();
+            return new TestHelloApplication(application);
+        }
+
+        public HttpClient CreateClient()
+        {
+            var server = application.Services
+                .GetRequiredService<IServer>();
+            var address = server.Features
+                .Get<IServerAddressesFeature>()
+                ?.Addresses
+                .Single()
+                ?? throw new InvalidOperationException(
+                    "Kestrel did not expose its address.");
+            var handler = new HttpClientHandler
+            {
+                UseProxy = false,
+                UseCookies = false,
+                AllowAutoRedirect = false,
+            };
+            return new HttpClient(handler)
+            {
+                BaseAddress = new Uri(address),
+                Timeout = TimeSpan.FromSeconds(30),
+            };
+        }
+
+        public async Task<IdentityState> ReadIdentityStateAsync()
+        {
+            await using var scope =
+                application.Services.CreateAsyncScope();
+            var database = scope.ServiceProvider
+                .GetRequiredService<
+                    PostgreSqlIdentityDbContext<IntegrationProfile>>();
+            var login = await database.ExternalLogins
+                .AsNoTracking()
+                .SingleAsync();
+            return new IdentityState(
+                await database.Users.CountAsync(),
+                await database.ExternalLogins.CountAsync(),
+                await database.RefreshSessions.CountAsync(),
+                login.Provider,
+                login.Subject);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await application.DisposeAsync();
+        }
+    }
+}

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Net;
 using Skopka.Hello;
 using Skopka.Hello.Endpoints;
+using Skopka.Hello.Oidc;
 using Skopka.Hello.Server;
 using Skopka.Hello.UI;
 using Skopka.Identity.Ef.PostgreSql;
@@ -167,6 +168,22 @@ identity.UseJwtBearerAuthentication(options =>
         false);
 });
 
+var externalOidcSection = configuration.GetSection(
+    "SkopkaHello:ExternalOidc");
+builder.Services.AddSkopkaHelloOidc<HelloProfile>(options =>
+{
+    externalOidcSection.Bind(options);
+    options.PublicOrigin = publicOrigin;
+    options.SecureCookies = secureCookies;
+    if (!secureCookies)
+    {
+        options.ExternalCookieName =
+            "Skopka.Hello.External";
+        options.PendingCookieName =
+            "Skopka.Hello.External.Pending";
+    }
+});
+
 var smtpSection = configuration.GetSection(
     "SkopkaHello:Delivery:Smtp");
 if (!string.IsNullOrWhiteSpace(smtpSection["Host"]))
@@ -227,7 +244,7 @@ app.MapGet(
         new
         {
             name = "Skopka.Hello",
-            version = "0.1.0",
+            version = "0.2.0",
         }));
 app.MapGet(
     "/health/live",

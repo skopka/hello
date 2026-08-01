@@ -57,6 +57,84 @@ Bearer-authorized account mutations do not derive authority from cookies.
 Razor form mutations use the framework antiforgery hidden field and cookie.
 Login and registration are also antiforgery protected.
 
+## External OIDC providers
+
+External sign-in uses `Microsoft.AspNetCore.Authentication.OpenIdConnect`, not
+custom protocol code. Each enabled provider has a fixed configured authority,
+client id, client secret, scope set and stable provider id. The handler uses the
+authorization-code flow with PKCE and validates state, correlation, nonce,
+issuer, audience, lifetime and signing keys. Dynamic authorities, callback
+paths and request-selected scopes are not accepted.
+
+The ready server constructs `redirect_uri` from the trusted configured
+`SkopkaHello:PublicOrigin`, never from an untrusted request `Host` header. The
+provider callback is:
+
+```text
+{PublicOrigin}/signin-skopka-oidc/{normalized-provider-id}
+```
+
+Provider ids are stable application identifiers, not issuer URLs. Changing an
+id creates a different Skopka.Identity external-login key. Provider subjects
+remain exact and case-sensitive. The mapping from a production provider id to
+its authority, tenant and client trust boundary is immutable: never point an
+existing id at a different issuer or tenant. Introduce a new provider id and an
+explicit account relink or migration instead. A `sub` value is unique only
+inside the issuer that produced it.
+
+The OIDC handler does not save provider access, refresh or ID tokens. After
+validation it retains only the provider id, `sub` and bounded optional name,
+locale and email hints in a short-lived encrypted cookie. The email hint is
+used only when the provider supplied exactly one `email_verified=true` claim;
+it remains unconfirmed in Skopka.Identity. An equal email address never
+auto-links accounts. A user who already owns that address must authenticate the
+existing account and link explicitly.
+
+The cross-site protocol callback only creates the validated temporary ticket
+and redirects to `/hello/external/complete`. A separate same-origin,
+antiforgery-protected POST completes sign-in or registration. This preserves
+the default `SameSite=Strict` local-session policy and prevents a callback GET
+from directly performing an account mutation. Callback, completion and pending
+registration responses are no-store/no-referrer. Do not log callback query
+strings, provider error descriptions or external claims.
+
+Every terminal external or pending POST first consumes a random flow id from
+the encrypted ticket through `IHelloOidcFlowStore`. A copied ticket therefore
+cannot issue another local session or repeat an account mutation. Retryable
+form or OTP failures rotate the browser to a new id while preserving the
+original absolute expiry; the old id remains consumed. When Identity's HMAC
+rate limiter is configured, the default guard is atomic and persistent in its
+shared bucket store. Otherwise it uses a bounded, fail-closed process-local
+fallback. Multi-replica hosts must use the persistent limiter or replace the
+flow store with an atomic shared implementation.
+
+Linking and unlinking require the current UI session to pass online access-token
+validation and require a confirmed local email. The provider/subject pair,
+local user, logical session and optimistic version are bound into a protected
+pending ticket. Identity issues and consumes a one-time email code bound to the
+exact link or unlink action. A step-up decision is never carried across the
+provider redirect.
+
+Before unlink, Hello reads the current sign-in-method snapshot and refuses to
+remove the final enabled method. The snapshot version is used for the mutation;
+a concurrent account change fails instead of being retried after the OTP was
+consumed. Link and unlink rotate the security stamp. Hello then revokes all
+existing refresh sessions and issues a new session only to the current browser.
+Any failure after the OTP proof has been consumed is terminal and is surfaced
+as `hello.account.external_mutation_restart_required`, never as a retryable code
+form. The Razor UI clears the pending flow, refresh/antiforgery cookies and its
+local authentication ticket, then requires a fresh sign-in so the user reviews
+the authoritative current account state.
+Stateless bearer access tokens can still validate cryptographically until their
+short expiry; enable online bearer validation when the stamp change must take
+effect on every API request immediately.
+
+OIDC correlation and nonce cookies are always `Secure` and `SameSite=None` as
+required for the cross-site protocol response. Therefore external providers
+are disabled in the plain HTTP launch profile and development compose stack.
+Do not weaken these cookies for local testing; use the HTTPS launch profile or
+a correctly configured TLS reverse proxy.
+
 ## Account messages and action tokens
 
 Password-reset and email-confirmation request endpoints return the same
@@ -109,6 +187,7 @@ Keep these values outside source control:
 - PostgreSQL credentials;
 - persisted ASP.NET Core Data Protection key ring and its protection material;
 - SMTP credentials;
+- external OIDC client secrets;
 - any future password pepper.
 
 Do not reuse keys between purposes. Multiple replicas must share the JWT key and
@@ -136,6 +215,11 @@ error details.
 - Choose deliberately between stateless and online bearer validation.
 - Keep persistent account/client rate limiting enabled before exposing login
   publicly.
+- Keep external providers disabled until their HTTPS authority, exact callback
+  URL and client credentials are configured.
+- Share provider configuration and Data Protection keys across replicas.
+- Exclude OIDC callback query strings and provider tokens from proxy and
+  application logs.
 - Keep access-token lifetimes short.
 - Configure a trusted public origin and rate-limit anonymous account-message
   requests.

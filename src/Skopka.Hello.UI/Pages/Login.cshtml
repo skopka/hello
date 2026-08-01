@@ -22,6 +22,46 @@
         </p>
     }
 
+    @if (Model.ExternalError)
+    {
+        <p class="hello-status hello-status-error" role="alert">
+            External sign-in could not be completed. Try again or use
+            another sign-in method.
+        </p>
+    }
+
+    @if (Model.AccountChangeRestarted)
+    {
+        <p class="hello-status" role="status">
+            The account change reached a terminal state. Your browser
+            session was cleared; sign in again to review the current
+            sign-in methods.
+        </p>
+    }
+
+    @if (Model.ExternalProviders.Count > 0)
+    {
+        <div class="hello-external-providers"
+             data-hello-external-providers>
+            @foreach (var provider in Model.ExternalProviders)
+            {
+                <form method="post" asp-page-handler="External">
+                    <input asp-for="ReturnUrl" type="hidden" />
+                    <button class="hello-button hello-button-secondary hello-provider-button"
+                            type="submit"
+                            name="providerId"
+                            value="@provider.Id"
+                            data-hello-provider="@provider.Id">
+                        Continue with @provider.DisplayName
+                    </button>
+                </form>
+            }
+        </div>
+        <div class="hello-divider" role="separator">
+            <span>or use a password</span>
+        </div>
+    }
+
     <form method="post" class="hello-form">
         <input asp-for="ReturnUrl" type="hidden" />
         <div asp-validation-summary="ModelOnly"

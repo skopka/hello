@@ -17,11 +17,12 @@ responses.
 
 ## Current vertical
 
-The implemented surfaces are registration, login, sessions, account,
-password-reset, email-confirmation and step-up password-change Minimal APIs
-plus their Razor UI.
+The implemented surfaces are registration, password and external OIDC login,
+sessions, account, password-reset, email-confirmation, external-login
+management and step-up password-change Minimal APIs plus their Razor UI.
 Registration must remain atomic through
-`IIdentityRegistrationService<TProfile>`. HTTP handlers call
+`IIdentityRegistrationService<TProfile>` for both password and external
+registration. HTTP handlers call
 `IHelloIdentityApplication<TProfile>` or Skopka.Identity application services,
 never EF stores.
 
@@ -44,6 +45,18 @@ Password change requires an online-validated session, confirmed email and
 Identity-owned OTP step-up. User, action, binding and optimistic version are
 server-derived; the OTP is delivered out of band and never returned by HTTP.
 
+External OIDC uses one maintained ASP.NET Core handler per configured provider.
+The handler owns state, nonce, PKCE, code redemption and token validation.
+Only the configured provider id and validated subject reach Skopka.Identity;
+provider tokens and subjects never reach UI/API responses. Matching email never
+links accounts. Link and unlink require an online session, confirmed-email OTP,
+an exact provider/subject binding and a fresh optimistic snapshot. They preserve
+at least one enabled sign-in method, revoke old sessions and issue a fresh one.
+Terminal external and pending POSTs atomically consume a protected flow id. The
+ready Server backs this replay guard with the persistent HMAC rate limiter;
+hosts without one use the bounded process-local fallback or replace
+`IHelloOidcFlowStore` with a shared atomic implementation.
+
 ## Modules
 
 - `src/Skopka.Hello` - facade, shared identity application operations, cookie
@@ -51,8 +64,9 @@ server-derived; the OTP is delivered out of band and never returned by HTTP.
 - `src/Skopka.Hello.Endpoints` - Minimal API, DTOs and ProblemDetails.
 - `src/Skopka.Hello.UI` - Razor registration/login/account/session pages and
   theming, with no identity business logic.
-- `src/Skopka.Hello.Oidc` - future maintained OAuth/OIDC adapter, never a
-  home-grown protocol.
+- `src/Skopka.Hello.Oidc` - maintained external OIDC client adapter and
+  validated pending browser flow, never a home-grown protocol or authorization
+  server.
 - `src/Skopka.Hello.Admin` - future authorized admin workflows.
 - `src/Skopka.Hello.Server` - executable composition and Docker image.
 

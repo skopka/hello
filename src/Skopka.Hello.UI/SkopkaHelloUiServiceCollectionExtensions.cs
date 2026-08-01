@@ -41,6 +41,9 @@ public static class SkopkaHelloUiServiceCollectionExtensions
             Skopka.Hello.UI.IHelloUiApplication,
             Skopka.Hello.UI.HelloUiApplication<TProfile>>();
         services.TryAddScoped<
+            Skopka.Hello.UI.IHelloUiExternalApplication,
+            Skopka.Hello.UI.HelloUiExternalApplication<TProfile>>();
+        services.TryAddScoped<
             Skopka.Hello.UI.HelloUiCookieAuthenticationEvents<TProfile>>();
 
         services

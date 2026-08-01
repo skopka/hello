@@ -7,6 +7,7 @@ namespace Skopka.Hello.UI.Pages;
 
 public sealed class LoginModel(
     IHelloUiApplication application,
+    IHelloUiExternalApplication externalApplication,
     IHelloSessionCookieManager sessionCookies)
     : PageModel
 {
@@ -15,6 +16,15 @@ public sealed class LoginModel(
 
     [BindProperty(SupportsGet = true)]
     public string? ReturnUrl { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public bool ExternalError { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public bool AccountChangeRestarted { get; set; }
+
+    public IReadOnlyList<Skopka.Hello.Oidc.HelloOidcProvider>
+        ExternalProviders => externalApplication.Providers;
 
     public bool Registered { get; private set; }
 
@@ -67,18 +77,53 @@ public sealed class LoginModel(
             return Page();
         }
 
-        sessionCookies.WriteSessionCookies(
+        await HelloUiSession.EstablishAsync(
             HttpContext,
-            result.Value.Session);
-        await HttpContext.SignInAsync(
-            HelloUiDefaults.AuthenticationScheme,
-            result.Value.Principal,
-            HelloUiAuthenticationProperties.Create(
-                result.Value.Session));
+            sessionCookies,
+            result.Value);
 
         return Url.IsLocalUrl(ReturnUrl)
             ? LocalRedirect(ReturnUrl)
             : Redirect(HelloUiDefaults.AccountPath);
+    }
+
+    public async Task<IActionResult> OnPostExternalAsync(
+        string providerId,
+        CancellationToken cancellationToken)
+    {
+        ModelState.Clear();
+        var authentication = await HttpContext.AuthenticateAsync(
+            HelloUiDefaults.AuthenticationScheme);
+        if (authentication.Succeeded)
+        {
+            return Redirect(HelloUiDefaults.ExternalLoginsPath);
+        }
+
+        var transport = sessionCookies.ValidateTransport(HttpContext);
+        if (!transport.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, transport.Errors);
+            return Page();
+        }
+
+        var challenge = externalApplication.CreateSignInChallenge(
+            providerId,
+            ReturnUrl);
+        if (!challenge.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(
+                ModelState,
+                challenge.Errors);
+            return Page();
+        }
+
+        await externalApplication.ClearBrowserFlowAsync(
+            HttpContext,
+            cancellationToken);
+
+        return Challenge(
+            challenge.Value.Properties,
+            challenge.Value.AuthenticationScheme);
     }
 
     public sealed class InputModel

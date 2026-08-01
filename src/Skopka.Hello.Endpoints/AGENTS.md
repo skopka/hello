@@ -21,3 +21,8 @@ Password-change endpoints remain independently bearer-authorized and perform
 online token validation in the shared application operation. Never accept the
 step-up action, binding, user id, recipient address or expected version from an
 HTTP DTO, and never return the OTP delivery code.
+
+External-provider catalog and linked-provider responses contain only stable
+provider ids, display names and safe metadata. Never expose the provider subject
+or protocol tokens. External link/unlink stays in the antiforgery-protected
+browser flow unless a separately designed native-client proof flow is added.

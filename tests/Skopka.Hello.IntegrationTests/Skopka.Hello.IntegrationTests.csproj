@@ -6,7 +6,12 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="OpenIddict.EntityFrameworkCore" />
+    <PackageReference Include="OpenIddict.Server.AspNetCore" />
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
     <PackageReference Include="Skopka.Identity" />
     <PackageReference Include="Skopka.Identity.Abstractions" />
     <PackageReference Include="Skopka.Identity.Ef.PostgreSql" />
@@ -19,6 +24,7 @@
     </PackageReference>
     <ProjectReference Include="..\..\src\Skopka.Hello\Skopka.Hello.csproj" />
     <ProjectReference Include="..\..\src\Skopka.Hello.Endpoints\Skopka.Hello.Endpoints.csproj" />
+    <ProjectReference Include="..\..\src\Skopka.Hello.Oidc\Skopka.Hello.Oidc.csproj" />
     <ProjectReference Include="..\..\src\Skopka.Hello.UI\Skopka.Hello.UI.csproj" />
   </ItemGroup>
 </Project>

@@ -28,8 +28,10 @@ not bake `.env`, database passwords or signing material into the image. Use a
 protected persistent volume for Data Protection keys.
 
 Set `SkopkaHello:PublicOrigin` to the public TLS origin used in account-message
-links. Configure SMTP credentials from a secret manager. The built-in SMTP
-worker uses an in-memory bounded queue; replace
+links and external OIDC callback URLs. The ready server passes this trusted
+origin to the OIDC adapter, so provider redirects are not derived from the
+request `Host` header. Configure SMTP credentials from a secret manager. The
+built-in SMTP worker uses an in-memory bounded queue; replace
 `IHelloAccountMessageSender` with a durable broker producer when restart-safe
 delivery is required.
 
@@ -49,6 +51,78 @@ explicit proxy IP.
 
 The development compose stack publishes plain HTTP and therefore disables secure
 cookies and uses non-`__Host-` names. Do not copy that override into production.
+External OIDC providers are also disabled in the checked-in configuration.
+Correlation and nonce cookies remain `Secure`, so provider login must be tested
+through the HTTPS launch profile or a TLS reverse proxy rather than by weakening
+the protocol cookies.
+
+## External OIDC provider configuration
+
+The ready Server binds providers from
+`SkopkaHello:ExternalOidc:Providers`. The checked-in Google entry is an inert
+example: `Enabled` is false and both credential fields are empty. Supply the
+client credentials from a secret manager and enable all values together:
+
+```text
+SkopkaHello__ExternalOidc__Providers__google__Enabled=true
+SkopkaHello__ExternalOidc__Providers__google__ClientId=<provider client id>
+SkopkaHello__ExternalOidc__Providers__google__ClientSecret=<provider client secret>
+```
+
+The non-secret schema for each provider is:
+
+```json
+{
+  "Enabled": false,
+  "DisplayName": "Google",
+  "Authority": "https://accounts.google.com",
+  "ClientId": "",
+  "ClientSecret": "",
+  "RequireHttpsMetadata": true,
+  "Order": 10,
+  "Scopes": []
+}
+```
+
+`Scopes` adds provider-specific scopes to the built-in `openid`, `profile` and
+`email` set. Keep metadata HTTPS validation enabled. Provider ids are the keys
+under `Providers`; they are normalized to lower case, must remain stable and
+must contain 1-64 ASCII letters, digits, `.`, `_` or `-`. Do not rename an id
+after accounts have linked it unless the deployment intentionally treats it as
+a new provider. Likewise, never reuse an existing id for another authority,
+tenant or client trust boundary: create a new id and perform an explicit relink
+or migration. Skopka.Identity persists the provider id and exact subject, so a
+silent authority swap could otherwise reinterpret an issuer-local `sub`.
+
+The remaining `SkopkaHello:ExternalOidc` settings are:
+
+```text
+PasswordSignInEnabled     true
+ExternalCookieName        __Host-Skopka.Hello.External
+ExternalCookieLifetime    00:05:00
+PendingCookieName         __Host-Skopka.Hello.External.Pending
+PendingCookieLifetime     00:10:00
+```
+
+Both lifetimes must be between one and thirty minutes. Keep the `__Host-`
+cookie names for HTTPS deployments. The ready Server takes `PublicOrigin` and
+the secure-cookie mode from the corresponding global `SkopkaHello` settings,
+so do not configure conflicting OIDC-local values.
+
+Register this exact callback URI in the provider console:
+
+```text
+https://public.example/signin-skopka-oidc/google
+```
+
+Replace the origin and final segment with the configured public origin and
+provider id. `/hello/external/complete` is the internal same-origin completion
+page and is not registered with the provider.
+
+`SkopkaHello:ExternalOidc:PasswordSignInEnabled` tells the external-login
+management policy whether an existing password counts as an alternate method
+when unlinking. Keep it aligned with whether the host actually exposes password
+login.
 
 ## Database migrations
 
@@ -69,13 +143,21 @@ Every replica must share:
 - JWT signing configuration;
 - Data Protection keys;
 - the same current and overlapping historical rate-limit key versions;
-- the same current and overlapping historical verification key versions.
+- the same current and overlapping historical verification key versions;
+- identical enabled OIDC provider ids, authorities, clients and scopes.
+
+The default OIDC replay guard uses the configured Identity rate limiter with a
+fixed 30-minute one-use bucket. The ready Server therefore gets a shared atomic
+guard from PostgreSQL automatically. A host that omits the persistent limiter
+uses only the bounded process-local fallback and must not scale external flows
+across replicas unless it registers a shared atomic `IHelloOidcFlowStore`.
 
 To rotate a rate-limit key, deploy the new key as another entry under
 `SkopkaHello:RateLimiting:Keys`, set `CurrentVersion` to its version and retain
 the previous entry. After every old-only replica has stopped, wait at least the
-longest active rate-limit window before removing the previous key. A deployment
-without an overlapping version cannot preserve active counters.
+longest active rate-limit window and never less than 30 minutes before removing
+the previous key. The 30-minute floor preserves consumed OIDC flow ids. A
+deployment without an overlapping version cannot preserve active counters.
 
 ```text
 SkopkaHello__RateLimiting__CurrentVersion=v2
@@ -97,6 +179,12 @@ SkopkaHello__Verification__Keys__v2=<new Base64 key>
 
 Never reuse a JWT, rate-limit or verification key for another purpose.
 
+All replicas handling external callbacks must share the Data Protection key
+ring because OIDC state, correlation and pending external tickets are protected
+browser artifacts. Deploy provider configuration atomically across replicas so
+a callback is not routed to an instance that does not recognize its named
+provider scheme.
+
 The default JWT check is stateless. A revoked refresh session cannot mint new
 access tokens, but an already issued access token remains valid until expiry.
 Enable online validation when immediate revocation is more important than the
@@ -111,6 +199,8 @@ extra database read.
 - monitor authentication failures and rate-limit decisions without submitted
   secrets;
 - monitor background account-message failures by safe error code;
+- monitor external sign-in failures by safe error code without callback query
+  strings, subjects, claims or provider tokens;
 - keep container base images and NuGet dependencies patched;
 - run Release build, unit tests, Testcontainers integration tests and Docker
   build for each release.

@@ -11,6 +11,7 @@
     <PackageReference Include="Skopka.Identity.Infrastructure" />
     <ProjectReference Include="..\Skopka.Hello\Skopka.Hello.csproj" />
     <ProjectReference Include="..\Skopka.Hello.Endpoints\Skopka.Hello.Endpoints.csproj" />
+    <ProjectReference Include="..\Skopka.Hello.Oidc\Skopka.Hello.Oidc.csproj" />
     <ProjectReference Include="..\Skopka.Hello.UI\Skopka.Hello.UI.csproj" />
   </ItemGroup>
 </Project>

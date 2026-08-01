@@ -5,7 +5,7 @@
 - .NET SDK 10.0.101 or a compatible patch;
 - PostgreSQL;
 - Docker Engine for integration tests and the provided compose stack;
-- published Skopka.Identity `0.4.0` packages.
+- published Skopka.Identity `0.5.0` packages.
 
 ## Configure the server
 
@@ -39,9 +39,60 @@ SkopkaHello__DataProtection__KeyPath=/protected/data-protection
 ```
 
 `PublicOrigin` is the externally reachable HTTP(S) origin used to build
-confirmation and password-reset links. It must not contain credentials, a path,
-query or fragment. It is configuration, never inferred from the request `Host`
-header.
+confirmation and password-reset links and external OIDC callback URIs. It must
+not contain credentials, a path, query or fragment. It is configuration, never
+inferred from the request `Host` header.
+
+## Configure an external OIDC provider
+
+The ready configuration contains a disabled Google example. Keep a provider
+disabled until its authority, exact callback URI and credentials are ready.
+Supply credentials outside source and enable them together:
+
+```text
+SkopkaHello__ExternalOidc__Providers__google__Enabled=true
+SkopkaHello__ExternalOidc__Providers__google__ClientId=<client id>
+SkopkaHello__ExternalOidc__Providers__google__ClientSecret=<client secret>
+```
+
+The full provider schema under
+`SkopkaHello:ExternalOidc:Providers:{providerId}` is:
+
+```text
+Enabled                  false until configured
+DisplayName              user-facing provider label
+Authority                fixed absolute OIDC authority
+ClientId                 client identifier for this server-side client
+ClientSecret             secret supplied outside source
+RequireHttpsMetadata     true
+Order                    display order
+Scopes                   optional additional scopes
+```
+
+The adapter always requests `openid`, `profile` and `email`; configured scopes
+are additive. It normalizes provider ids to lower case for its configuration
+keys and callback path segments, then passes that canonical value through
+Identity's own external-key normalization. Once an id has been used in
+production, keep its authority, tenant and client trust boundary fixed; use a
+new id for a different issuer.
+For the checked-in HTTPS profile and `google` id, register:
+
+```text
+https://localhost:8443/signin-skopka-oidc/google
+```
+
+The HTTPS authority, client id and callback must also be allowed in the provider
+console. The internal `/hello/external/complete` page is not a provider
+callback. The Server derives the callback only from trusted `PublicOrigin` and
+the configured provider id.
+
+External and pending OIDC tickets expire after five and ten minutes by default;
+`ExternalCookieLifetime` and `PendingCookieLifetime` accept values from one to
+thirty minutes. Keep their default `__Host-` cookie names in HTTPS deployments.
+Terminal submissions are one-use. With the configured persistent HMAC rate
+limiter, the ready Server shares this replay guard across replicas; custom hosts
+without it should register an atomic shared `IHelloOidcFlowStore` before
+scaling out.
 
 To enable the built-in background SMTP sender:
 
@@ -59,9 +110,9 @@ SkopkaHello__Delivery__Smtp__QueueCapacity=256
 Omit `Host` to leave delivery disabled, or register a custom
 `IHelloAccountMessageSender` before `AddSkopkaHello<TProfile>()`. The built-in
 queue is bounded and in-memory; use a durable application queue when account
-messages must survive a process restart. Email confirmation, password reset and
-password-change OTP delivery all use this adapter; password-change challenge
-requests report a delivery error when no sender is configured.
+messages must survive a process restart. Email confirmation, password reset,
+password-change OTP and external link/unlink OTP delivery all use this adapter;
+step-up challenge requests report a delivery error when no sender is configured.
 
 `ApplyMigrations=true` is intended for local development or a single controlled
 deployment job, not every production replica.
@@ -85,6 +136,11 @@ secure cookies must be tested through the HTTPS address. The signing key and
 database connection are still supplied through environment variables and are
 not stored in `launchSettings.json`.
 
+External OIDC also requires this HTTPS profile. Its correlation and nonce
+cookies remain `Secure` even in development. Put the OIDC client secret in user
+secrets or an environment-specific secret provider; do not add it to
+`appsettings.json` or `launchSettings.json`.
+
 Open the browser UI at:
 
 ```text
@@ -92,8 +148,9 @@ https://localhost:8443/hello
 ```
 
 The plain HTTP launch profile explicitly disables secure cookies for local
-testing and can be opened at `http://localhost:8080/hello`. Never copy this
-override into production.
+testing and can be opened at `http://localhost:8080/hello`. It explicitly keeps
+the example OIDC provider disabled. Never copy this override into production or
+weaken OIDC correlation cookies to make an external provider work over HTTP.
 
 Or create `.env` from `.env.example` and run:
 
@@ -111,6 +168,10 @@ read-only. The server publishes it at
 without rebuilding the image.
 
 The compose UI is available at `http://localhost:8080/hello`.
+The checked-in compose stack is intended for password-flow development;
+external providers remain disabled because the published endpoint is plain
+HTTP. Put the container behind a trusted TLS proxy and configure the HTTPS
+`PublicOrigin` before enabling OIDC.
 
 ## Register and authenticate
 
@@ -164,6 +225,40 @@ Use the access token for account calls:
 GET /account/me
 Authorization: Bearer <access-token>
 ```
+
+When OIDC is registered, clients may discover the safe provider catalog:
+
+```http
+GET /auth/external/providers
+```
+
+Bearer clients may list linked provider labels and timestamps with
+`GET /account/external-logins`. Provider subjects and protocol tokens are not
+returned. External sign-in, registration, link and unlink are currently browser
+flows; there is no native-app token-in-query callback or external mutation API.
+
+## Sign in with an external provider
+
+Open `/hello/login` and choose an enabled provider. ASP.NET Core performs the
+authorization-code flow with PKCE, state and nonce validation. After the raw
+provider callback, `/hello/external/complete` requires an explicit
+antiforgery-protected POST.
+
+If the validated provider/subject is already linked, Hello issues the normal
+JWT/refresh session and protected UI ticket. Otherwise
+`/hello/external/register` collects the local profile and atomically creates the
+user plus external login. A provider-verified email may prefill the form but is
+not locally confirmed. An email matching another account never links it; sign
+in to that account with an existing method and link from
+`/hello/account/external-logins`.
+
+Link and unlink require a confirmed local email. The UI sends a one-time code
+through `IHelloAccountMessageSender`, binds it to the exact provider identity
+and action, and refuses to remove the final enabled sign-in method. On success,
+Identity rotates the security stamp, all old refresh sessions are revoked and
+the current browser receives a new session. Existing stateless bearer access
+tokens remain usable only until their short expiry unless online validation is
+enabled.
 
 Every failure produced from an operation result uses
 `application/problem+json`, including `code` and `traceId` extensions.

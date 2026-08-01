@@ -1,4 +1,5 @@
 @inject SkopkaHelloUiOptions UiOptions
+@inject IHelloUiExternalApplication ExternalIdentity
 <!doctype html>
 <html lang="en">
 <head>
@@ -26,6 +27,10 @@
             {
                 <a href="@HelloUiDefaults.AccountPath">Account</a>
                 <a href="@HelloUiDefaults.SessionsPath">Sessions</a>
+                @if (ExternalIdentity.IsConfigured)
+                {
+                    <a href="@HelloUiDefaults.ExternalLoginsPath">Sign-in methods</a>
+                }
                 <form method="post"
                       asp-page="/Account/Index"
                       asp-page-handler="Logout">

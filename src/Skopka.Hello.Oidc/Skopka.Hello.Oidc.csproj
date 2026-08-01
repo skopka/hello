@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>true</IsPackable>
-    <Description>OAuth/OIDC protocol adapter boundary for Skopka.Hello.</Description>
+    <Description>External OpenID Connect client adapter for Skopka.Hello.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
     <ProjectReference Include="..\Skopka.Hello\Skopka.Hello.csproj" />
   </ItemGroup>
 </Project>

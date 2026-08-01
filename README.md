@@ -2,15 +2,18 @@
 
 Skopka.Hello is an open-source ASP.NET Core host layer for
 [Skopka.Identity](https://github.com/skopka/identity). It supplies HTTP
-contracts, secure browser token transport, Razor account UI, host composition
-and package boundaries for administration and OAuth/OIDC. Identity users,
-credentials, roles, external logins, verification and refresh-session state stay
-in Skopka.Identity.
+contracts, secure browser token transport, Razor account UI, external OIDC
+provider integration, host composition and a package boundary for
+administration. Identity users, credentials, roles, external logins,
+verification and refresh-session state stay in Skopka.Identity.
 
-The current `0.1.0` vertical slice contains:
+The current `0.2.0` vertical slice contains:
 
 - atomic password registration;
 - password login without user enumeration;
+- authorization-code OIDC sign-in with PKCE through configured external providers;
+- atomic external registration without email-based account auto-linking;
+- confirmed-email OTP step-up for external login link and unlink;
 - enumeration-safe email confirmation and password-reset requests;
 - purpose-bound email confirmation and password-reset action tokens;
 - confirmed-email password changes protected by a one-time step-up code;
@@ -20,6 +23,7 @@ The current `0.1.0` vertical slice contains:
 - antiforgery protection for refresh and cookie logout;
 - account and active-session endpoints protected by bearer authentication;
 - Razor registration, login, account and active-session pages;
+- Razor external registration and sign-in-method management pages;
 - online validation and transparent rotation for the protected UI session;
 - PostgreSQL persistence and packaged Skopka.Identity migrations;
 - persistent versioned account/client rate limiting with bounded pruning;
@@ -29,7 +33,7 @@ The current `0.1.0` vertical slice contains:
 - a read-only Docker volume hook for host-provided custom CSS;
 - a ready-to-run server, sample host, Docker image and Testcontainers coverage.
 
-OAuth/OIDC, external-login management and administration remain deferred.
+An OAuth/OIDC authorization server and administration surfaces remain deferred.
 
 ## Packages
 
@@ -38,7 +42,7 @@ OAuth/OIDC, external-login management and administration remain deferred.
 | `Skopka.Hello` | Facade, shared application operations, secure cookie transport and host contracts |
 | `Skopka.Hello.Endpoints` | Minimal API routes, HTTP DTOs and ProblemDetails |
 | `Skopka.Hello.UI` | Razor registration/login/account/session pages and theming |
-| `Skopka.Hello.Oidc` | Future authorization-server/provider adapter boundary |
+| `Skopka.Hello.Oidc` | Maintained external OIDC provider adapter and validated browser flow |
 | `Skopka.Hello.Admin` | Future administration API/UI boundary |
 | `Skopka.Hello.Server` | Executable PostgreSQL host and Docker image |
 
@@ -48,6 +52,7 @@ OAuth/OIDC, external-login management and administration remain deferred.
 | --- | --- | --- |
 | `POST` | `/auth/register` | Anonymous |
 | `POST` | `/auth/login` | Anonymous |
+| `GET` | `/auth/external/providers` | Anonymous |
 | `POST` | `/auth/refresh` | Refresh cookie + CSRF header |
 | `POST` | `/auth/logout` | Refresh cookie + CSRF header |
 | `POST` | `/auth/logout-all` | Bearer |
@@ -57,6 +62,7 @@ OAuth/OIDC, external-login management and administration remain deferred.
 | `POST` | `/auth/email-confirmation/confirm` | Anonymous action token |
 | `GET` | `/account/me` | Bearer |
 | `GET` | `/account/sessions` | Bearer |
+| `GET` | `/account/external-logins` | Bearer |
 | `DELETE` | `/account/sessions/{sessionId}` | Bearer |
 | `POST` | `/account/password/change/challenge` | Bearer |
 | `POST` | `/account/password/change` | Bearer + one-time code |
@@ -75,6 +81,8 @@ The ready server exposes:
 | --- | --- |
 | `/hello/register` | Atomic password registration |
 | `/hello/login` | Password login |
+| `/hello/external/complete` | Explicit POST completion after a validated provider callback |
+| `/hello/external/register` | Atomic registration using a pending validated external identity |
 | `/hello/forgot-password` | Request a password-reset link |
 | `/hello/reset-password` | Apply a password-reset token |
 | `/hello/resend-confirmation` | Request an email-confirmation link |
@@ -82,11 +90,21 @@ The ready server exposes:
 | `/hello/account` | Current account summary |
 | `/hello/account/sessions` | List and revoke active sessions |
 | `/hello/account/change-password` | Change password after email OTP step-up |
+| `/hello/account/external-logins` | Link and unlink external providers after email OTP step-up |
 
-API and Razor handlers share `IHelloIdentityApplication<TProfile>`. The UI uses
-an encrypted `HttpOnly` authentication cookie, keeps the refresh token in its
-separate `HttpOnly` cookie, validates the access token online and rotates the
-refresh session after access-token expiry.
+Password API and Razor handlers share `IHelloIdentityApplication<TProfile>`;
+external flows use the parallel `IHelloExternalIdentityApplication<TProfile>`
+through the OIDC adapter. The UI uses an encrypted `HttpOnly` authentication
+cookie, keeps the refresh token in its separate `HttpOnly` cookie, validates the
+access token online and rotates the refresh session after access-token expiry.
+
+External provider redirects use ASP.NET Core's maintained OpenID Connect handler
+with authorization code, PKCE, state, nonce and normal token validation. Only
+the configured provider id and validated `sub` reach Skopka.Identity. A matching
+email never links accounts. Link and unlink rotate the security stamp, revoke
+the old sessions and issue a fresh session to the current browser. Protected
+flow ids make terminal external submissions one-use; the ready Server persists
+that replay guard through its HMAC-backed rate limiter.
 
 See [getting started](docs/getting-started.md) for configuration and requests,
 [architecture](docs/architecture.md) for boundaries and

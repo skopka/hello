@@ -1,0 +1,26 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
+
+namespace Skopka.Hello.UI.Pages;
+
+internal static class HelloUiSession
+{
+    public static async Task EstablishAsync(
+        HttpContext httpContext,
+        IHelloSessionCookieManager sessionCookies,
+        HelloUiSignIn signIn)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+        ArgumentNullException.ThrowIfNull(sessionCookies);
+        ArgumentNullException.ThrowIfNull(signIn);
+
+        sessionCookies.WriteSessionCookies(
+            httpContext,
+            signIn.Session);
+        await httpContext.SignInAsync(
+            HelloUiDefaults.AuthenticationScheme,
+            signIn.Principal,
+            HelloUiAuthenticationProperties.Create(
+                signIn.Session));
+    }
+}

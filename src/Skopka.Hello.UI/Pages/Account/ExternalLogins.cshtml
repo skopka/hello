@@ -1,0 +1,174 @@
+@page "/hello/account/external-logins"
+@model ExternalLoginsModel
+@{
+    ViewData["Title"] = "External sign-in methods";
+}
+
+<section class="hello-page-heading">
+    <p class="hello-eyebrow">Account security</p>
+    <h1>External sign-in methods</h1>
+    <p class="hello-muted">
+        Link a validated provider identity or remove a method you no
+        longer use. Provider tokens and identifiers are never displayed.
+    </p>
+</section>
+
+<section class="hello-card">
+    <div asp-validation-summary="ModelOnly"
+         class="hello-validation"
+         role="alert"></div>
+
+    @if (Model.ExternalError)
+    {
+        <p class="hello-status hello-status-error" role="alert">
+            The external provider request was cancelled or could not be
+            validated. No sign-in method was changed.
+        </p>
+    }
+
+    @if (Model.Changed == "linked")
+    {
+        <p class="hello-status" role="status">
+            The external sign-in method was linked. Other sessions were
+            revoked and this browser received a new session.
+        </p>
+    }
+    else if (Model.Changed == "unlinked")
+    {
+        <p class="hello-status" role="status">
+            The external sign-in method was removed. Other sessions were
+            revoked and this browser received a new session.
+        </p>
+    }
+
+    <h2>Linked providers</h2>
+    @if (Model.LinkedProviders.Count == 0)
+    {
+        <p class="hello-muted">No external providers are linked.</p>
+    }
+    else
+    {
+        <div class="hello-provider-list" data-hello-linked-providers>
+            @foreach (var provider in Model.LinkedProviders)
+            {
+                <article class="hello-provider">
+                    <div>
+                        <h3>@provider.DisplayName</h3>
+                        <p>
+                            Linked
+                            @provider.LinkedAt.ToUniversalTime().ToString("u")
+                            UTC
+                            @if (!provider.Enabled)
+                            {
+                                <span class="hello-badge">Disabled</span>
+                            }
+                        </p>
+                    </div>
+                    @if (provider.CanUnlink)
+                    {
+                        <form method="post"
+                              asp-page-handler="RequestUnlinkCode">
+                            <button class="hello-button hello-button-danger"
+                                    type="submit"
+                                    name="providerId"
+                                    value="@provider.ProviderId">
+                                Remove
+                            </button>
+                        </form>
+                    }
+                    else
+                    {
+                        <span class="hello-muted">
+                            This method cannot currently be removed through
+                            self-service. Add another enabled sign-in method
+                            first, or contact support if links are duplicated.
+                        </span>
+                    }
+                </article>
+            }
+        </div>
+    }
+
+    @if (Model.Providers.Any(provider => !Model.IsLinked(provider.Id)))
+    {
+        <h2 class="hello-section-heading">Add a provider</h2>
+        <div class="hello-actions hello-provider-actions"
+             data-hello-available-providers>
+            @foreach (var provider in Model.Providers)
+            {
+                @if (!Model.IsLinked(provider.Id))
+                {
+                    <form method="post" asp-page-handler="Link">
+                        <button class="hello-button hello-button-secondary hello-provider-button"
+                                type="submit"
+                                name="providerId"
+                                value="@provider.Id"
+                                data-hello-provider="@provider.Id">
+                            Link @provider.DisplayName
+                        </button>
+                    </form>
+                }
+            }
+        </div>
+    }
+
+    @if (Model.PendingOperation is not null)
+    {
+        <div class="hello-step-up" data-hello-step-up>
+            <h2>Confirm account change</h2>
+            @if (!Model.CodeRequested && Model.PendingOperation == "link")
+            {
+                <p class="hello-muted">
+                    The identity from
+                    <strong>@(Model.PendingProvider?.DisplayName ?? "the provider")</strong>
+                    was validated. Send a one-time code to your confirmed
+                    account email before linking it.
+                </p>
+                <form method="post"
+                      asp-page-handler="RequestLinkCode"
+                      class="hello-form">
+                    <button class="hello-button" type="submit">
+                        Send verification code
+                    </button>
+                </form>
+            }
+            else
+            {
+                <p class="hello-status" role="status">
+                    A one-time code was sent to your confirmed account email.
+                    @if (Model.CodeExpiresAt is not null)
+                    {
+                        <span>
+                            It expires at
+                            @Model.CodeExpiresAt.Value.ToUniversalTime().ToString("u")
+                            UTC.
+                        </span>
+                    }
+                </p>
+                <form method="post"
+                      asp-page-handler="@(Model.PendingOperation == "link" ? "CompleteLink" : "CompleteUnlink")"
+                      class="hello-form">
+                    <label asp-for="Input.VerificationCode"></label>
+                    <input asp-for="Input.VerificationCode"
+                           autocomplete="one-time-code"
+                           inputmode="numeric" />
+                    <span asp-validation-for="Input.VerificationCode"
+                          class="hello-field-error"></span>
+                    <button class="hello-button" type="submit">
+                        @(Model.PendingOperation == "link" ? "Link provider" : "Remove provider")
+                    </button>
+                </form>
+            }
+
+            <form method="post" asp-page-handler="CancelPending">
+                <button class="hello-link-button" type="submit">
+                    Cancel this change
+                </button>
+            </form>
+        </div>
+    }
+
+    <p class="hello-card-footer">
+        <a href="@HelloUiDefaults.AccountPath">Back to account</a>
+    </p>
+</section>

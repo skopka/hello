@@ -9,5 +9,6 @@
     <PackageReference Include="Skopka.Abstraction.OperationResult" />
     <PackageReference Include="Skopka.Identity.Abstractions" />
     <ProjectReference Include="..\Skopka.Hello\Skopka.Hello.csproj" />
+    <ProjectReference Include="..\Skopka.Hello.Oidc\Skopka.Hello.Oidc.csproj" />
   </ItemGroup>
 </Project>

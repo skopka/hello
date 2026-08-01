@@ -1,5 +1,6 @@
 @page "/hello/account"
 @model AccountModel
+@inject IHelloUiExternalApplication ExternalIdentity
 @{
     ViewData["Title"] = "Account";
 }
@@ -55,6 +56,13 @@
            href="@HelloUiDefaults.ChangePasswordPath">
             Change password
         </a>
+        @if (ExternalIdentity.IsConfigured)
+        {
+            <a class="hello-button hello-button-secondary"
+               href="@HelloUiDefaults.ExternalLoginsPath">
+                External sign-in methods
+            </a>
+        }
         <form method="post" asp-page-handler="Logout">
             <button class="hello-button hello-button-secondary"
                     type="submit">

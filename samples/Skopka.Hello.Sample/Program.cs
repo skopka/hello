@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Skopka.Hello;
 using Skopka.Hello.Endpoints;
+using Skopka.Hello.Oidc;
 using Skopka.Hello.Sample;
 using Skopka.Hello.UI;
 using Skopka.Identity.Verification;
@@ -75,6 +76,21 @@ using (var verificationKeys = VersionedSecretKeySet.Load(
 }
 
 identity.UseJwtBearerAuthentication();
+var externalOidcSection = configuration.GetSection(
+    "SkopkaHello:ExternalOidc");
+builder.Services.AddSkopkaHelloOidc<SampleProfile>(options =>
+{
+    externalOidcSection.Bind(options);
+    options.PublicOrigin = publicOrigin;
+    options.SecureCookies = secureCookies;
+    if (!secureCookies)
+    {
+        options.ExternalCookieName =
+            "Skopka.Hello.External";
+        options.PendingCookieName =
+            "Skopka.Hello.External.Pending";
+    }
+});
 builder.Services.AddProblemDetails();
 builder.Services.AddSkopkaHelloUi<
     SampleProfile,

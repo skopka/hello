@@ -34,4 +34,13 @@ public static class HelloUiDefaults
 
     public const string ChangePasswordPath =
         "/hello/account/change-password";
+
+    public const string ExternalCompletionPath =
+        "/hello/external/complete";
+
+    public const string ExternalRegistrationPath =
+        "/hello/external/register";
+
+    public const string ExternalLoginsPath =
+        "/hello/account/external-logins";
 }

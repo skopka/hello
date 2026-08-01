@@ -9,10 +9,18 @@ reimplement the identity domain.
 Server / Sample
   -> Skopka.Hello.Endpoints
   -> Skopka.Hello.UI
+  -> Skopka.Hello.Oidc
+
+Endpoints / UI
+  -> Skopka.Hello.Oidc
+
+Endpoints / UI / Oidc
   -> Skopka.Hello
+
+Skopka.Hello
   -> Skopka.Identity packages
 
-Oidc / Admin
+Admin
   -> Skopka.Hello
 ```
 
@@ -38,9 +46,16 @@ identity.UseHmacRateLimiting(
 identity.UseHmacOneTimeCodes(
     verificationKeyProvider);
 identity.UseJwtBearerAuthentication();
+
+services.AddSkopkaHelloOidc<MyProfile>(options =>
+{
+    externalOidcConfiguration.Bind(options);
+    options.PublicOrigin = publicOrigin;
+    options.SecureCookies = secureCookies;
+});
 ```
 
-## First vertical flow
+## Shared application flows
 
 `IHelloIdentityApplication<TProfile>` is the shared transport-facing
 orchestrator. Registration maps to
@@ -66,6 +81,50 @@ share this operation. The transport receives only a safe challenge id and
 expiry; the OTP is sent through `IHelloAccountMessageSender`. A successful
 change revokes all sessions after Identity rotates the security stamp.
 
+## External OIDC flow
+
+`Skopka.Hello.Oidc` registers one named ASP.NET Core OpenID Connect scheme per
+enabled provider and does not replace the default bearer scheme. The maintained
+handler owns discovery, state, correlation, nonce, authorization-code exchange,
+PKCE and token validation. Provider access, refresh and ID tokens are not saved.
+After validation, the adapter copies only a bounded configured provider id,
+exact case-sensitive `sub` and optional display hints into a short-lived
+encrypted external ticket.
+
+The raw callback is derived from the normalized provider id:
+
+```text
+{SkopkaHello:PublicOrigin}/signin-skopka-oidc/{provider-id}
+```
+
+It redirects to `/hello/external/complete`. That page performs a separate
+antiforgery-protected POST before resolving the external identity, registering
+an account or retaining a pending link. This two-stage flow also ensures the
+strict same-site local UI cookie is available again after the cross-site
+provider callback.
+
+External and pending tickets also contain an unpredictable flow id. The
+terminal POST atomically consumes it before session creation or account
+mutation. The default `IHelloOidcFlowStore` reuses the persistent Identity rate
+limiter when available and falls back to a bounded process-local store. A
+retryable failure rotates the id without extending the ticket deadline.
+
+An unknown external identity opens `/hello/external/register` and is persisted
+atomically through `RegisterExternalAsync`. A provider-verified email may prefill
+the form, but remains unconfirmed locally. Matching an existing email never
+authorizes linking; the user must sign in to that account and start an explicit
+link from `/hello/account/external-logins`.
+
+Link and unlink require an online-validated local session, confirmed account
+email and an Identity-owned OTP bound to the exact provider/subject operation.
+The pending protected ticket also binds the local user, session and optimistic
+version. Unlink refuses to remove the last enabled sign-in method. A successful
+mutation rotates the Identity security stamp; Hello revokes all prior sessions
+and creates a fresh session for the current browser. Once Identity consumes the
+step-up proof, every later failure is marked terminal. The Razor adapter clears
+the browser session and requires a new login instead of displaying the consumed
+OTP as retryable.
+
 Skopka.Identity owns:
 
 - user/profile, credentials and normalized handles;
@@ -86,6 +145,8 @@ Skopka.Hello owns:
 - trusted client partition derivation and scheduled bounded pruning;
 - account-message link construction and delivery orchestration;
 - password-change action/binding derivation and OTP message delivery;
+- trusted external-provider composition, pending browser tickets and callback routing;
+- external link/unlink step-up binding and session replacement;
 - security-event request enrichment and audit-outbox contracts.
 
 ## Errors
@@ -121,6 +182,11 @@ replaces both protected tickets and rebuilds safe display claims.
 Every Razor mutation uses antiforgery. Minimal API bearer authentication remains
 separate and still returns access tokens as JSON.
 
+OIDC correlation and nonce cookies are always `Secure`. Short-lived external
+and pending tickets are encrypted cookies and contain no provider tokens. The
+external completion, registration and sign-in-method pages use no-store and
+no-referrer response headers.
+
 ## Security events and outbox boundary
 
 `HelloIdentitySecurityEventObserver` enriches committed Skopka.Identity events
@@ -138,8 +204,7 @@ claimed.
 
 ## Deferred modules
 
-Remaining credential lifecycle, external-login management and admin pages
-remain deferred. `Skopka.Hello.Oidc` and `Skopka.Hello.Admin` are real package
-boundaries, but contain no speculative protocol or identity logic. OAuth/OIDC
-will use a maintained protocol library only after target-framework support and
-threat modeling are verified.
+The external-provider client is implemented with the maintained ASP.NET Core
+OpenID Connect handler. An OAuth/OIDC authorization server and administration
+API/UI remain deferred; `Skopka.Hello.Admin` is only a package boundary and the
+project does not implement a home-grown authorization protocol.

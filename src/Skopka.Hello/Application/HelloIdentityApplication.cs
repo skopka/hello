@@ -228,7 +228,7 @@ internal sealed partial class HelloIdentityApplication<TProfile>(
         }
 
         var user = validated.Value;
-        if (!HasConfirmedEmail(user))
+        if (!HelloAccountSecurity.HasConfirmedEmail(user))
         {
             return OperationResultFactory.Fail<HelloStepUpChallenge>(
                 HelloAccountSecurity.ConfirmedEmailRequired());
@@ -289,7 +289,7 @@ internal sealed partial class HelloIdentityApplication<TProfile>(
         }
 
         var user = validated.Value;
-        if (!HasConfirmedEmail(user))
+        if (!HelloAccountSecurity.HasConfirmedEmail(user))
         {
             return OperationResultFactory.Fail(
                 HelloAccountSecurity.ConfirmedEmailRequired());
@@ -475,11 +475,6 @@ internal sealed partial class HelloIdentityApplication<TProfile>(
 
         return null;
     }
-
-    private static bool HasConfirmedEmail(
-        IdentityUser<TProfile> user)
-        => user.EmailConfirmed
-            && !string.IsNullOrWhiteSpace(user.Email);
 
     private void LogSuppressed(
         HelloAccountMessageKind kind,

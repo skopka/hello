@@ -8,5 +8,6 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\Skopka.Hello\Skopka.Hello.csproj" />
+    <ProjectReference Include="..\Skopka.Hello.Oidc\Skopka.Hello.Oidc.csproj" />
   </ItemGroup>
 </Project>

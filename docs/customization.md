@@ -73,8 +73,12 @@ The built-in pages are:
 /hello/reset-password
 /hello/resend-confirmation
 /hello/confirm-email
+/hello/external/complete
+/hello/external/register
 /hello/account
 /hello/account/sessions
+/hello/account/change-password
+/hello/account/external-logins
 ```
 
 The custom stylesheet contract is:
@@ -134,9 +138,43 @@ The public custom CSS request URL can be changed with
 `SkopkaHello:Customization:CssRequestPath`. It must be an absolute path without
 a query string or fragment.
 
+External-provider UI uses the same color, radius, typography and button
+variables. Stable selectors and customization hooks include:
+
+```text
+.hello-external-providers
+.hello-provider-button
+.hello-divider
+.hello-provider-list
+.hello-provider
+.hello-provider-actions
+.hello-step-up
+.hello-status-error
+[data-hello-provider="google"]
+[data-hello-linked-providers]
+[data-hello-available-providers]
+[data-hello-step-up]
+```
+
+The provider id in `data-hello-provider` is the normalized configured id, so a
+mounted stylesheet can add provider-specific styling without changing Razor
+markup. The read-only CSS volume and hot replacement behavior are unchanged.
+Avoid remote provider logo URLs when their tracking or referrer behavior is not
+acceptable; package assets with the host or use operator-controlled CSS.
+
 ## OAuth/OIDC and external providers
 
-Protocol support is deferred. It will live in `Skopka.Hello.Oidc` and use a
-maintained protocol implementation. Provider/subject pairs may reach
-`IExternalLoginService<TProfile>` only after callback state, nonce, PKCE and
-token validation. Matching email alone must never auto-link accounts.
+External provider support lives in `Skopka.Hello.Oidc` and uses the maintained
+ASP.NET Core OpenID Connect handler. The login page renders enabled providers
+from `IHelloOidcProviderCatalog`; display names are Razor-encoded and provider
+tokens or subjects are never rendered. The account page uses the same catalog
+for link choices and shows only safe linked-provider labels and timestamps.
+
+Provider branding is presentation only. The stable configured provider id and
+validated exact `sub` form the Identity key; a CSS class, display name or
+matching email cannot affect account linking. External registration and link
+or unlink continue through shared `OperationResult` application operations.
+
+This module is an external OIDC client adapter. It does not implement an
+OAuth/OIDC authorization server, and the project does not promise one through
+the theming surface.

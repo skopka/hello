@@ -48,6 +48,9 @@ public static class SkopkaHelloServiceCollectionExtensions
             Skopka.Hello.IHelloIdentityApplication<TProfile>,
             Skopka.Hello.HelloIdentityApplication<TProfile>>();
         services.TryAddScoped<
+            Skopka.Hello.IHelloExternalIdentityApplication<TProfile>,
+            Skopka.Hello.HelloExternalIdentityApplication<TProfile>>();
+        services.TryAddScoped<
             Skopka.Hello.IHelloSessionCookieManager,
             Skopka.Hello.HelloSessionCookieManager>();
 

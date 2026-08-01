@@ -2,8 +2,10 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Hello;
+using Skopka.Hello.Oidc;
 using Skopka.Identity.Authentication;
 using Skopka.Identity.Errors;
 
@@ -25,6 +27,17 @@ public static class HelloEndpointRouteBuilderExtensions
                 "/auth/login",
                 LoginAsync<TProfile>)
             .WithName("SkopkaHelloLogin");
+
+        var oidcEnabled = endpoints.ServiceProvider.GetService<
+            IHelloOidcProviderCatalog>() is not null;
+        if (oidcEnabled)
+        {
+            endpoints.MapGet(
+                    "/auth/external/providers",
+                    GetExternalProviders)
+                .AllowAnonymous()
+                .WithName("SkopkaHelloGetExternalProviders");
+        }
 
         endpoints.MapPost(
                 "/auth/refresh",
@@ -73,6 +86,15 @@ public static class HelloEndpointRouteBuilderExtensions
                 GetSessionsAsync<TProfile>)
             .RequireAuthorization()
             .WithName("SkopkaHelloGetSessions");
+
+        if (oidcEnabled)
+        {
+            endpoints.MapGet(
+                    "/account/external-logins",
+                    GetExternalLoginsAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloGetExternalLogins");
+        }
 
         endpoints.MapDelete(
                 "/account/sessions/{sessionId:guid}",
@@ -179,6 +201,16 @@ public static class HelloEndpointRouteBuilderExtensions
         return TypedResults.Ok(
             ToSessionResponse(authenticated.Value.Session));
     }
+
+    private static Microsoft.AspNetCore.Http.HttpResults.Ok<
+        ExternalProviderResponse[]> GetExternalProviders(
+        IHelloOidcProviderCatalog providers)
+        => TypedResults.Ok(
+            providers.Providers
+                .Select(provider => new ExternalProviderResponse(
+                    provider.Id,
+                    provider.DisplayName))
+                .ToArray());
 
     private static async Task<IResult> RefreshAsync<TProfile>(
         IHelloIdentityApplication<TProfile> application,
@@ -409,6 +441,39 @@ public static class HelloEndpointRouteBuilderExtensions
                 httpContext);
     }
 
+    private static async Task<IResult> GetExternalLoginsAsync<TProfile>(
+        IHelloOidcApplication<TProfile> application,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var listed = await application.ListLinkedProvidersAsync(
+            accessToken,
+            cancellationToken);
+        if (!listed.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                listed,
+                httpContext);
+        }
+
+        httpContext.Response.Headers.CacheControl = "no-store";
+        return TypedResults.Ok(
+            listed.Value
+                .Select(provider =>
+                    new LinkedExternalProviderResponse(
+                        provider.ProviderId,
+                        provider.DisplayName,
+                        provider.Enabled,
+                        provider.LinkedAt))
+                .ToArray());
+    }
+
     private static async Task<IResult> DeleteSessionAsync<TProfile>(
         Guid sessionId,
         IHelloIdentityApplication<TProfile> application,
@@ -549,11 +614,15 @@ public static class HelloEndpointRouteBuilderExtensions
         var authorization =
             httpContext.Request.Headers.Authorization.ToString();
         const string prefix = "Bearer ";
-        return authorization.StartsWith(
+        if (!authorization.StartsWith(
                 prefix,
-                StringComparison.OrdinalIgnoreCase)
-            ? authorization[prefix.Length..].Trim()
-            : null;
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var token = authorization[prefix.Length..].Trim();
+        return string.IsNullOrWhiteSpace(token) ? null : token;
     }
 
     private static AccountResponse<TProfile> ToAccountResponse<TProfile>(

@@ -1,0 +1,138 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  publish:
+    name: Publish NuGet packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Determine version from tag
+        id: version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          PRERELEASE_IDENTIFIER='(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)'
+          SEMVER_PATTERN="^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-${PRERELEASE_IDENTIFIER}(\.${PRERELEASE_IDENTIFIER})*)?$"
+          if [[ ! "$VERSION" =~ $SEMVER_PATTERN ]]; then
+            echo "Release tag must be v followed by SemVer without build metadata." >&2
+            exit 1
+          fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: >
+          dotnet restore Skopka.Hello.slnx
+          --configfile NuGet.Config
+
+      - name: Build
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: >
+          dotnet build Skopka.Hello.slnx
+          --configuration Release
+          --no-restore
+          -p:Version="$RELEASE_VERSION"
+
+      - name: Test
+        run: >
+          dotnet test Skopka.Hello.slnx
+          --configuration Release
+          --no-build
+          --logger trx
+          --results-directory artifacts/test-results
+
+      - name: Audit NuGet dependencies
+        run: >
+          dotnet list Skopka.Hello.slnx package
+          --vulnerable
+          --include-transitive
+          --no-restore
+
+      - name: Pack
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: >
+          dotnet pack Skopka.Hello.slnx
+          --configuration Release
+          --no-build
+          --no-restore
+          --output artifacts/packages
+          -p:WarnOnPackingNonPackableProject=false
+          -p:Version="$RELEASE_VERSION"
+
+      - name: Verify package set
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          EXPECTED_PACKAGES=(
+            "Skopka.Hello"
+            "Skopka.Hello.Admin"
+            "Skopka.Hello.Endpoints"
+            "Skopka.Hello.Oidc"
+            "Skopka.Hello.UI"
+          )
+
+          for PACKAGE_ID in "${EXPECTED_PACKAGES[@]}"; do
+            for EXTENSION in nupkg snupkg; do
+              PACKAGE_PATH="artifacts/packages/${PACKAGE_ID}.${RELEASE_VERSION}.${EXTENSION}"
+              if [[ ! -f "$PACKAGE_PATH" ]]; then
+                echo "Expected package '$PACKAGE_PATH' was not produced." >&2
+                exit 1
+              fi
+            done
+          done
+
+          NUPKG_COUNT=$(find artifacts/packages -maxdepth 1 -type f -name '*.nupkg' | wc -l)
+          SNUPKG_COUNT=$(find artifacts/packages -maxdepth 1 -type f -name '*.snupkg' | wc -l)
+          if [[ "$NUPKG_COUNT" -ne 5 || "$SNUPKG_COUNT" -ne 5 ]]; then
+            echo "Expected 5 packages and 5 symbol packages, found $NUPKG_COUNT and $SNUPKG_COUNT." >&2
+            exit 1
+          fi
+
+      - name: Push all packages to NuGet.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: >
+          dotnet nuget push "artifacts/packages/*.nupkg"
+          --api-key "$NUGET_API_KEY"
+          --source "https://api.nuget.org/v3/index.json"
+          --skip-duplicate
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.snupkg

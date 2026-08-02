@@ -1,0 +1,36 @@
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      skopka:
+        patterns:
+          - Skopka.*
+        update-types:
+          - minor
+          - patch
+      microsoft-dotnet:
+        patterns:
+          - Microsoft.AspNetCore.*
+          - Microsoft.EntityFrameworkCore*
+          - Microsoft.Extensions.*
+        update-types:
+          - minor
+          - patch
+      test-platform:
+        patterns:
+          - Microsoft.NET.Test.Sdk
+          - xunit*
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

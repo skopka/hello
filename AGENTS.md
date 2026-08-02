@@ -96,3 +96,12 @@ docker build -f .\src\Skopka.Hello.Server\Dockerfile .
 
 Integration tests require Docker because they use a real PostgreSQL
 Testcontainer.
+
+CI must restore through the repository `NuGet.Config`, build, run both test
+projects including the real PostgreSQL Testcontainer, audit NuGet dependencies
+and pack all five source packages without publishing them. Tag pushes matching
+`v*` publish `Skopka.Hello`, `.Admin`, `.Endpoints`, `.Oidc` and `.UI` together
+through `.github/workflows/release.yml`. Keep the tag-derived version, exact
+package-set validation, NuGet.org publication and GitHub Release attachments in
+one coordinated job. Docker image build and publication are intentionally
+deferred. Release setup and operator steps live in `docs/releasing.md`.

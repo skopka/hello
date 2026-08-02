@@ -1,5 +1,8 @@
 # Skopka.Hello
 
+[![CI](https://github.com/skopka/hello/actions/workflows/ci.yml/badge.svg)](https://github.com/skopka/hello/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/skopka/hello/blob/main/LICENSE)
+
 Skopka.Hello is an open-source ASP.NET Core host layer for
 [Skopka.Identity](https://github.com/skopka/identity). It supplies HTTP
 contracts, secure browser token transport, Razor account UI, external OIDC
@@ -109,7 +112,8 @@ that replay guard through its HMAC-backed rate limiter.
 See [getting started](docs/getting-started.md) for configuration and requests,
 [architecture](docs/architecture.md) for boundaries and
 [customization](docs/customization.md) for custom CSS volumes, and
-[security](docs/security.md) before deploying.
+[security](docs/security.md) before deploying. Coordinated package publication
+is documented in [releasing](docs/releasing.md).
 
 ## Build and test
 

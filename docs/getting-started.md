@@ -9,7 +9,57 @@
 
 ## Configure the server
 
-Required configuration:
+The checked-in development configuration connects to the local PostgreSQL
+container at `127.0.0.1:5432`, applies migrations on startup and uses
+`https://localhost:8443` as both its public origin and JWT issuer. Start only
+the database from the repository root:
+
+```powershell
+docker compose -f .\deploy\docker-compose.postgres.yml up -d --wait
+```
+
+The database port is bound only to `127.0.0.1`. The known `skopka-local`
+password is strictly a localhost development default. If `POSTGRES_DB`,
+`POSTGRES_USER`, `POSTGRES_PASSWORD` or `POSTGRES_PORT` is overridden, update
+`ConnectionStrings__Identity` to match. PostgreSQL initialization settings are
+applied only when its named volume is first created; changing them later does
+not rewrite the existing database or role password.
+
+JWT, rate-limit and verification keys remain outside checked-in configuration.
+Store three independently generated keys in ASP.NET Core user secrets once:
+
+```powershell
+$serverProject = ".\src\Skopka.Hello.Server\Skopka.Hello.Server.csproj"
+function New-DevelopmentKey {
+  $keyBytes = New-Object byte[] 32
+  $generator = [Security.Cryptography.RandomNumberGenerator]::Create()
+  try {
+    $generator.GetBytes($keyBytes)
+    [Convert]::ToBase64String($keyBytes)
+  }
+  finally {
+    $generator.Dispose()
+  }
+}
+
+dotnet user-secrets set "SkopkaHello:Jwt:SigningKey" `
+  (New-DevelopmentKey) `
+  --project $serverProject
+dotnet user-secrets set "SkopkaHello:RateLimiting:Keys:v1" `
+  (New-DevelopmentKey) `
+  --project $serverProject
+dotnet user-secrets set "SkopkaHello:Verification:Keys:v1" `
+  (New-DevelopmentKey) `
+  --project $serverProject
+```
+
+Stop the database without deleting its named volume:
+
+```powershell
+docker compose -f .\deploy\docker-compose.postgres.yml down
+```
+
+Equivalent required configuration for another environment is:
 
 ```text
 ConnectionStrings__Identity=Host=localhost;Port=5432;Database=skopka_hello;Username=skopka;Password=...
@@ -19,17 +69,10 @@ SkopkaHello__Verification__Keys__v1=<third Base64 encoded 32+ random bytes>
 SkopkaHello__PublicOrigin=https://localhost:8443
 ```
 
-Generate each development key independently in PowerShell:
-
-```powershell
-[Convert]::ToBase64String(
-  [Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
-```
-
 Optional settings:
 
 ```text
-SkopkaHello__Jwt__Issuer=https://localhost:8080
+SkopkaHello__Jwt__Issuer=https://localhost:8443
 SkopkaHello__Jwt__Audience=skopka-hello-api
 SkopkaHello__Jwt__ValidateSessionOnEveryRequest=false
 SkopkaHello__RateLimiting__CurrentVersion=v1
@@ -132,9 +175,9 @@ dotnet run --project .\src\Skopka.Hello.Server `
 
 The `https` profile listens on `https://localhost:8443` and also exposes
 `http://localhost:8080` for diagnostics. Authentication routes that issue
-secure cookies must be tested through the HTTPS address. The signing key and
-database connection are still supplied through environment variables and are
-not stored in `launchSettings.json`.
+secure cookies must be tested through the HTTPS address. The signing and HMAC
+keys come from user secrets and are not stored in `appsettings.json` or
+`launchSettings.json`.
 
 External OIDC also requires this HTTPS profile. Its correlation and nonce
 cookies remain `Secure` even in development. Put the OIDC client secret in user

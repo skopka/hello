@@ -2,6 +2,7 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <AssemblyName>Skopka.Hello.Server</AssemblyName>
+    <UserSecretsId>Skopka.Hello.Server-f1928bd8-24e0-40ff-a8a2-8994691e1c2a</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

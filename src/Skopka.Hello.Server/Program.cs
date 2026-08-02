@@ -194,6 +194,11 @@ if (!string.IsNullOrWhiteSpace(smtpSection["Host"]))
 
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddOpenApi();
+}
+
 builder.Services.AddSkopkaHelloUi<
     HelloProfile,
     HelloProfileUiFactory>(options =>
@@ -219,6 +224,19 @@ builder.Services.AddHostedService<
     IdentityRateLimitPruningWorker<HelloProfile>>();
 
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+    app.UseSwaggerUI(options =>
+    {
+        options.DocumentTitle = "Skopka.Hello API";
+        options.RoutePrefix = "swagger";
+        options.SwaggerEndpoint(
+            "/openapi/v1.json",
+            "Skopka.Hello API v1");
+    });
+}
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();

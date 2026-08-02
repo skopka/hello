@@ -28,4 +28,6 @@ optional and credentials come from secrets/environment configuration; omitting
 the SMTP host keeps the null delivery adapter.
 
 The Server contains host configuration, not reusable identity or endpoint
-business logic.
+business logic. OpenAPI generation and Swagger UI stay Development-only by
+default; do not expose the API contract in production through a checked-in
+configuration switch.

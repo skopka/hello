@@ -197,6 +197,15 @@ Open the browser UI at:
 https://localhost:8443/hello
 ```
 
+In Development, the generated OpenAPI document and Swagger UI are available at:
+
+```text
+https://localhost:8443/openapi/v1.json
+https://localhost:8443/swagger
+```
+
+Neither endpoint is mapped outside the Development environment.
+
 The plain HTTP launch profile explicitly disables secure cookies for local
 testing and can be opened at `http://localhost:8080/hello`. It explicitly keeps
 the example OIDC provider disabled. Never copy this override into production or

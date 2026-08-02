@@ -6,6 +6,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Update="appsettings.Development.json"
+             CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Skopka.Identity" />
     <PackageReference Include="Skopka.Identity.Abstractions" />
     <PackageReference Include="Skopka.Identity.Ef.PostgreSql" />

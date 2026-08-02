@@ -10,7 +10,10 @@ switch and must not race across production replicas.
 
 Rate-limit HMAC keys use a current version and optional overlapping historical
 versions. All replicas must share the configured key material during overlap.
-Keep both session and rate-limit bounded pruning workers registered.
+Keep both session and rate-limit bounded pruning workers registered. The
+checked-in Development configuration may contain clearly public test-only keys
+for clone-and-run, but it must stay excluded from publish and Docker output.
+Production key material always stays outside source and appsettings.
 
 OTP HMAC keys use an independent current version and overlapping historical
 versions. Never reuse JWT or rate-limit keys for verification.

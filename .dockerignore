@@ -8,6 +8,7 @@
 **/TestResults
 **/*.user
 **/*.local.json
+src/Skopka.Hello.Server/appsettings.Development.json
 .env
 deploy/secrets
 artifacts

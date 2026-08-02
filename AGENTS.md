@@ -33,8 +33,10 @@ an encrypted `HttpOnly` cookie and validates it online. Client keys come from
 trusted server request context, not request DTOs.
 
 The ready Server enables persistent account/client rate limiting with
-versioned HMAC keys from configuration. Key material stays outside source;
-rotation retains overlapping versions, and a bounded worker prunes old buckets.
+versioned HMAC keys from configuration. Production key material stays outside
+source; the public test-only Development example is excluded from publish and
+Docker output. Rotation retains overlapping versions, and a bounded worker
+prunes old buckets.
 
 Anonymous account-message requests suppress exact-lookup not-found results and
 return the same accepted response for every well-formed email. Links use a

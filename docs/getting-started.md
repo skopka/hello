@@ -25,8 +25,14 @@ password is strictly a localhost development default. If `POSTGRES_DB`,
 applied only when its named volume is first created; changing them later does
 not rewrite the existing database or role password.
 
-JWT, rate-limit and verification keys remain outside checked-in configuration.
-Store three independently generated keys in ASP.NET Core user secrets once:
+The development file also contains three distinct public test-only keys so a
+fresh clone can start without additional secret setup. These values provide no
+security and must never be used outside localhost development. The project
+excludes `appsettings.Development.json` from publish output, and `.dockerignore`
+keeps it out of the Docker build context.
+
+Optionally replace the public examples with personal local keys in ASP.NET Core
+user secrets:
 
 ```powershell
 $serverProject = ".\src\Skopka.Hello.Server\Skopka.Hello.Server.csproj"
@@ -175,9 +181,10 @@ dotnet run --project .\src\Skopka.Hello.Server `
 
 The `https` profile listens on `https://localhost:8443` and also exposes
 `http://localhost:8080` for diagnostics. Authentication routes that issue
-secure cookies must be tested through the HTTPS address. The signing and HMAC
-keys come from user secrets and are not stored in `appsettings.json` or
-`launchSettings.json`.
+secure cookies must be tested through the HTTPS address. By default it uses the
+public test-only keys from `appsettings.Development.json`; user secrets override
+them when configured. The Development file is excluded from publish and Docker
+output.
 
 External OIDC also requires this HTTPS profile. Its correlation and nonce
 cookies remain `Secure` even in development. Put the OIDC client secret in user

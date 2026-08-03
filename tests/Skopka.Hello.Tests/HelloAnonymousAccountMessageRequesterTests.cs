@@ -1,6 +1,7 @@
 using Skopka.Identity;
 using Skopka.Identity.Errors;
 using Skopka.Identity.RateLimiting;
+using Microsoft.Extensions.Logging;
 
 namespace Skopka.Hello.Tests;
 
@@ -147,6 +148,8 @@ public sealed class HelloAnonymousAccountMessageRequesterTests
     public async Task FullQueueIsSilentlyDropped()
     {
         var limiter = new RecordingRateLimiter();
+        var logger = new RecordingLogger<
+            HelloAnonymousAccountMessageRequester<object>>();
         var queue = CreateQueue(capacity: 1);
         Assert.True(
             queue.TryWrite(
@@ -157,7 +160,8 @@ public sealed class HelloAnonymousAccountMessageRequesterTests
         var requester = CreateRequester(
             queue,
             CreateRateLimitOptions(),
-            limiter);
+            limiter,
+            logger);
 
         var result = await requester.EnqueueAsync(
             HelloAccountMessageKind.PasswordReset,
@@ -167,6 +171,9 @@ public sealed class HelloAnonymousAccountMessageRequesterTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, limiter.Hits.Count);
+        Assert.Contains(
+            logger.Events,
+            eventId => eventId.Id == 2001);
         using var timeout = new CancellationTokenSource(
             TimeSpan.FromSeconds(1));
         await using var reader = queue
@@ -182,12 +189,15 @@ public sealed class HelloAnonymousAccountMessageRequesterTests
         CreateRequester(
             HelloAnonymousAccountMessageQueue<object> queue,
             IdentityRateLimitOptions options,
-            IIdentityRateLimiter<object> limiter)
+            IIdentityRateLimiter<object> limiter,
+            ILogger<HelloAnonymousAccountMessageRequester<object>>? logger =
+                null)
         => new(
             new DefaultIdentityNormalizer(),
             options,
             [limiter],
-            queue);
+            queue,
+            logger);
 
     private static HelloAnonymousAccountMessageQueue<object> CreateQueue(
         int capacity = 8)
@@ -240,5 +250,24 @@ public sealed class HelloAnonymousAccountMessageRequesterTests
 
         public Task<int> PruneAsync(CancellationToken ct)
             => throw new NotSupportedException();
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public List<EventId> Events { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull
+            => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+            => Events.Add(eventId);
     }
 }

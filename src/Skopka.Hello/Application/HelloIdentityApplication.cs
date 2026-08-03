@@ -25,7 +25,8 @@ internal sealed class HelloIdentityApplication<TProfile>(
         anonymousMessageRequester,
     IHelloAccountMessageSender messageSender,
     HelloDeliveryOptions deliveryOptions,
-    SkopkaHelloOptions options)
+    SkopkaHelloOptions options,
+    HelloRegistrationAdmission<TProfile>? registrationAdmission = null)
     : IHelloIdentityApplication<TProfile>
 {
     public async Task<OperationResult<HelloAccount<TProfile>>> RegisterAsync(
@@ -39,6 +40,18 @@ internal sealed class HelloIdentityApplication<TProfile>(
             return OperationResultFactory.Fail<
                 HelloAccount<TProfile>>(
                     HelloRegistrationErrors.Disabled());
+        }
+
+        if (registrationAdmission is not null)
+        {
+            var admitted = await registrationAdmission.CheckAsync(
+                HelloRegistrationKind.Password,
+                cancellationToken);
+            if (!admitted.IsSuccess)
+            {
+                return OperationResultFactory.Fail<
+                    HelloAccount<TProfile>>(admitted.Errors);
+            }
         }
 
         var result = await registration.RegisterPasswordAsync(

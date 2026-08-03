@@ -32,7 +32,10 @@ public sealed class AccountModel(
     public bool PhoneConfirmationRequested { get; private set; }
 
     public IActionResult OnGet()
-        => LoadAccount();
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        return LoadAccount();
+    }
 
     public async Task<IActionResult>
         OnPostRequestEmailConfirmationAsync(
@@ -126,6 +129,7 @@ public sealed class AccountModel(
 
     private IActionResult LoadAccount()
     {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
         if (!HelloUiPrincipalFactory.TryGetUserId(
                 User,
                 out var userId))
@@ -157,6 +161,7 @@ public sealed class AccountModel(
     public async Task<IActionResult> OnPostLogoutAsync(
         CancellationToken cancellationToken)
     {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
         var refreshToken = sessionCookies.ReadRefreshToken(
             HttpContext);
         if (refreshToken is not null)

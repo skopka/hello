@@ -676,6 +676,45 @@ public sealed class HelloOidcApplicationSecurityTests
             authentication.SignOuts);
     }
 
+    [Fact]
+    public async Task ClearingBrowserFlowConsumesExternalAndPendingTickets()
+    {
+        var externalFlowId = Guid.NewGuid();
+        var pendingFlowId = Guid.NewGuid();
+        var authentication = new FakeAuthenticationService();
+        var externalTicket = CreateTicket(
+            HelloOidcDefaults.ExternalCookieScheme,
+            intent: "sign_in",
+            flowId: externalFlowId);
+        externalTicket.Properties.ExpiresUtc =
+            DateTimeOffset.UtcNow.AddMinutes(3);
+        authentication.SetTicket(
+            HelloOidcDefaults.ExternalCookieScheme,
+            externalTicket);
+        authentication.SetTicket(
+            HelloOidcDefaults.PendingCookieScheme,
+            CreateTicket(
+                HelloOidcDefaults.PendingCookieScheme,
+                intent: "sign_in",
+                flowId: pendingFlowId));
+        using var fixture = new Fixture(
+            authentication,
+            new FakeExternalIdentityApplication());
+
+        await fixture.Application.ClearBrowserFlowAsync(
+            fixture.HttpContext,
+            CancellationToken.None);
+
+        Assert.Contains(externalFlowId, fixture.FlowStore.Consumed);
+        Assert.Contains(pendingFlowId, fixture.FlowStore.Consumed);
+        Assert.Contains(
+            HelloOidcDefaults.ExternalCookieScheme,
+            authentication.SignOuts);
+        Assert.Contains(
+            HelloOidcDefaults.PendingCookieScheme,
+            authentication.SignOuts);
+    }
+
     private static HelloOidcLocalSession CreateLocalSession(Guid userId)
         => new(userId, Guid.NewGuid(), "old-access-token");
 
@@ -814,8 +853,8 @@ public sealed class HelloOidcApplicationSecurityTests
             services.AddSkopkaHello<TestProfile>(options =>
                 options.SelfRegistrationEnabled =
                     selfRegistrationEnabled);
-            services.AddSingleton<IHelloOidcFlowStore,
-                AllowingFlowStore>();
+            FlowStore = new AllowingFlowStore();
+            services.AddSingleton<IHelloOidcFlowStore>(FlowStore);
             services.AddSingleton<
                 IHelloExternalIdentityApplication<TestProfile>>(external);
             services.AddSkopkaHelloOidc<TestProfile>(options =>
@@ -850,6 +889,8 @@ public sealed class HelloOidcApplicationSecurityTests
         public DefaultHttpContext HttpContext { get; }
 
         public IHelloOidcApplication<TestProfile> Application { get; }
+
+        public AllowingFlowStore FlowStore { get; }
 
         public void Dispose()
         {
@@ -930,6 +971,8 @@ public sealed class HelloOidcApplicationSecurityTests
     private sealed class AllowingFlowStore : IHelloOidcFlowStore
     {
         private readonly HashSet<Guid> consumed = [];
+
+        public IReadOnlySet<Guid> Consumed => consumed;
 
         public Task<bool> TryConsumeAsync(
             Guid flowId,

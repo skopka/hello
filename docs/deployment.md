@@ -238,9 +238,12 @@ extra database read.
 - poll `/health/ready` for PostgreSQL connectivity;
 - monitor the hourly bounded refresh-session pruning worker;
 - monitor the hourly bounded rate-limit bucket pruning worker;
+- alert on rate-limit pruning budget exhaustion event `1013`;
 - monitor authentication failures and rate-limit decisions without submitted
   secrets;
 - monitor background account-message failures by safe error code;
+- collect the `Skopka.Hello` meter and alert on
+  `skopka.hello.account_message.queue.dropped`;
 - monitor external sign-in failures by safe error code without callback query
   strings, subjects, claims or provider tokens;
 - keep container base images and NuGet dependencies patched;

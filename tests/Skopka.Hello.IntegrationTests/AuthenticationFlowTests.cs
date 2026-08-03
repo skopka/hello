@@ -86,6 +86,10 @@ public sealed class AuthenticationFlowTests
                 firstLogin.AccessToken);
         using var me = await client.SendAsync(meRequest);
         Assert.Equal(HttpStatusCode.OK, me.StatusCode);
+        Assert.Contains(
+            "no-store",
+            me.Headers.CacheControl?.ToString(),
+            StringComparison.OrdinalIgnoreCase);
 
         using var sessionsRequest = new HttpRequestMessage(
             HttpMethod.Get,
@@ -96,6 +100,10 @@ public sealed class AuthenticationFlowTests
                 firstLogin.AccessToken);
         using var sessions = await client.SendAsync(sessionsRequest);
         Assert.Equal(HttpStatusCode.OK, sessions.StatusCode);
+        Assert.Contains(
+            "no-store",
+            sessions.Headers.CacheControl?.ToString(),
+            StringComparison.OrdinalIgnoreCase);
 
         var refreshed = await RefreshAsync(
             client,
@@ -113,6 +121,16 @@ public sealed class AuthenticationFlowTests
                 refreshed.AccessToken);
         using var revoked = await client.SendAsync(revokeRequest);
         Assert.Equal(HttpStatusCode.NoContent, revoked.StatusCode);
+
+        using var replayRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/account/sessions");
+        replayRequest.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                refreshed.AccessToken);
+        using var replayed = await client.SendAsync(replayRequest);
+        Assert.Equal(HttpStatusCode.Unauthorized, replayed.StatusCode);
 
         var secondLogin = await LoginAsync(client);
         using var logout = CreateCookieMutation(
@@ -500,6 +518,10 @@ public sealed class AuthenticationFlowTests
             "/hello/account",
             cookies);
         Assert.Equal(HttpStatusCode.OK, account.StatusCode);
+        Assert.Contains(
+            "no-store",
+            account.Headers.CacheControl?.ToString(),
+            StringComparison.OrdinalIgnoreCase);
         var accountHtml = await account.Content.ReadAsStringAsync();
         Assert.Contains(
             "Browser Alice",
@@ -517,6 +539,10 @@ public sealed class AuthenticationFlowTests
             "/hello/account/sessions",
             cookies);
         Assert.Equal(HttpStatusCode.OK, sessionsPage.StatusCode);
+        Assert.Contains(
+            "no-store",
+            sessionsPage.Headers.CacheControl?.ToString(),
+            StringComparison.OrdinalIgnoreCase);
         MergeCookies(cookies, sessionsPage);
         var sessionsHtml =
             await sessionsPage.Content.ReadAsStringAsync();

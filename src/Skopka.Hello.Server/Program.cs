@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Net;
+using System.Reflection;
 using Skopka.Hello;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.Server;
@@ -43,21 +44,33 @@ var connectionString = configuration.GetConnectionString("Identity")
         "ConnectionStrings:Identity is required.");
 var signingKey = ReadSigningKey(
     configuration["SkopkaHello:Jwt:SigningKey"]);
-var issuer = configuration["SkopkaHello:Jwt:Issuer"]
-    ?? "https://localhost:8080";
-var audience = configuration["SkopkaHello:Jwt:Audience"]
-    ?? "skopka-hello-api";
-var secureCookies = configuration.GetValue(
-    "SkopkaHello:Cookies:Secure",
-    true);
 var publicOrigin = new Uri(
     configuration["SkopkaHello:PublicOrigin"]
         ?? throw new InvalidOperationException(
             "SkopkaHello:PublicOrigin is required."),
     UriKind.Absolute);
+var issuer = configuration["SkopkaHello:Jwt:Issuer"]
+    ?? publicOrigin.GetLeftPart(UriPartial.Authority);
+var audience = configuration["SkopkaHello:Jwt:Audience"]
+    ?? "skopka-hello-api";
+var secureCookies = configuration.GetValue(
+    "SkopkaHello:Cookies:Secure",
+    true);
 var selfRegistrationEnabled = configuration.GetValue(
     "SkopkaHello:SelfRegistration:Enabled",
     true);
+var registrationClientPermitLimit = configuration.GetValue(
+    "SkopkaHello:SelfRegistration:ClientPermitLimit",
+    5);
+var registrationClientWindow = configuration.GetValue(
+    "SkopkaHello:SelfRegistration:ClientWindow",
+    TimeSpan.FromHours(1));
+var registrationGlobalPermitLimit = configuration.GetValue(
+    "SkopkaHello:SelfRegistration:GlobalPermitLimit",
+    100);
+var registrationGlobalWindow = configuration.GetValue(
+    "SkopkaHello:SelfRegistration:GlobalWindow",
+    TimeSpan.FromMinutes(1));
 var uiPathPrefix = configuration[
         "SkopkaHello:Ui:PathPrefix"]
     ?? HelloUiRoutePaths.DefaultPathPrefix;
@@ -116,6 +129,12 @@ var identity = builder.Services
         options.ClientName = "Skopka.Hello.Server";
         options.PublicOrigin = publicOrigin;
         options.SelfRegistrationEnabled = selfRegistrationEnabled;
+        options.RegistrationClientPermitLimit =
+            registrationClientPermitLimit;
+        options.RegistrationClientWindow = registrationClientWindow;
+        options.RegistrationGlobalPermitLimit =
+            registrationGlobalPermitLimit;
+        options.RegistrationGlobalWindow = registrationGlobalWindow;
         options.UiPathPrefix = uiPathPrefix;
         if (!secureCookies)
         {
@@ -228,10 +247,20 @@ builder.Services.AddSkopkaHelloUi<
 });
 builder.Services.AddHostedService<
     IdentitySessionPruningWorker<HelloProfile>>();
+var rateLimitPruningOptions = new IdentityRateLimitPruningOptions();
+configuration.GetSection("SkopkaHello:RateLimitPruning")
+    .Bind(rateLimitPruningOptions);
+rateLimitPruningOptions.Validate();
+builder.Services.AddSingleton(rateLimitPruningOptions);
 builder.Services.AddHostedService<
     IdentityRateLimitPruningWorker<HelloProfile>>();
 
 var app = builder.Build();
+var serviceVersion = Assembly.GetEntryAssembly()?
+    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+    .InformationalVersion
+    ?? Assembly.GetEntryAssembly()?.GetName().Version?.ToString()
+    ?? "unknown";
 
 if (app.Environment.IsDevelopment())
 {
@@ -270,7 +299,7 @@ app.MapGet(
         new
         {
             name = "Skopka.Hello",
-            version = "0.3.0",
+            version = serviceVersion,
         }));
 app.MapGet(
     "/health/live",

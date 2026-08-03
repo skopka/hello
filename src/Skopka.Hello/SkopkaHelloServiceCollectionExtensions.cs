@@ -48,6 +48,8 @@ public static class SkopkaHelloServiceCollectionExtensions
             Skopka.Hello.HelloAnonymousAccountMessageRequester<TProfile>>();
         services.TryAddScoped<
             Skopka.Hello.HelloAnonymousAccountMessageProcessor<TProfile>>();
+        services.TryAddScoped<
+            Skopka.Hello.HelloRegistrationAdmission<TProfile>>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<
                 Microsoft.Extensions.Hosting.IHostedService,

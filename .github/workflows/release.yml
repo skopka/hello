@@ -26,7 +26,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Verify release commit belongs to main
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          TAG_COMMIT=$(git rev-list -n 1 "$RELEASE_TAG")
+          if ! git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
+            echo "Release tag must point to a commit reachable from origin/main." >&2
+            exit 1
+          fi
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
@@ -127,6 +139,41 @@ jobs:
           --api-key "$NUGET_API_KEY"
           --source "https://api.nuget.org/v3/index.json"
           --skip-duplicate
+
+      - name: Wait until every package is available on NuGet.org
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          VERSION_LOWER="${RELEASE_VERSION,,}"
+          PACKAGE_IDS=(
+            "skopka.hello"
+            "skopka.hello.admin"
+            "skopka.hello.endpoints"
+            "skopka.hello.oidc"
+            "skopka.hello.ui"
+          )
+
+          for ATTEMPT in {1..60}; do
+            MISSING=()
+            for PACKAGE_ID in "${PACKAGE_IDS[@]}"; do
+              PACKAGE_URL="https://api.nuget.org/v3-flatcontainer/${PACKAGE_ID}/${VERSION_LOWER}/${PACKAGE_ID}.${VERSION_LOWER}.nupkg"
+              if ! curl --fail --silent --show-error --head "$PACKAGE_URL" > /dev/null; then
+                MISSING+=("$PACKAGE_ID")
+              fi
+            done
+
+            if [[ "${#MISSING[@]}" -eq 0 ]]; then
+              echo "All packages are available on NuGet.org."
+              exit 0
+            fi
+
+            echo "Attempt ${ATTEMPT}: waiting for ${MISSING[*]}"
+            sleep 10
+          done
+
+          echo "Not every package became available on NuGet.org within ten minutes." >&2
+          exit 1
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2

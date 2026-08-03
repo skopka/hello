@@ -10,7 +10,7 @@ provider integration, host composition and a package boundary for
 administration. Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
-The current `0.3.0` vertical slice contains:
+The current `0.3.1` vertical slice contains:
 
 - atomic password registration;
 - automatic email, phone or user-name password login without user

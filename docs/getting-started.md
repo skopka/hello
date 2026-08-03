@@ -92,12 +92,20 @@ SkopkaHello__DataProtection__KeyPath=/protected/data-protection
 `PublicOrigin` is the externally reachable HTTP(S) origin used to build
 confirmation and password-reset links and external OIDC callback URIs. It must
 not contain credentials, a path, query or fragment. It is configuration, never
-inferred from the request `Host` header.
+inferred from the request `Host` header. `Jwt:Issuer` defaults to this trusted
+origin; set it explicitly only when tokens deliberately use a different
+issuer.
 
 `SelfRegistration:Enabled` controls both password and external OIDC account
 creation. When false, the ready Server does not map `/auth/register`, the
 password registration page or the pending external-registration page. Existing
 users can still sign in and manage linked providers.
+
+Enabled registration is protected by persistent client and global limits under
+`SelfRegistration:ClientPermitLimit`, `ClientWindow`, `GlobalPermitLimit` and
+`GlobalWindow`. Hosts can add CAPTCHA, invitation or tenant admission rules by
+registering one or more `IHelloRegistrationAdmissionPolicy` implementations;
+these policies run before a rate-limit permit is consumed.
 
 `Ui:PathPrefix` is a startup-only route prefix for the built-in Razor UI. It
 defaults to `/hello` and must be a non-empty absolute prefix other than `/`.

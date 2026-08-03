@@ -158,8 +158,11 @@ Hello applies the configured Identity verification client limit to the trusted
 server-derived client key and the verification intent limit plus resend
 cooldown to the normalized target. The persistent HMAC rate limiter used by the
 ready Server makes these partitions atomic across replicas. A denied decision
-or full anonymous queue is silently dropped; it does not change the HTTP
-response. Queue admission happens before exact normalized lookup, token
+or full anonymous queue is silently dropped from the caller's perspective; it
+does not change the HTTP response. Queue saturation emits safe event `2001`
+and increments `skopka.hello.account_message.queue.dropped` from the
+`Skopka.Hello` meter without recording the target. Queue admission happens
+before exact normalized lookup, token
 issuance and provider dispatch, so known and unknown targets share the complete
 HTTP path. An edge rate limit remains useful as an additional coarse
 protection.

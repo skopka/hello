@@ -497,8 +497,39 @@ internal sealed class HelloOidcApplication<TProfile>(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        await HelloOidcTicketService.DeleteExternalAsync(httpContext);
-        await HelloOidcTicketService.DeletePendingAsync(httpContext);
+        try
+        {
+            var external = await tickets.ReadExternalAsync(httpContext);
+            var pending = await tickets.ReadPendingAsync(httpContext);
+            if (external.IsSuccess)
+            {
+                await flows.TryConsumeAsync(
+                    external.Value.FlowId,
+                    external.Value.ExpiresAt,
+                    cancellationToken);
+            }
+
+            if (pending.IsSuccess)
+            {
+                await flows.TryConsumeAsync(
+                    pending.Value.FlowId,
+                    pending.Value.ExpiresAt,
+                    cancellationToken);
+            }
+        }
+        finally
+        {
+            try
+            {
+                await HelloOidcTicketService.DeleteExternalAsync(
+                    httpContext);
+            }
+            finally
+            {
+                await HelloOidcTicketService.DeletePendingAsync(
+                    httpContext);
+            }
+        }
     }
 
     private async Task<OperationResult<HelloSignIn<TProfile>>>

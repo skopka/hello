@@ -4,6 +4,7 @@ using Skopka.Identity;
 using Skopka.Identity.Authentication;
 using Skopka.Identity.Errors;
 using Skopka.Identity.RateLimiting;
+using Microsoft.Extensions.Logging;
 
 namespace Skopka.Hello;
 
@@ -18,17 +19,29 @@ internal sealed class HelloAnonymousAccountMessageRequester<TProfile>
     private readonly IdentityRateLimitOptions rateLimitOptions;
     private readonly IIdentityRateLimiter<TProfile>? rateLimiter;
     private readonly HelloAnonymousAccountMessageQueue<TProfile> queue;
+    private readonly ILogger<HelloAnonymousAccountMessageRequester<TProfile>>?
+        logger;
+    private static readonly Action<ILogger, HelloAccountMessageKind,
+        Guid, Exception?> LogQueueFull = LoggerMessage.Define<
+            HelloAccountMessageKind,
+            Guid>(
+                LogLevel.Warning,
+                new EventId(2001, "AnonymousAccountMessageQueueFull"),
+                "Dropped anonymous {MessageKind} account-message request {MessageId} because the queue is full.");
 
     public HelloAnonymousAccountMessageRequester(
         IIdentityNormalizer normalizer,
         IdentityRateLimitOptions rateLimitOptions,
         IEnumerable<IIdentityRateLimiter<TProfile>> rateLimiters,
-        HelloAnonymousAccountMessageQueue<TProfile> queue)
+        HelloAnonymousAccountMessageQueue<TProfile> queue,
+        ILogger<HelloAnonymousAccountMessageRequester<TProfile>>? logger =
+            null)
     {
         this.normalizer = normalizer;
         this.rateLimitOptions = rateLimitOptions;
         rateLimiter = rateLimiters.FirstOrDefault();
         this.queue = queue;
+        this.logger = logger;
     }
 
     public async Task<OperationResult> EnqueueAsync(
@@ -74,11 +87,23 @@ internal sealed class HelloAnonymousAccountMessageRequester<TProfile>
             }
         }
 
-        _ = queue.TryWrite(
-            new HelloAnonymousAccountMessageRequest(
-                Guid.NewGuid(),
-                kind,
-                normalizedTarget.Value));
+        var request = new HelloAnonymousAccountMessageRequest(
+            Guid.NewGuid(),
+            kind,
+            normalizedTarget.Value);
+        if (!queue.TryWrite(request))
+        {
+            HelloDiagnostics.AnonymousQueueDrops.Add(
+                1,
+                new KeyValuePair<string, object?>(
+                    "message.kind",
+                    kind.ToString()));
+            if (logger is not null)
+            {
+                LogQueueFull(logger, kind, request.MessageId, null);
+            }
+        }
+
         return OperationResultFactory.Success();
     }
 

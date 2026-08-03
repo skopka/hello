@@ -21,7 +21,8 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
     IIdentityVerificationService<TProfile> verification,
     IHelloAccountMessageSender messageSender,
     HelloDeliveryOptions deliveryOptions,
-    SkopkaHelloOptions options)
+    SkopkaHelloOptions options,
+    HelloRegistrationAdmission<TProfile>? registrationAdmission = null)
     : IHelloExternalIdentityApplication<TProfile>
 {
     public async Task<OperationResult<HelloSignIn<TProfile>>> SignInAsync(
@@ -53,6 +54,18 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
             return OperationResultFactory.Fail<
                 HelloSignIn<TProfile>>(
                     HelloRegistrationErrors.Disabled());
+        }
+
+        if (registrationAdmission is not null)
+        {
+            var admitted = await registrationAdmission.CheckAsync(
+                HelloRegistrationKind.External,
+                cancellationToken);
+            if (!admitted.IsSuccess)
+            {
+                return OperationResultFactory.Fail<
+                    HelloSignIn<TProfile>>(admitted.Errors);
+            }
         }
 
         var registered = await registration.RegisterExternalAsync(

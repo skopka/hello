@@ -19,6 +19,7 @@ public sealed class SessionsModel(
     public async Task<IActionResult> OnGetAsync(
         CancellationToken cancellationToken)
     {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
         if (!TryGetIdentity(out var userId, out _))
         {
             return Challenge();
@@ -32,6 +33,7 @@ public sealed class SessionsModel(
         Guid sessionId,
         CancellationToken cancellationToken)
     {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
         if (!TryGetIdentity(
                 out var userId,
                 out var currentSessionId))
@@ -64,6 +66,7 @@ public sealed class SessionsModel(
     public async Task<IActionResult> OnPostLogoutAllAsync(
         CancellationToken cancellationToken)
     {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
         if (!TryGetIdentity(out var userId, out _))
         {
             return Challenge();

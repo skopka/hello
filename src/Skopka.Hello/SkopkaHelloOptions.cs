@@ -6,6 +6,16 @@ public sealed class SkopkaHelloOptions
 {
     public bool SelfRegistrationEnabled { get; set; } = true;
 
+    public int RegistrationClientPermitLimit { get; set; } = 5;
+
+    public TimeSpan RegistrationClientWindow { get; set; } =
+        TimeSpan.FromHours(1);
+
+    public int RegistrationGlobalPermitLimit { get; set; } = 100;
+
+    public TimeSpan RegistrationGlobalWindow { get; set; } =
+        TimeSpan.FromMinutes(1);
+
     public string UiPathPrefix { get; set; } =
         HelloUiRoutePaths.DefaultPathPrefix;
 
@@ -39,6 +49,15 @@ public sealed class SkopkaHelloOptions
             AntiforgeryRequestCookieName);
         ArgumentException.ThrowIfNullOrWhiteSpace(AntiforgeryHeaderName);
         ArgumentException.ThrowIfNullOrWhiteSpace(ClientName);
+
+        if (RegistrationClientPermitLimit <= 0
+            || RegistrationClientWindow <= TimeSpan.Zero
+            || RegistrationGlobalPermitLimit <= 0
+            || RegistrationGlobalWindow <= TimeSpan.Zero)
+        {
+            throw new InvalidOperationException(
+                "Registration rate-limit permit counts and windows must be positive.");
+        }
 
         if (PublicOrigin is not null
             && (!PublicOrigin.IsAbsoluteUri

@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -293,13 +292,25 @@ public static class HelloEndpointRouteBuilderExtensions
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        if (!TryReadUserId(httpContext.User, out var userId))
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
         {
             return InvalidSession(httpContext);
         }
 
+        var validated = await application.ValidateAccessTokenAsync(
+            accessToken,
+            cancellationToken);
+        if (!validated.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                validated,
+                httpContext);
+        }
+
         var revoked = await application.LogoutAllAsync(
-            userId,
+            validated.Value.Id,
             cancellationToken);
         if (!revoked.IsSuccess)
         {
@@ -435,6 +446,7 @@ public static class HelloEndpointRouteBuilderExtensions
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        ApplySensitiveResponseHeaders(httpContext);
         var accessToken = ReadBearerToken(httpContext);
         if (accessToken is null)
         {
@@ -456,13 +468,25 @@ public static class HelloEndpointRouteBuilderExtensions
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        if (!TryReadUserId(httpContext.User, out var userId))
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
         {
             return InvalidSession(httpContext);
         }
 
+        var validated = await application.ValidateAccessTokenAsync(
+            accessToken,
+            cancellationToken);
+        if (!validated.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                validated,
+                httpContext);
+        }
+
         var listed = await application.ListSessionsAsync(
-            userId,
+            validated.Value.Id,
             cancellationToken);
         return listed.IsSuccess
             ? TypedResults.Ok(
@@ -479,6 +503,7 @@ public static class HelloEndpointRouteBuilderExtensions
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        ApplySensitiveResponseHeaders(httpContext);
         var accessToken = ReadBearerToken(httpContext);
         if (accessToken is null)
         {
@@ -495,7 +520,6 @@ public static class HelloEndpointRouteBuilderExtensions
                 httpContext);
         }
 
-        httpContext.Response.Headers.CacheControl = "no-store";
         return TypedResults.Ok(
             listed.Value
                 .Select(provider =>
@@ -513,13 +537,25 @@ public static class HelloEndpointRouteBuilderExtensions
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        if (!TryReadUserId(httpContext.User, out var userId))
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
         {
             return InvalidSession(httpContext);
         }
 
+        var validated = await application.ValidateAccessTokenAsync(
+            accessToken,
+            cancellationToken);
+        if (!validated.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                validated,
+                httpContext);
+        }
+
         var revoked = await application.RevokeSessionAsync(
-            userId,
+            validated.Value.Id,
             sessionId,
             cancellationToken);
         return revoked.IsSuccess
@@ -536,6 +572,7 @@ public static class HelloEndpointRouteBuilderExtensions
             HttpContext httpContext,
             CancellationToken cancellationToken)
     {
+        ApplySensitiveResponseHeaders(httpContext);
         var accessToken = ReadBearerToken(httpContext);
         if (accessToken is null)
         {
@@ -567,6 +604,7 @@ public static class HelloEndpointRouteBuilderExtensions
             HttpContext httpContext,
             CancellationToken cancellationToken)
     {
+        ApplySensitiveResponseHeaders(httpContext);
         var accessToken = ReadBearerToken(httpContext);
         if (accessToken is null)
         {
@@ -605,15 +643,6 @@ public static class HelloEndpointRouteBuilderExtensions
                 }),
             httpContext);
 
-    private static bool TryReadUserId(
-        ClaimsPrincipal principal,
-        out Guid userId)
-    {
-        var subject = principal.FindFirstValue("sub")
-            ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);
-        return Guid.TryParse(subject, out userId);
-    }
-
     private static string? ReadBearerToken(HttpContext httpContext)
     {
         var authorization =
@@ -628,6 +657,14 @@ public static class HelloEndpointRouteBuilderExtensions
 
         var token = authorization[prefix.Length..].Trim();
         return string.IsNullOrWhiteSpace(token) ? null : token;
+    }
+
+    private static void ApplySensitiveResponseHeaders(
+        HttpContext httpContext)
+    {
+        httpContext.Response.Headers.CacheControl =
+            "no-store, max-age=0";
+        httpContext.Response.Headers.Pragma = "no-cache";
     }
 
     private static AccountResponse<TProfile> ToAccountResponse<TProfile>(

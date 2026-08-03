@@ -5,8 +5,8 @@ Read `../../AGENTS.md` first.
 This executable composes PostgreSQL, the selected password hasher, JWT sessions,
 versioned persistent rate limiting, versioned OTP HMAC verification, bearer
 validation, endpoints, health checks and Docker behavior. Keep secrets outside
-source and appsettings. Migrations run only behind the explicit configuration
-switch and must not race across production replicas.
+source and appsettings. Migrations run only through the one-shot `--migrate`
+command and must complete before production replicas start.
 
 Rate-limit HMAC keys use a current version and optional overlapping historical
 versions. All replicas must share the configured key material during overlap.

@@ -40,12 +40,30 @@ if (args is ["--health-check"])
     return;
 }
 
-var builder = WebApplication.CreateBuilder(args);
+var migrationCommand = args is ["--migrate"];
+if (!migrationCommand
+    && args.Contains("--migrate", StringComparer.Ordinal))
+{
+    throw new InvalidOperationException(
+        "--migrate must be used as the only command-line argument.");
+}
+
+var builder = WebApplication.CreateBuilder(
+    migrationCommand ? [] : args);
 var configuration = builder.Configuration;
 
 var connectionString = configuration.GetConnectionString("Identity")
     ?? throw new InvalidOperationException(
         "ConnectionStrings:Identity is required.");
+
+if (migrationCommand)
+{
+    await ApplyIdentityMigrationsAsync(
+        connectionString,
+        CancellationToken.None);
+    return;
+}
+
 var signingKey = ReadSigningKey(
     configuration["SkopkaHello:Jwt:SigningKey"]);
 var publicOrigin = new Uri(
@@ -330,16 +348,6 @@ app.MapSkopkaHello<HelloProfile>();
 app.MapSkopkaHelloAdmin<HelloProfile>();
 app.MapSkopkaHelloUi();
 
-if (configuration.GetValue(
-        "SkopkaHello:Database:ApplyMigrations",
-        false))
-{
-    await using var scope = app.Services.CreateAsyncScope();
-    var database = scope.ServiceProvider.GetRequiredService<
-        PostgreSqlIdentityDbContext<HelloProfile>>();
-    await database.Database.MigrateAsync();
-}
-
 if (TryReadBootstrapAdminUserId(args, out var bootstrapAdminUserId))
 {
     await BootstrapAdministratorAsync(
@@ -350,6 +358,39 @@ if (TryReadBootstrapAdminUserId(args, out var bootstrapAdminUserId))
 }
 
 await app.RunAsync();
+
+static async Task ApplyIdentityMigrationsAsync(
+    string connectionString,
+    CancellationToken cancellationToken)
+{
+    var options = new DbContextOptionsBuilder<
+            PostgreSqlIdentityDbContext<HelloProfile>>()
+        .UseNpgsql(connectionString)
+        .Options;
+    await using var database =
+        new PostgreSqlIdentityDbContext<HelloProfile>(options);
+    var pending = (await database.Database
+            .GetPendingMigrationsAsync(cancellationToken))
+        .ToArray();
+
+    if (pending.Length == 0)
+    {
+        Console.WriteLine("Identity database is up to date.");
+        return;
+    }
+
+    await database.Database.MigrateAsync(cancellationToken);
+    if ((await database.Database
+            .GetPendingMigrationsAsync(cancellationToken))
+        .Any())
+    {
+        throw new InvalidOperationException(
+            "Identity database migrations did not complete.");
+    }
+
+    Console.WriteLine(
+        $"Applied {pending.Length} Identity database migration(s).");
+}
 
 static bool TryReadBootstrapAdminUserId(
     string[] arguments,

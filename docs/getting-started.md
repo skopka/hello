@@ -10,12 +10,12 @@
 ## Configure the server
 
 The checked-in development configuration connects to the local PostgreSQL
-container at `127.0.0.1:5432`, applies migrations on startup and uses
-`https://localhost:8443` as both its public origin and JWT issuer. Start only
-the database from the repository root:
+container at `127.0.0.1:5432` and uses `https://localhost:8443` as both its
+public origin and JWT issuer. Start only the database from the repository root:
 
 ```powershell
 docker compose -f .\deploy\docker-compose.postgres.yml up -d --wait
+dotnet run --project .\src\Skopka.Hello.Server -- --migrate
 ```
 
 The database port is bound only to `127.0.0.1`. The known `skopka-local`
@@ -87,7 +87,6 @@ SkopkaHello__Admin__ApiPathPrefix=/admin
 SkopkaHello__Admin__RazorUiEnabled=true
 SkopkaHello__RateLimiting__CurrentVersion=v1
 SkopkaHello__Verification__CurrentVersion=v1
-SkopkaHello__Database__ApplyMigrations=false
 SkopkaHello__DataProtection__KeyPath=/protected/data-protection
 ```
 
@@ -219,8 +218,10 @@ Email confirmation, password reset, password-change OTP and purpose-specific
 external link/unlink OTP delivery all use this dispatcher. Step-up challenge
 requests report a delivery error when their channel has no configured provider.
 
-`ApplyMigrations=true` is intended for local development or a single controlled
-deployment job, not every production replica.
+The web process never changes the database schema. Run the one-shot
+`--migrate` command before starting a new application version. It reads only
+`ConnectionStrings:Identity`, exits successfully when the schema is already up
+to date, and must be serialized by the deployment platform.
 
 Rate-limit and verification key versions are non-secret stable identifiers.
 Generate each purpose's key independently; never reuse the JWT signing key,
@@ -273,9 +274,10 @@ Or create `.env` from `.env.example` and run:
 docker compose -f .\deploy\docker-compose.yml up --build
 ```
 
-The local compose file explicitly uses non-secure, non-`__Host-` cookie names
-because it publishes plain HTTP on localhost. Keep the production default
-(`SkopkaHello:Cookies:Secure=true`) behind TLS.
+The local compose file first runs the one-shot `migrate` service and starts the
+web service only after migrations succeed. It explicitly uses non-secure,
+non-`__Host-` cookie names because it publishes plain HTTP on localhost. Keep
+the production default (`SkopkaHello:Cookies:Secure=true`) behind TLS.
 
 Compose also mounts [deploy/customization/custom.css](../deploy/customization/custom.css)
 read-only. The server publishes it at

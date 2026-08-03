@@ -178,9 +178,20 @@ login.
 
 Skopka.Identity PostgreSQL migrations are packaged in
 `Skopka.Identity.Ef.PostgreSql`. Apply them once as a controlled deployment
-step. The server's `SkopkaHello:Database:ApplyMigrations` switch is convenient
-for the single-replica compose stack but should normally be false on replicated
-production workloads.
+step before starting the new web replicas:
+
+```powershell
+docker run --rm `
+  -e ConnectionStrings__Identity="Host=..." `
+  ghcr.io/skopka/hello:<version> --migrate
+```
+
+The command reads only `ConnectionStrings:Identity`, applies all pending
+Skopka.Identity migrations, verifies that none remain and then exits. It is
+idempotent, but the deployment platform must serialize migration jobs. The web
+process never applies migrations during startup. The provided Compose stack
+models the same ordering with a one-shot `migrate` service and
+`service_completed_successfully` dependency.
 
 Back up the PostgreSQL database and Data Protection key ring and test restoring
 them together.

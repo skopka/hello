@@ -6,8 +6,10 @@ as one coordinated release.
 
 ## Repository setup
 
-Create a NuGet.org API key that can publish every package listed below and store
-it in the GitHub repository Actions secret named `NUGET_API_KEY`:
+Create a protected GitHub Actions environment named `release`, restrict it to
+version tags and require a reviewer. Create a NuGet.org API key that can
+publish every package listed below and store it as the environment secret
+named `NUGET_API_KEY`:
 
 - `Skopka.Hello`
 - `Skopka.Hello.Admin`
@@ -44,10 +46,12 @@ NuGet package version. The tag's base version must equal `VersionPrefix` in
 without build metadata; stable and prerelease versions are supported. Before
 any publication, one job restores, verifies formatting, builds, runs the unit
 and PostgreSQL Testcontainers integration tests, audits dependencies, packs
-the complete solution and verifies the exact five package and symbol package
-filenames. The tagged commit must be reachable from `origin/main`.
+the complete solution, verifies the exact five package and symbol package
+filenames and restores a standalone consumer from those package files. The
+tagged commit must be reachable from `origin/main`.
 Third-party Actions are pinned to reviewed commit SHAs; Dependabot proposes
-updates to those pins.
+updates to those pins. The .NET SDK and runtime images are pinned to manifest
+digests, with Docker Dependabot updates enabled separately.
 
 Before the first immutable write, the NuGet job proves that none of the five
 package IDs already has that version. It then submits the packages in dependency

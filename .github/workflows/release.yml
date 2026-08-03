@@ -151,6 +151,25 @@ jobs:
             exit 1
           fi
 
+      - name: Restore package consumer
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: >
+          dotnet restore tests/Skopka.Hello.PackageConsumer/Skopka.Hello.PackageConsumer.csproj
+          --source "${{ github.workspace }}/artifacts/packages"
+          --source "https://api.nuget.org/v3/index.json"
+          -p:HelloPackageVersion="$RELEASE_VERSION"
+
+      - name: Run package consumer
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: >
+          dotnet run
+          --project tests/Skopka.Hello.PackageConsumer/Skopka.Hello.PackageConsumer.csproj
+          --configuration Release
+          --no-restore
+          -p:HelloPackageVersion="$RELEASE_VERSION"
+
       - name: Build server container
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.value }}
@@ -175,6 +194,7 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: release
 
     steps:
       - name: Check out release metadata

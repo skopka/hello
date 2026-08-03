@@ -158,12 +158,17 @@ the old sessions and issue a fresh session to the current browser. Protected
 flow ids make terminal external submissions one-use; the ready Server persists
 that replay guard through its HMAC-backed rate limiter.
 
-See [getting started](docs/getting-started.md) for configuration and requests,
-[administration](docs/administration.md) for policy, projection and bootstrap,
-[architecture](docs/architecture.md) for boundaries and
-[customization](docs/customization.md) for custom CSS volumes, and
-[security](docs/security.md) before deploying. Coordinated package publication
-is documented in [releasing](docs/releasing.md).
+See [getting started](https://github.com/skopka/hello/blob/main/docs/getting-started.md)
+for configuration and requests,
+[administration](https://github.com/skopka/hello/blob/main/docs/administration.md)
+for policy, projection and bootstrap,
+[architecture](https://github.com/skopka/hello/blob/main/docs/architecture.md)
+for boundaries and
+[customization](https://github.com/skopka/hello/blob/main/docs/customization.md)
+for custom CSS volumes, and
+[security](https://github.com/skopka/hello/blob/main/docs/security.md) before
+deploying. Coordinated package publication is documented in
+[releasing](https://github.com/skopka/hello/blob/main/docs/releasing.md).
 
 ## Build and test
 
@@ -181,8 +186,10 @@ PostgreSQL container.
 
 ## License and security
 
-Licensed under the [Apache License 2.0](LICENSE). The software is provided on an
-“AS IS” basis, without warranties or conditions of any kind.
+Licensed under the
+[Apache License 2.0](https://github.com/skopka/hello/blob/main/LICENSE). The
+software is provided on an “AS IS” basis, without warranties or conditions of
+any kind.
 
 Do not report vulnerabilities in public issues. Follow
-[SECURITY.md](SECURITY.md).
+[SECURITY.md](https://github.com/skopka/hello/blob/main/SECURITY.md).

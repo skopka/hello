@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <HelloPackageVersion Condition="'$(HelloPackageVersion)' == ''">0.5.0</HelloPackageVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Skopka.Hello"
+                      Version="$(HelloPackageVersion)" />
+    <PackageReference Include="Skopka.Hello.Admin"
+                      Version="$(HelloPackageVersion)" />
+    <PackageReference Include="Skopka.Hello.Endpoints"
+                      Version="$(HelloPackageVersion)" />
+    <PackageReference Include="Skopka.Hello.Oidc"
+                      Version="$(HelloPackageVersion)" />
+    <PackageReference Include="Skopka.Hello.UI"
+                      Version="$(HelloPackageVersion)" />
+  </ItemGroup>
+</Project>

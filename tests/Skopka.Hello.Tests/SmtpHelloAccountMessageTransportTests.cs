@@ -15,6 +15,10 @@ public sealed class SmtpHelloAccountMessageTransportTests
         HelloAccountMessageKind.ExternalLoginUnlinkVerification,
         "Confirm external sign-in removal",
         "remove an external sign-in provider")]
+    [InlineData(
+        HelloAccountMessageKind.AccountSecurityVerification,
+        "Confirm account security action",
+        "authorize the requested account security action")]
     public void VerificationKindsRenderPurposeSpecificMultipartEmail(
         HelloAccountMessageKind kind,
         string expectedSubject,

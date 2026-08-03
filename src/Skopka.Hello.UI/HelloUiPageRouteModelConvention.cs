@@ -40,6 +40,8 @@ internal sealed class HelloUiPageRouteModelConvention(
                 routes.SessionsPath,
             ["/Pages/SkopkaHello/Account/ChangePassword.cshtml"] =
                 routes.ChangePasswordPath,
+            ["/Pages/SkopkaHello/Account/Security.cshtml"] =
+                routes.AccountSecurityPath,
             ["/Pages/SkopkaHello/Account/ExternalLogins.cshtml"] =
                 routes.ExternalLoginsPath,
         };

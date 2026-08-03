@@ -63,14 +63,90 @@
         </div>
     </dl>
 
+    <h2>Sign-in handles</h2>
+    <p class="hello-muted">
+        Changing an email address or phone number resets its confirmation.
+        Leave an optional value empty to remove it. Password sign-in must
+        retain at least one user name, email address or phone number.
+    </p>
+
+    <form method="post"
+          asp-page-handler="ChangeUserName"
+          class="hello-form">
+        <input asp-for="UserNameInput.ExpectedVersion" type="hidden" />
+        <label asp-for="UserNameInput.UserName"></label>
+        <input asp-for="UserNameInput.UserName"
+               autocomplete="username" />
+        <span asp-validation-for="UserNameInput.UserName"
+              class="hello-field-error"></span>
+        <button class="hello-button hello-button-secondary"
+                type="submit">
+            Change user name
+        </button>
+    </form>
+
+    <form method="post"
+          asp-page-handler="ChangeEmail"
+          class="hello-form">
+        <input asp-for="EmailInput.ExpectedVersion" type="hidden" />
+        <label asp-for="EmailInput.Email"></label>
+        <input asp-for="EmailInput.Email" autocomplete="email" />
+        <span asp-validation-for="EmailInput.Email"
+              class="hello-field-error"></span>
+        <button class="hello-button hello-button-secondary"
+                type="submit">
+            Change email
+        </button>
+    </form>
+
+    <form method="post"
+          asp-page-handler="ChangePhone"
+          class="hello-form">
+        <input asp-for="PhoneInput.ExpectedVersion" type="hidden" />
+        <label asp-for="PhoneInput.Phone"></label>
+        <input asp-for="PhoneInput.Phone" autocomplete="tel" />
+        <span asp-validation-for="PhoneInput.Phone"
+              class="hello-field-error"></span>
+        <button class="hello-button hello-button-secondary"
+                type="submit">
+            Change phone
+        </button>
+    </form>
+
+    @if (Model.ProfileFields.Count > 0)
+    {
+        <h2>Editable profile</h2>
+        <form method="post"
+              asp-page-handler="UpdateProfile"
+              class="hello-form">
+            <input asp-for="ProfileExpectedVersion" type="hidden" />
+            @foreach (var field in Model.ProfileFields)
+            {
+                var fieldId = $"hello-profile-{field.Name}";
+                <label for="@fieldId">@field.Label</label>
+                <input id="@fieldId"
+                       name="ProfileValues[@field.Name]"
+                       value="@field.Value"
+                       type="@field.InputType"
+                       autocomplete="@field.AutoComplete"
+                       maxlength="@field.MaximumLength"
+                       required="@field.Required" />
+            }
+            <button class="hello-button hello-button-secondary"
+                    type="submit">
+                Update profile
+            </button>
+        </form>
+    }
+
     <div class="hello-actions">
         <a class="hello-button"
            asp-page="/SkopkaHello/Account/Sessions">
             Manage sessions
         </a>
         <a class="hello-button hello-button-secondary"
-           asp-page="/SkopkaHello/Account/ChangePassword">
-            Change password
+           asp-page="/SkopkaHello/Account/Security">
+            Credentials and deletion
         </a>
         @if (ExternalIdentity.IsConfigured)
         {

@@ -336,6 +336,32 @@ GET /account/me
 Authorization: Bearer <access-token>
 ```
 
+The response includes the current optimistic `version`. Use it for account
+self-service mutations so concurrent edits are detected:
+
+```http
+PUT /account/profile
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "expectedVersion": 3,
+  "profile": {
+    "displayName": "Alice Updated",
+    "locale": "en"
+  }
+}
+```
+
+The same contract is available at `PUT /account/user-name`,
+`PUT /account/email` and `PUT /account/phone`. Changing an email or phone
+resets its confirmation. A stale version returns `409 Conflict`; callers must
+reload `/account/me` instead of overwriting a concurrent change. The generic
+profile type is the exact `TProfile` registered by the host. A password account
+cannot remove its final user name, email or phone because that would leave the
+credential without a usable login identifier. An external-only account may
+remain without a local handle.
+
 When OIDC is registered, clients may discover the safe provider catalog:
 
 ```http
@@ -428,6 +454,37 @@ single-use. A successful change rotates the security stamp, revokes all
 sessions and requires a fresh login. With the default prefix, the Razor page at
 `/hello/account/change-password` uses the same application operation and
 antiforgery-protected POSTs.
+
+## Set or remove a password and delete an account
+
+An externally registered account can set a password after requesting
+`POST /account/password/set/challenge`, then completing:
+
+```http
+PUT /account/password
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "challengeId": "00000000-0000-0000-0000-000000000000",
+  "verificationCode": "123456",
+  "newPassword": "a sufficiently long passphrase"
+}
+```
+
+At least one user name, email address or phone number must already be present,
+so the newly configured password has a usable login identifier.
+
+Password removal uses `POST /account/password/remove/challenge` followed by
+`DELETE /account/password` with `challengeId` and `verificationCode` in the
+JSON body. Hello refuses removal unless another external sign-in method is
+linked. Account deletion uses `POST /account/delete/challenge` followed by
+`DELETE /account` with the same completion body.
+
+All three actions require the configured confirmed delivery contact, bind the
+single-use proof to the exact action, revoke every session on success and
+require a fresh sign-in where the account still exists. The built-in UI exposes
+them at `/hello/account/security` with the default prefix.
 
 ## Browser session behavior
 

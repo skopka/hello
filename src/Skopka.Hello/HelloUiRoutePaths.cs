@@ -23,6 +23,7 @@ public sealed class HelloUiRoutePaths
         AccountPath = Append("/account");
         SessionsPath = Append("/account/sessions");
         ChangePasswordPath = Append("/account/change-password");
+        AccountSecurityPath = Append("/account/security");
         ExternalCompletionPath = Append("/external/complete");
         ExternalRegistrationPath = Append("/external/register");
         ExternalLoginsPath = Append("/account/external-logins");
@@ -53,6 +54,8 @@ public sealed class HelloUiRoutePaths
     public string SessionsPath { get; }
 
     public string ChangePasswordPath { get; }
+
+    public string AccountSecurityPath { get; }
 
     public string ExternalCompletionPath { get; }
 

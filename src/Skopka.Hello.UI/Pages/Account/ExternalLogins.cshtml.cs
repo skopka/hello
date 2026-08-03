@@ -21,7 +21,7 @@ public sealed class ExternalLoginsModel(
         application.Providers;
 
     public IReadOnlyList<HelloOidcLinkedProvider> LinkedProviders
-        { get; private set; } = [];
+    { get; private set; } = [];
 
     public HelloOidcProvider? PendingProvider { get; private set; }
 

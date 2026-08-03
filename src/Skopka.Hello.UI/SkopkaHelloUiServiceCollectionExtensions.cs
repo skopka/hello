@@ -36,9 +36,19 @@ public static class SkopkaHelloUiServiceCollectionExtensions
         options.Validate();
         services.AddSingleton(options);
 
+        services.TryAddScoped<TProfileFactory>();
         services.TryAddScoped<
-            Skopka.Hello.UI.IHelloUiProfileFactory<TProfile>,
-            TProfileFactory>();
+            Skopka.Hello.UI.IHelloUiProfileFactory<TProfile>>(
+            provider => provider.GetRequiredService<TProfileFactory>());
+        if (typeof(Skopka.Hello.UI.IHelloUiProfileEditor<TProfile>)
+            .IsAssignableFrom(typeof(TProfileFactory)))
+        {
+            services.TryAddScoped<
+                Skopka.Hello.UI.IHelloUiProfileEditor<TProfile>>(
+                provider =>
+                    (Skopka.Hello.UI.IHelloUiProfileEditor<TProfile>)
+                    provider.GetRequiredService<TProfileFactory>());
+        }
         services.TryAddScoped<
             Skopka.Hello.UI.IHelloUiApplication,
             Skopka.Hello.UI.HelloUiApplication<TProfile>>();

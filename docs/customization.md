@@ -74,6 +74,47 @@ app.MapSkopkaHelloUi();
 returns `OperationResult<TProfile>`. Profile construction therefore stays
 outside Razor page models.
 
+To expose host-defined profile fields on the account page, the same factory
+can also implement `IHelloUiProfileEditor<TProfile>`:
+
+```csharp
+public sealed class MyProfileUiFactory
+    : IHelloUiProfileFactory<MyProfile>,
+      IHelloUiProfileEditor<MyProfile>
+{
+    // Create(...) and GetDisplayName(...) omitted.
+
+    public IReadOnlyList<HelloUiProfileField> GetFields(MyProfile profile) =>
+    [
+        new("displayName", "Display name", profile.DisplayName,
+            AutoComplete: "name", Required: true, MaximumLength: 200),
+        new("locale", "Locale", profile.Locale, MaximumLength: 32),
+    ];
+
+    public OperationResult<MyProfile> Update(
+        MyProfile current,
+        IReadOnlyDictionary<string, string?> values)
+    {
+        values.TryGetValue("displayName", out var displayName);
+        values.TryGetValue("locale", out var locale);
+        return string.IsNullOrWhiteSpace(displayName)
+            ? OperationResultFactory.Fail<MyProfile>(
+                new Error(
+                    "profile.display_name_required",
+                    "Display name is required.",
+                    ErrorType.Validation))
+            : OperationResultFactory.Success(
+                new MyProfile(displayName.Trim(), locale?.Trim()));
+    }
+}
+```
+
+Hello renders the declared fields, but the host owns their schema, validation
+and mapping. The update is sent to Skopka.Identity with the user's current
+optimistic version. If the factory does not implement the editor, generic
+profile editing is simply omitted from the built-in UI; the typed
+`PUT /account/profile` API remains available.
+
 The built-in pages are derived from `SkopkaHelloOptions.UiPathPrefix`. With the
 default `/hello` prefix they are:
 
@@ -89,6 +130,7 @@ default `/hello` prefix they are:
 /hello/account
 /hello/account/sessions
 /hello/account/change-password
+/hello/account/security
 /hello/account/external-logins
 ```
 

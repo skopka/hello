@@ -125,10 +125,9 @@ public sealed class ExternalRegisterModel(
         [Display(Name = "Display name")]
         public string DisplayName { get; set; } = string.Empty;
 
-        [Required]
         [EmailAddress]
         [StringLength(320)]
-        public string Email { get; set; } = string.Empty;
+        public string? Email { get; set; }
 
         [StringLength(100)]
         [Display(Name = "User name")]

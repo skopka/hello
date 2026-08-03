@@ -11,6 +11,15 @@ public sealed class HelloStepUpPolicyProviderTests
         HelloAccountSecurity.PasswordChangeAction,
         HelloAccountSecurity.PasswordChangePurpose)]
     [InlineData(
+        HelloAccountSecurity.PasswordSetAction,
+        HelloAccountSecurity.PasswordSetPurpose)]
+    [InlineData(
+        HelloAccountSecurity.PasswordRemoveAction,
+        HelloAccountSecurity.PasswordRemovePurpose)]
+    [InlineData(
+        HelloAccountSecurity.AccountDeleteAction,
+        HelloAccountSecurity.AccountDeletePurpose)]
+    [InlineData(
         HelloAccountSecurity.ExternalLinkAction,
         HelloAccountSecurity.ExternalLinkPurpose)]
     [InlineData(
@@ -140,6 +149,34 @@ public sealed class HelloStepUpPolicyProviderTests
                 userId,
                 HelloDeliveryChannel.Email,
                 "other@example.test"));
+    }
+
+    [Fact]
+    public void SecurityActionBindingSeparatesActions()
+    {
+        var userId = Guid.NewGuid();
+        const string destination = "alice@example.test";
+
+        var passwordSet = HelloAccountSecurity.CreateBinding(
+            userId,
+            HelloDeliveryChannel.Email,
+            destination,
+            HelloAccountSecurity.PasswordSetAction);
+
+        Assert.NotEqual(
+            passwordSet,
+            HelloAccountSecurity.CreateBinding(
+                userId,
+                HelloDeliveryChannel.Email,
+                destination,
+                HelloAccountSecurity.PasswordRemoveAction));
+        Assert.NotEqual(
+            passwordSet,
+            HelloAccountSecurity.CreateBinding(
+                userId,
+                HelloDeliveryChannel.Email,
+                destination,
+                HelloAccountSecurity.AccountDeleteAction));
     }
 
     [Fact]

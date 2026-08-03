@@ -13,3 +13,21 @@ public interface IHelloUiProfileFactory<TProfile>
 
     string GetDisplayName(TProfile profile);
 }
+
+public sealed record HelloUiProfileField(
+    string Name,
+    string Label,
+    string? Value,
+    string InputType = "text",
+    string? AutoComplete = null,
+    bool Required = false,
+    int? MaximumLength = null);
+
+public interface IHelloUiProfileEditor<TProfile>
+{
+    IReadOnlyList<HelloUiProfileField> GetFields(TProfile profile);
+
+    OperationResult<TProfile> Update(
+        TProfile current,
+        IReadOnlyDictionary<string, string?> values);
+}

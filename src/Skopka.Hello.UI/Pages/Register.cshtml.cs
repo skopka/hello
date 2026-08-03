@@ -41,17 +41,16 @@ public sealed class RegisterModel(IHelloUiApplication application)
             new { registered = true });
     }
 
-    public sealed class InputModel
+    public sealed class InputModel : IValidatableObject
     {
         [Required]
         [StringLength(200)]
         [Display(Name = "Display name")]
         public string DisplayName { get; set; } = string.Empty;
 
-        [Required]
         [EmailAddress]
         [StringLength(320)]
-        public string Email { get; set; } = string.Empty;
+        public string? Email { get; set; }
 
         [StringLength(100)]
         [Display(Name = "User name")]
@@ -75,5 +74,18 @@ public sealed class RegisterModel(IHelloUiApplication application)
             ErrorMessage = "The passwords do not match.")]
         [Display(Name = "Confirm password")]
         public string ConfirmPassword { get; set; } = string.Empty;
+
+        public IEnumerable<ValidationResult> Validate(
+            ValidationContext validationContext)
+        {
+            if (string.IsNullOrWhiteSpace(UserName)
+                && string.IsNullOrWhiteSpace(Email)
+                && string.IsNullOrWhiteSpace(Phone))
+            {
+                yield return new ValidationResult(
+                    "Enter a user name, email address or phone number.",
+                    [nameof(UserName), nameof(Email), nameof(Phone)]);
+            }
+        }
     }
 }

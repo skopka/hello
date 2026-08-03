@@ -45,6 +45,9 @@ public static class HelloUiDefaults
     public const string ChangePasswordPath =
         RootPath + "/account/change-password";
 
+    public const string AccountSecurityPath =
+        RootPath + "/account/security";
+
     public const string ExternalCompletionPath =
         RootPath + "/external/complete";
 

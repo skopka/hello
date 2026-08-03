@@ -24,6 +24,24 @@ internal static class HelloAccountSecurity
     public const string PasswordChangePurpose =
         "hello:account.password.change";
 
+    public const string PasswordSetAction =
+        "account.password.set";
+
+    public const string PasswordSetPurpose =
+        "hello:account.password.set";
+
+    public const string PasswordRemoveAction =
+        "account.password.remove";
+
+    public const string PasswordRemovePurpose =
+        "hello:account.password.remove";
+
+    public const string AccountDeleteAction =
+        "account.delete";
+
+    public const string AccountDeletePurpose =
+        "hello:account.delete";
+
     public const string ExternalLinkAction =
         "account.external.link";
 
@@ -40,11 +58,22 @@ internal static class HelloAccountSecurity
         Guid userId,
         HelloDeliveryChannel channel,
         string destination)
-        => CreateDeliveryBinding(
+        => CreateBinding(
             userId,
             channel,
             destination,
             PasswordChangeAction);
+
+    public static string CreateBinding(
+        Guid userId,
+        HelloDeliveryChannel channel,
+        string destination,
+        string action)
+        => CreateDeliveryBinding(
+            userId,
+            channel,
+            destination,
+            action);
 
     public static string CreateExternalLoginBinding(
         ExternalLoginKey login,
@@ -175,6 +204,27 @@ internal sealed class HelloStepUpPolicyProvider<TProfile>
             AssuranceLevel: 2,
             MaximumAge: TimeSpan.FromMinutes(2));
 
+    private static readonly StepUpRequirement PasswordSet =
+        new(
+            HelloAccountSecurity.PasswordSetPurpose,
+            [VerificationMethods.OneTimeCode],
+            AssuranceLevel: 2,
+            MaximumAge: TimeSpan.FromMinutes(2));
+
+    private static readonly StepUpRequirement PasswordRemove =
+        new(
+            HelloAccountSecurity.PasswordRemovePurpose,
+            [VerificationMethods.OneTimeCode],
+            AssuranceLevel: 2,
+            MaximumAge: TimeSpan.FromMinutes(2));
+
+    private static readonly StepUpRequirement AccountDelete =
+        new(
+            HelloAccountSecurity.AccountDeletePurpose,
+            [VerificationMethods.OneTimeCode],
+            AssuranceLevel: 2,
+            MaximumAge: TimeSpan.FromMinutes(2));
+
     private static readonly StepUpRequirement ExternalLink =
         new(
             HelloAccountSecurity.ExternalLinkPurpose,
@@ -199,6 +249,9 @@ internal sealed class HelloStepUpPolicyProvider<TProfile>
         var requirement = context.Action switch
         {
             HelloAccountSecurity.PasswordChangeAction => PasswordChange,
+            HelloAccountSecurity.PasswordSetAction => PasswordSet,
+            HelloAccountSecurity.PasswordRemoveAction => PasswordRemove,
+            HelloAccountSecurity.AccountDeleteAction => AccountDelete,
             HelloAccountSecurity.ExternalLinkAction => ExternalLink,
             HelloAccountSecurity.ExternalUnlinkAction => ExternalUnlink,
             _ => null,

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
@@ -15,6 +16,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
 using Skopka.Abstraction.OperationResult;
@@ -22,6 +24,7 @@ using Skopka.Hello.Endpoints;
 using Skopka.Hello.Oidc;
 using Skopka.Hello.UI;
 using Skopka.Identity.Ef.PostgreSql;
+using Skopka.Identity.Verification;
 using Testcontainers.PostgreSql;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
@@ -126,6 +129,27 @@ public sealed class ExternalOidcFlowTests
         Assert.Equal("INTEGRATION", afterRegistration.Provider);
         Assert.Equal(Subject, afterRegistration.Subject);
 
+        using var confirmationRequest = await helloClient.PostAsJsonAsync(
+            "/auth/email-confirmation/request",
+            new { email = "external@example.test" });
+        Assert.Equal(
+            HttpStatusCode.Accepted,
+            confirmationRequest.StatusCode);
+        var confirmationMessage = await hello.WaitForMessageAsync(
+            HelloAccountMessageKind.EmailConfirmation);
+        var confirmationQuery = QueryHelpers.ParseQuery(
+            Assert.IsType<Uri>(confirmationMessage.ActionUrl).Query);
+        using var confirmation = await helloClient.PostAsJsonAsync(
+            "/auth/email-confirmation/confirm",
+            new
+            {
+                userId = Guid.Parse(
+                    confirmationQuery["userId"].Single()!),
+                email = confirmationQuery["email"].Single(),
+                token = confirmationQuery["token"].Single(),
+            });
+        Assert.Equal(HttpStatusCode.NoContent, confirmation.StatusCode);
+
         Dictionary<string, string> repeatedCookies =
             new(StringComparer.Ordinal);
         var repeated = await CompleteProviderChallengeAsync(
@@ -157,6 +181,150 @@ public sealed class ExternalOidcFlowTests
         Assert.Equal(2, afterRepeatedLogin.SessionCount);
         Assert.Equal("INTEGRATION", afterRepeatedLogin.Provider);
         Assert.Equal(Subject, afterRepeatedLogin.Subject);
+
+        using var securityPage = await SendHelloAsync(
+            helloClient,
+            HttpMethod.Get,
+            HelloUiDefaults.AccountSecurityPath,
+            repeatedCookies);
+        Assert.Equal(HttpStatusCode.OK, securityPage.StatusCode);
+        var securityHtml = await securityPage.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "No password is configured.",
+            securityHtml,
+            StringComparison.Ordinal);
+        var securityToken = ReadInputValue(
+            securityHtml,
+            "__RequestVerificationToken");
+
+        using var beginPasswordSet = await SendHelloFormAsync(
+            helloClient,
+            $"{HelloUiDefaults.AccountSecurityPath}?handler=BeginSet",
+            repeatedCookies,
+            new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = securityToken,
+            });
+        Assert.Equal(HttpStatusCode.OK, beginPasswordSet.StatusCode);
+        var passwordSetHtml =
+            await beginPasswordSet.Content.ReadAsStringAsync();
+        var challengeId = ReadInputValue(
+            passwordSetHtml,
+            "SetInput.ChallengeId");
+        var completeToken = ReadInputValue(
+            passwordSetHtml,
+            "__RequestVerificationToken");
+        var verificationMessage = await hello.WaitForMessageAsync(
+            HelloAccountMessageKind.AccountSecurityVerification);
+        var verificationCode = Assert.IsType<string>(
+            verificationMessage.VerificationCode);
+        const string newPassword =
+            "external account password staple";
+
+        using var completePasswordSet = await SendHelloFormAsync(
+            helloClient,
+            $"{HelloUiDefaults.AccountSecurityPath}?handler=CompleteSet",
+            repeatedCookies,
+            new Dictionary<string, string>
+            {
+                ["SetInput.ChallengeId"] = challengeId,
+                ["SetInput.VerificationCode"] = verificationCode,
+                ["SetInput.NewPassword"] = newPassword,
+                ["SetInput.ConfirmPassword"] = newPassword,
+                ["__RequestVerificationToken"] = completeToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, completePasswordSet.StatusCode);
+        Assert.StartsWith(
+            HelloUiDefaults.LoginPath,
+            completePasswordSet.Headers.Location?.OriginalString,
+            StringComparison.Ordinal);
+        Assert.Equal(string.Empty, repeatedCookies[UiCookieName]);
+        Assert.Equal(string.Empty, repeatedCookies[RefreshCookieName]);
+
+        using var passwordLogin = await helloClient.PostAsJsonAsync(
+            "/auth/login",
+            new
+            {
+                login = "external@example.test",
+                password = newPassword,
+            });
+        Assert.Equal(HttpStatusCode.OK, passwordLogin.StatusCode);
+
+        Dictionary<string, string> removalCookies =
+            new(StringComparer.Ordinal);
+        var removalLogin = await CompleteProviderChallengeAsync(
+            helloClient,
+            authority,
+            removalCookies);
+        Assert.Equal(
+            HelloUiDefaults.AccountPath,
+            removalLogin.CompletionLocation);
+
+        using var removalPage = await SendHelloAsync(
+            helloClient,
+            HttpMethod.Get,
+            HelloUiDefaults.AccountSecurityPath,
+            removalCookies);
+        var removalPageHtml =
+            await removalPage.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "Request password removal",
+            removalPageHtml,
+            StringComparison.Ordinal);
+        var removalToken = ReadInputValue(
+            removalPageHtml,
+            "__RequestVerificationToken");
+        using var beginRemoval = await SendHelloFormAsync(
+            helloClient,
+            $"{HelloUiDefaults.AccountSecurityPath}?handler=BeginRemove",
+            removalCookies,
+            new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = removalToken,
+            });
+        Assert.Equal(HttpStatusCode.OK, beginRemoval.StatusCode);
+        var removalHtml = await beginRemoval.Content.ReadAsStringAsync();
+        var removalChallengeId = ReadInputValue(
+            removalHtml,
+            "ActionInput.ChallengeId");
+        var completeRemovalToken = ReadInputValue(
+            removalHtml,
+            "__RequestVerificationToken");
+        var removalMessage = await hello.WaitForMessageAsync(
+            HelloAccountMessageKind.AccountSecurityVerification,
+            occurrence: 2);
+        var removalCode = Assert.IsType<string>(
+            removalMessage.VerificationCode);
+
+        using var completeRemoval = await SendHelloFormAsync(
+            helloClient,
+            $"{HelloUiDefaults.AccountSecurityPath}?handler=CompleteRemove",
+            removalCookies,
+            new Dictionary<string, string>
+            {
+                ["ActionInput.ChallengeId"] = removalChallengeId,
+                ["ActionInput.VerificationCode"] = removalCode,
+                ["__RequestVerificationToken"] = completeRemovalToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, completeRemoval.StatusCode);
+        Assert.StartsWith(
+            HelloUiDefaults.LoginPath,
+            completeRemoval.Headers.Location?.OriginalString,
+            StringComparison.Ordinal);
+        Assert.Equal(string.Empty, removalCookies[UiCookieName]);
+        Assert.Equal(string.Empty, removalCookies[RefreshCookieName]);
+
+        using var removedPasswordLogin =
+            await helloClient.PostAsJsonAsync(
+                "/auth/login",
+                new
+                {
+                    login = "external@example.test",
+                    password = newPassword,
+                });
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            removedPasswordLogin.StatusCode);
     }
 
     private static void AssertAuthorizationRequest(
@@ -449,6 +617,37 @@ public sealed class ExternalOidcFlowTests
         string Provider,
         string Subject);
 
+    private sealed class RecordingAccountMessageSender
+        : IHelloAccountMessageSender
+    {
+        private readonly object sync = new();
+        private readonly List<HelloAccountMessage> messages = [];
+
+        public IReadOnlyList<HelloAccountMessage> Messages
+        {
+            get
+            {
+                lock (sync)
+                {
+                    return messages.ToArray();
+                }
+            }
+        }
+
+        public Task<OperationResult> SendAsync(
+            HelloAccountMessage message,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (sync)
+            {
+                messages.Add(message);
+            }
+
+            return Task.FromResult(OperationResultFactory.Success());
+        }
+    }
+
     private sealed class AuthorityRequestRecorder
     {
         private readonly ConcurrentQueue<RecordedAuthorizationRequest>
@@ -650,10 +849,50 @@ public sealed class ExternalOidcFlowTests
     private sealed class TestHelloApplication : IAsyncDisposable
     {
         private readonly WebApplication application;
+        private readonly RecordingAccountMessageSender messageSender;
 
-        private TestHelloApplication(WebApplication application)
+        private TestHelloApplication(
+            WebApplication application,
+            RecordingAccountMessageSender messageSender)
         {
             this.application = application;
+            this.messageSender = messageSender;
+        }
+
+        public async Task<HelloAccountMessage> WaitForMessageAsync(
+            HelloAccountMessageKind kind,
+            int occurrence = 1)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(
+                occurrence,
+                1);
+            using var timeout = new CancellationTokenSource(
+                TimeSpan.FromSeconds(10));
+            while (!timeout.IsCancellationRequested)
+            {
+                var matches = messageSender.Messages
+                    .Where(message => message.Kind == kind)
+                    .ToArray();
+                if (matches.Length >= occurrence)
+                {
+                    return matches[occurrence - 1];
+                }
+
+                try
+                {
+                    await Task.Delay(
+                        TimeSpan.FromMilliseconds(10),
+                        timeout.Token);
+                }
+                catch (OperationCanceledException)
+                    when (timeout.IsCancellationRequested)
+                {
+                    break;
+                }
+            }
+
+            throw new TimeoutException(
+                $"No '{kind}' account message was recorded.");
         }
 
         public static async Task<TestHelloApplication> CreateAsync(
@@ -667,6 +906,9 @@ public sealed class ExternalOidcFlowTests
                 });
             builder.WebHost.ConfigureKestrel(options =>
                 options.Listen(IPAddress.Loopback, 0));
+            var messageSender = new RecordingAccountMessageSender();
+            builder.Services.AddSingleton<IHelloAccountMessageSender>(
+                messageSender);
 
             var identity = builder.Services
                 .AddSkopkaHello<IntegrationProfile>(options =>
@@ -688,6 +930,32 @@ public sealed class ExternalOidcFlowTests
                         options.Audience =
                             "skopka-hello-oidc-integration";
                     });
+            var verificationKeys =
+                new Dictionary<string, byte[]>
+                {
+                    ["v1"] = RandomNumberGenerator.GetBytes(32),
+                };
+            try
+            {
+                var verificationKeyProvider =
+                    new StaticVerificationCodeKeyProvider(
+                        "v1",
+                        verificationKeys);
+                identity.UseHmacOneTimeCodes(
+                    verificationKeyProvider);
+                identity.Services.RemoveAll<
+                    IVerificationCodeKeyProvider>();
+                identity.Services.AddSingleton<
+                    IVerificationCodeKeyProvider>(
+                    _ => verificationKeyProvider);
+            }
+            finally
+            {
+                foreach (var key in verificationKeys.Values)
+                {
+                    CryptographicOperations.ZeroMemory(key);
+                }
+            }
             identity.UseJwtBearerAuthentication();
 
             builder.Services.AddSkopkaHelloOidc<IntegrationProfile>(
@@ -738,7 +1006,9 @@ public sealed class ExternalOidcFlowTests
             }
 
             await application.StartAsync();
-            return new TestHelloApplication(application);
+            return new TestHelloApplication(
+                application,
+                messageSender);
         }
 
         public HttpClient CreateClient()

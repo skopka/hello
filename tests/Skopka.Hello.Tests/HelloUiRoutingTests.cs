@@ -32,6 +32,9 @@ public sealed class HelloUiRoutingTests
             "/identity/hello/confirm-phone",
             routes);
         Assert.Contains(
+            "/identity/hello/account/security",
+            routes);
+        Assert.Contains(
             "/auth/phone-confirmation/request",
             routes);
         Assert.Contains(
@@ -60,6 +63,9 @@ public sealed class HelloUiRoutingTests
         Assert.Equal(
             "/identity/hello/confirm-phone",
             configuredRoutes.ConfirmPhonePath);
+        Assert.Equal(
+            "/identity/hello/account/security",
+            configuredRoutes.AccountSecurityPath);
 
         var cookie = application.Services
             .GetRequiredService<

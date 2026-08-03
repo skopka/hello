@@ -1,5 +1,6 @@
 using Skopka.Abstraction.OperationResult;
 using Skopka.Identity.Registration;
+using Skopka.Identity.Errors;
 using Skopka.Identity.Sessions;
 using Skopka.Identity.Users;
 
@@ -75,6 +76,43 @@ public sealed class HelloRegistrationPolicyTests
             HelloRegistrationErrors.DisabledCode,
             error.Code);
         Assert.Equal(ErrorType.Forbidden, error.Type);
+    }
+
+    [Fact]
+    public async Task PasswordRegistrationRequiresAUsableLoginHandle()
+    {
+        var options = new SkopkaHelloOptions();
+        options.Validate();
+        var application = new HelloIdentityApplication<TestProfile>(
+            registration: new UnexpectedRegistrationService(),
+            authentication: null!,
+            sessions: null!,
+            credentials: null!,
+            users: null!,
+            stepUp: null!,
+            verification: null!,
+            anonymousMessageRequester: null!,
+            messageSender: CreateMessageSender(),
+            deliveryOptions: new HelloDeliveryOptions(),
+            options: options);
+
+        var result = await application.RegisterAsync(
+            new HelloRegisterCommand<TestProfile>(
+                null,
+                " ",
+                null,
+                new TestProfile("Alice"),
+                "not-used"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(IdentityErrorCodes.Validation, error.Code);
+        Assert.Equal(ErrorType.Validation, error.Type);
+        var details = Assert.IsType<ValidationDetails>(error.Details);
+        Assert.Equal(
+            ["email", "phone", "userName"],
+            details.Fields.Keys.Order(StringComparer.Ordinal));
     }
 
     private static SkopkaHelloOptions CreateDisabledOptions()

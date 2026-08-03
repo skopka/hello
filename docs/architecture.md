@@ -70,6 +70,14 @@ It then passes the returned user id and current security stamp to session creati
 delegates strict rotation to Skopka.Identity. Minimal API and Razor handlers
 call the same operations and never call EF stores directly.
 
+Authenticated account edits also flow through this generic application
+boundary. User name, email and phone mutations derive the user from an
+online-validated access token and pass the caller's `ExpectedVersion` to
+Identity. Profile replacement carries the host's exact `TProfile`; Hello does
+not inspect or persist its schema. The optional Razor
+`IHelloUiProfileEditor<TProfile>` only maps host-declared form fields to that
+typed value and returns structured `OperationResult` validation failures.
+
 `AddSkopkaHello<TProfile>` validates the UI prefix and registers one immutable
 `HelloUiRoutePaths` snapshot. Core action links, Razor route conventions and
 OIDC browser redirects consume that same snapshot, so hosts cannot configure
@@ -109,6 +117,13 @@ channel. A successful change revokes all sessions after Identity rotates the
 security stamp.
 Password change, external link and external unlink use distinct semantic
 message kinds so providers cannot render a misleading shared step-up template.
+
+Password setup, password removal and self-service account deletion use the
+same Identity-owned step-up mechanism with distinct actions and bindings.
+Hello reads the current sign-in-method snapshot before password removal and
+again at completion, so a password cannot become the last method removed by a
+stale flow. Successful credential mutations or deletion revoke every session;
+the UI discards its protected ticket and all session cookies.
 
 ## External OIDC flow
 

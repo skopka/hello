@@ -9,7 +9,8 @@ internal sealed class HelloUiApplication<TProfile>(
     IHelloIdentityApplication<TProfile> application,
     IHelloUiProfileFactory<TProfile> profiles,
     IHelloRequestContext requestContext,
-    SkopkaHelloOptions helloOptions)
+    SkopkaHelloOptions helloOptions,
+    IHelloUiProfileEditor<TProfile>? profileEditor = null)
     : IHelloUiApplication
 {
     public async Task<OperationResult> RegisterAsync(
@@ -73,6 +74,126 @@ internal sealed class HelloUiApplication<TProfile>(
                     result.Value.Session))
             : OperationResultFactory.Fail<HelloUiSignIn>(
                 result.Errors);
+    }
+
+    public async Task<OperationResult<HelloUiAccount>> GetAccountAsync(
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var validated = await ValidateAccountAsync(
+            httpContext,
+            cancellationToken);
+        return validated.IsSuccess
+            ? OperationResultFactory.Success(ToUiAccount(validated.Value))
+            : OperationResultFactory.Fail<HelloUiAccount>(
+                validated.Errors);
+    }
+
+    public async Task<OperationResult<HelloUiAccount>> ChangeUserNameAsync(
+        HelloUiChangeUserNameCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession<HelloUiAccount>();
+        }
+
+        var changed = await application.ChangeUserNameAsync(
+            new HelloChangeUserNameCommand(
+                accessToken,
+                command.ExpectedVersion,
+                command.UserName),
+            cancellationToken);
+        return ToUiAccountResult(changed);
+    }
+
+    public async Task<OperationResult<HelloUiAccount>> ChangeEmailAsync(
+        HelloUiChangeEmailCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession<HelloUiAccount>();
+        }
+
+        var changed = await application.ChangeEmailAsync(
+            new HelloChangeEmailCommand(
+                accessToken,
+                command.ExpectedVersion,
+                NormalizeOptional(command.Email)),
+            cancellationToken);
+        return ToUiAccountResult(changed);
+    }
+
+    public async Task<OperationResult<HelloUiAccount>> ChangePhoneAsync(
+        HelloUiChangePhoneCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession<HelloUiAccount>();
+        }
+
+        var changed = await application.ChangePhoneAsync(
+            new HelloChangePhoneCommand(
+                accessToken,
+                command.ExpectedVersion,
+                NormalizeOptional(command.Phone)),
+            cancellationToken);
+        return ToUiAccountResult(changed);
+    }
+
+    public async Task<OperationResult<HelloUiAccount>> UpdateProfileAsync(
+        HelloUiUpdateProfileCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        if (profileEditor is null)
+        {
+            return ProfileEditingUnavailable();
+        }
+
+        var validated = await ValidateAccountAsync(
+            httpContext,
+            cancellationToken);
+        if (!validated.IsSuccess)
+        {
+            return OperationResultFactory.Fail<HelloUiAccount>(
+                validated.Errors);
+        }
+
+        var profile = profileEditor.Update(
+            validated.Value.Profile,
+            command.Values);
+        if (!profile.IsSuccess)
+        {
+            return OperationResultFactory.Fail<HelloUiAccount>(
+                profile.Errors);
+        }
+
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession<HelloUiAccount>();
+        }
+
+        var changed = await application.ReplaceProfileAsync(
+            new HelloReplaceProfileCommand<TProfile>(
+                accessToken,
+                command.ExpectedVersion,
+                profile.Value),
+            cancellationToken);
+        return ToUiAccountResult(changed);
     }
 
     public Task<OperationResult> RequestPasswordResetAsync(
@@ -224,6 +345,171 @@ internal sealed class HelloUiApplication<TProfile>(
                 command.NewPassword),
             cancellationToken);
     }
+
+    public async Task<OperationResult<HelloCredentialState>>
+        GetCredentialStateAsync(
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        return accessToken is null
+            ? InvalidSession<HelloCredentialState>()
+            : await application.GetCredentialStateAsync(
+                accessToken,
+                cancellationToken);
+    }
+
+    public async Task<OperationResult<HelloStepUpChallenge>>
+        BeginPasswordSetAsync(
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        return accessToken is null
+            ? InvalidSession<HelloStepUpChallenge>()
+            : await application.BeginPasswordSetAsync(
+                new HelloBeginPasswordSetCommand(
+                    accessToken,
+                    requestContext.CreateClientKey(httpContext)),
+                cancellationToken);
+    }
+
+    public async Task<OperationResult> CompletePasswordSetAsync(
+        HelloUiCompletePasswordSetCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        return accessToken is null
+            ? InvalidSession()
+            : await application.CompletePasswordSetAsync(
+                new HelloCompletePasswordSetCommand(
+                    accessToken,
+                    command.ChallengeId,
+                    command.VerificationCode,
+                    command.NewPassword),
+                cancellationToken);
+    }
+
+    public async Task<OperationResult<HelloStepUpChallenge>>
+        BeginPasswordRemovalAsync(
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        return accessToken is null
+            ? InvalidSession<HelloStepUpChallenge>()
+            : await application.BeginPasswordRemovalAsync(
+                new HelloBeginPasswordRemovalCommand(
+                    accessToken,
+                    requestContext.CreateClientKey(httpContext)),
+                cancellationToken);
+    }
+
+    public async Task<OperationResult> CompletePasswordRemovalAsync(
+        HelloUiCompleteAccountSecurityActionCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        return accessToken is null
+            ? InvalidSession()
+            : await application.CompletePasswordRemovalAsync(
+                new HelloCompletePasswordRemovalCommand(
+                    accessToken,
+                    command.ChallengeId,
+                    command.VerificationCode),
+                cancellationToken);
+    }
+
+    public async Task<OperationResult<HelloStepUpChallenge>>
+        BeginAccountDeletionAsync(
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        return accessToken is null
+            ? InvalidSession<HelloStepUpChallenge>()
+            : await application.BeginAccountDeletionAsync(
+                new HelloBeginAccountDeletionCommand(
+                    accessToken,
+                    requestContext.CreateClientKey(httpContext)),
+                cancellationToken);
+    }
+
+    public async Task<OperationResult> CompleteAccountDeletionAsync(
+        HelloUiCompleteAccountSecurityActionCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        return accessToken is null
+            ? InvalidSession()
+            : await application.CompleteAccountDeletionAsync(
+                new HelloCompleteAccountDeletionCommand(
+                    accessToken,
+                    command.ChallengeId,
+                    command.VerificationCode),
+                cancellationToken);
+    }
+
+    private async Task<OperationResult<HelloAccount<TProfile>>>
+        ValidateAccountAsync(
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        return accessToken is null
+            ? InvalidSession<HelloAccount<TProfile>>()
+            : await application.ValidateAccessTokenAsync(
+                accessToken,
+                cancellationToken);
+    }
+
+    private HelloUiAccount ToUiAccount(
+        HelloAccount<TProfile> account)
+    {
+        var displayName = profiles.GetDisplayName(account.Profile);
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            displayName = account.UserName
+                ?? account.Email
+                ?? account.Phone
+                ?? "Account";
+        }
+
+        return new HelloUiAccount(
+            account.Id,
+            displayName,
+            account.UserName,
+            account.Email,
+            account.EmailConfirmed,
+            account.Phone,
+            account.PhoneConfirmed,
+            account.Version,
+            profileEditor?.GetFields(account.Profile) ?? []);
+    }
+
+    private OperationResult<HelloUiAccount> ToUiAccountResult(
+        OperationResult<HelloAccount<TProfile>> result)
+        => result.IsSuccess
+            ? OperationResultFactory.Success(ToUiAccount(result.Value))
+            : OperationResultFactory.Fail<HelloUiAccount>(result.Errors);
+
+    private static OperationResult<HelloUiAccount>
+        ProfileEditingUnavailable()
+        => OperationResultFactory.Fail<HelloUiAccount>(
+            new Error(
+                "hello.ui.profile_editing_unavailable",
+                "Profile editing is not configured.",
+                ErrorType.Forbidden));
+
+    private static string? NormalizeOptional(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static async Task<string?> ReadAccessTokenAsync(
         HttpContext httpContext)

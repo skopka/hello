@@ -14,6 +14,8 @@ public enum HelloAccountMessageKind
     PasswordChangeVerification = 3,
     ExternalLoginLinkVerification = 4,
     ExternalLoginUnlinkVerification = 5,
+
+    AccountSecurityVerification = 6,
 }
 
 public sealed record HelloAccountMessage(

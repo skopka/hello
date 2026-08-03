@@ -116,6 +116,7 @@ public sealed class SkopkaHelloUiOptions
             routes.AccountPath,
             routes.SessionsPath,
             routes.ChangePasswordPath,
+            routes.AccountSecurityPath,
             routes.ExternalCompletionPath,
             routes.ExternalRegistrationPath,
             routes.ExternalLoginsPath,

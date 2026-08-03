@@ -1,0 +1,141 @@
+@page
+@model AccountSecurityModel
+@{
+    ViewData["Title"] = "Account security";
+}
+
+<section class="hello-page-heading">
+    <p class="hello-eyebrow">Account</p>
+    <h1>Credentials and deletion</h1>
+    <p class="hello-muted">
+        Sensitive actions require a one-time verification code and end all
+        active sessions.
+    </p>
+</section>
+
+<section class="hello-card">
+    <div asp-validation-summary="All"
+         class="hello-validation"
+         role="alert"></div>
+
+    @if (Model.Credentials is { } credentials)
+    {
+        <h2>Password</h2>
+        @if (credentials.HasPassword)
+        {
+            <p>A password is configured.</p>
+            <div class="hello-actions">
+                <a class="hello-button hello-button-secondary"
+                   asp-page="/SkopkaHello/Account/ChangePassword">
+                    Change password
+                </a>
+                @if (credentials.CanRemovePassword)
+                {
+                    <form method="post" asp-page-handler="BeginRemove">
+                        <button class="hello-button hello-button-secondary"
+                                type="submit">
+                            Request password removal
+                        </button>
+                    </form>
+                }
+                else
+                {
+                    <p class="hello-muted">
+                        Link another sign-in method before removing the
+                        password.
+                    </p>
+                }
+            </div>
+        }
+        else
+        {
+            <p>No password is configured.</p>
+            <form method="post" asp-page-handler="BeginSet">
+                <button class="hello-button hello-button-secondary"
+                        type="submit">
+                    Request password setup
+                </button>
+            </form>
+        }
+
+        <h2>Delete account</h2>
+        <p class="hello-muted">
+            Deletion disables sign-in and invalidates every session.
+        </p>
+        <form method="post" asp-page-handler="BeginDelete">
+            <button class="hello-button hello-button-secondary"
+                    type="submit">
+                Request account deletion
+            </button>
+        </form>
+    }
+
+    @if (Model.Pending is { Action: "set" } setChallenge)
+    {
+        <h2>Set password</h2>
+        <form method="post"
+              asp-page-handler="CompleteSet"
+              class="hello-form">
+            <input name="SetInput.ChallengeId"
+                   value="@setChallenge.ChallengeId"
+                   type="hidden" />
+            <label for="set-code">Verification code</label>
+            <input id="set-code"
+                   name="SetInput.VerificationCode"
+                   autocomplete="one-time-code" />
+            <label for="set-password">New password</label>
+            <input id="set-password"
+                   name="SetInput.NewPassword"
+                   type="password"
+                   autocomplete="new-password" />
+            <label for="set-confirm">Confirm password</label>
+            <input id="set-confirm"
+                   name="SetInput.ConfirmPassword"
+                   type="password"
+                   autocomplete="new-password" />
+            <button class="hello-button" type="submit">Set password</button>
+        </form>
+    }
+
+    @if (Model.Pending is { Action: "remove" } removeChallenge)
+    {
+        <h2>Remove password</h2>
+        <form method="post"
+              asp-page-handler="CompleteRemove"
+              class="hello-form">
+            <input name="ActionInput.ChallengeId"
+                   value="@removeChallenge.ChallengeId"
+                   type="hidden" />
+            <label for="remove-code">Verification code</label>
+            <input id="remove-code"
+                   name="ActionInput.VerificationCode"
+                   autocomplete="one-time-code" />
+            <button class="hello-button" type="submit">
+                Remove password and sign out
+            </button>
+        </form>
+    }
+
+    @if (Model.Pending is { Action: "delete" } deleteChallenge)
+    {
+        <h2>Confirm account deletion</h2>
+        <form method="post"
+              asp-page-handler="CompleteDelete"
+              class="hello-form">
+            <input name="ActionInput.ChallengeId"
+                   value="@deleteChallenge.ChallengeId"
+                   type="hidden" />
+            <label for="delete-code">Verification code</label>
+            <input id="delete-code"
+                   name="ActionInput.VerificationCode"
+                   autocomplete="one-time-code" />
+            <button class="hello-button" type="submit">
+                Delete account and sign out
+            </button>
+        </form>
+    }
+
+    <p class="hello-card-footer">
+        <a asp-page="/SkopkaHello/Account/Index">Back to account</a>
+    </p>
+</section>

@@ -47,6 +47,27 @@
         </p>
     }
 
+    @if (Model.AccountDeleted)
+    {
+        <p class="hello-status" role="status">
+            Your account was deleted and this browser session was cleared.
+        </p>
+    }
+    else if (Model.SecurityChanged)
+    {
+        <p class="hello-status" role="status">
+            Your sign-in credentials were changed. Sign in again.
+        </p>
+    }
+
+    @if (Model.AccountSecurityChangedSessionCleanup)
+    {
+        <p class="hello-status" role="status">
+            The account security action completed, but full session cleanup
+            could not be confirmed. This browser session was cleared.
+        </p>
+    }
+
     @if (Model.ExternalProviders.Count > 0)
     {
         <div class="hello-external-providers"

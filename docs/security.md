@@ -197,7 +197,7 @@ request logging must redact confirmation and reset query strings.
 Action tokens are purpose-, user-, target-, security-stamp- and expiry-bound by
 Skopka.Identity. Tokens, recipient addresses and passwords are not logged.
 
-## Authenticated password change and step-up
+## Authenticated credentials, deletion and step-up
 
 Changing a password requires a confirmed contact for the configured
 `VerificationChannel` and an OTP challenge issued by Skopka.Identity. The
@@ -237,6 +237,20 @@ otherwise be stateless, enable
 `SkopkaHello:Jwt:ValidateSessionOnEveryRequest=true` when every already-issued
 API access token must stop authorizing ordinary protected endpoints
 immediately.
+
+Password setup, password removal and account deletion have separate Identity
+step-up actions and purpose-bound delivery bindings, so a proof issued for one
+action cannot authorize another. Hello checks current sign-in methods before
+issuing a password-removal challenge and rechecks them after proof consumption;
+the password cannot be removed unless an external method remains. These
+operations derive the current optimistic version from the online-validated
+session. On success, Hello revokes every session and the Razor UI signs out.
+Completion failures after proof consumption require a new challenge; callers
+must not replay an account mutation whose outcome may already have committed.
+Password registration and password setup require at least one local login
+handle. Account self-service refuses to clear the final user name, email or
+phone while password sign-in is configured, preventing a valid credential from
+becoming unreachable.
 
 ## Secrets
 

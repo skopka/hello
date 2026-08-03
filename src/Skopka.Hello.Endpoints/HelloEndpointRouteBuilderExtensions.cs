@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Skopka.Abstraction.OperationResult;
@@ -94,6 +95,30 @@ public static class HelloEndpointRouteBuilderExtensions
             .RequireAuthorization()
             .WithName("SkopkaHelloGetMe");
 
+        endpoints.MapPut(
+                "/account/user-name",
+                ChangeUserNameAsync<TProfile>)
+            .RequireAuthorization()
+            .WithName("SkopkaHelloChangeUserName");
+
+        endpoints.MapPut(
+                "/account/email",
+                ChangeEmailAsync<TProfile>)
+            .RequireAuthorization()
+            .WithName("SkopkaHelloChangeEmail");
+
+        endpoints.MapPut(
+                "/account/phone",
+                ChangePhoneAsync<TProfile>)
+            .RequireAuthorization()
+            .WithName("SkopkaHelloChangePhone");
+
+        endpoints.MapPut(
+                "/account/profile",
+                ReplaceProfileAsync<TProfile>)
+            .RequireAuthorization()
+            .WithName("SkopkaHelloReplaceProfile");
+
         endpoints.MapGet(
                 "/account/sessions",
                 GetSessionsAsync<TProfile>)
@@ -126,6 +151,42 @@ public static class HelloEndpointRouteBuilderExtensions
                 CompletePasswordChangeAsync<TProfile>)
             .RequireAuthorization()
             .WithName("SkopkaHelloCompletePasswordChange");
+
+        endpoints.MapPost(
+                "/account/password/set/challenge",
+                BeginPasswordSetAsync<TProfile>)
+            .RequireAuthorization()
+            .WithName("SkopkaHelloBeginPasswordSet");
+
+        endpoints.MapPut(
+                "/account/password",
+                CompletePasswordSetAsync<TProfile>)
+            .RequireAuthorization()
+            .WithName("SkopkaHelloCompletePasswordSet");
+
+        endpoints.MapPost(
+                "/account/password/remove/challenge",
+                BeginPasswordRemovalAsync<TProfile>)
+            .RequireAuthorization()
+            .WithName("SkopkaHelloBeginPasswordRemoval");
+
+        endpoints.MapDelete(
+                "/account/password",
+                CompletePasswordRemovalAsync<TProfile>)
+            .RequireAuthorization()
+            .WithName("SkopkaHelloCompletePasswordRemoval");
+
+        endpoints.MapPost(
+                "/account/delete/challenge",
+                BeginAccountDeletionAsync<TProfile>)
+            .RequireAuthorization()
+            .WithName("SkopkaHelloBeginAccountDeletion");
+
+        endpoints.MapDelete(
+                "/account",
+                CompleteAccountDeletionAsync<TProfile>)
+            .RequireAuthorization()
+            .WithName("SkopkaHelloCompleteAccountDeletion");
 
         return endpoints;
     }
@@ -630,6 +691,151 @@ public static class HelloEndpointRouteBuilderExtensions
         return TypedResults.NoContent();
     }
 
+    private static async Task<IResult> BeginPasswordSetAsync<TProfile>(
+        IHelloIdentityApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.BeginPasswordSetAsync(
+            new HelloBeginPasswordSetCommand(
+                accessToken,
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+        return ToStepUpResult(result, httpContext);
+    }
+
+    private static async Task<IResult> CompletePasswordSetAsync<TProfile>(
+        SetPasswordRequest request,
+        IHelloIdentityApplication<TProfile> application,
+        IHelloSessionCookieManager cookies,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.CompletePasswordSetAsync(
+            new HelloCompletePasswordSetCommand(
+                accessToken,
+                request.ChallengeId,
+                request.VerificationCode,
+                request.NewPassword),
+            cancellationToken);
+        return FinishSessionEndingMutation(
+            result,
+            cookies,
+            httpContext);
+    }
+
+    private static async Task<IResult>
+        BeginPasswordRemovalAsync<TProfile>(
+            IHelloIdentityApplication<TProfile> application,
+            IHelloRequestContext requestContext,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.BeginPasswordRemovalAsync(
+            new HelloBeginPasswordRemovalCommand(
+                accessToken,
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+        return ToStepUpResult(result, httpContext);
+    }
+
+    private static async Task<IResult>
+        CompletePasswordRemovalAsync<TProfile>(
+            [FromBody] CompleteAccountSecurityActionRequest request,
+            IHelloIdentityApplication<TProfile> application,
+            IHelloSessionCookieManager cookies,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.CompletePasswordRemovalAsync(
+            new HelloCompletePasswordRemovalCommand(
+                accessToken,
+                request.ChallengeId,
+                request.VerificationCode),
+            cancellationToken);
+        return FinishSessionEndingMutation(
+            result,
+            cookies,
+            httpContext);
+    }
+
+    private static async Task<IResult> BeginAccountDeletionAsync<TProfile>(
+        IHelloIdentityApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.BeginAccountDeletionAsync(
+            new HelloBeginAccountDeletionCommand(
+                accessToken,
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+        return ToStepUpResult(result, httpContext);
+    }
+
+    private static async Task<IResult>
+        CompleteAccountDeletionAsync<TProfile>(
+            [FromBody] CompleteAccountSecurityActionRequest request,
+            IHelloIdentityApplication<TProfile> application,
+            IHelloSessionCookieManager cookies,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.CompleteAccountDeletionAsync(
+            new HelloCompleteAccountDeletionCommand(
+                accessToken,
+                request.ChallengeId,
+                request.VerificationCode),
+            cancellationToken);
+        return FinishSessionEndingMutation(
+            result,
+            cookies,
+            httpContext);
+    }
+
     private static Microsoft.AspNetCore.Http.HttpResults.ProblemHttpResult
         InvalidSession(HttpContext httpContext)
         => OperationResultProblemMapper.ToResult(
@@ -659,12 +865,155 @@ public static class HelloEndpointRouteBuilderExtensions
         return string.IsNullOrWhiteSpace(token) ? null : token;
     }
 
+    private static async Task<IResult> ChangeUserNameAsync<TProfile>(
+        ChangeUserNameRequest request,
+        IHelloIdentityApplication<TProfile> application,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var changed = await application.ChangeUserNameAsync(
+            new HelloChangeUserNameCommand(
+                accessToken,
+                request.ExpectedVersion,
+                request.UserName),
+            cancellationToken);
+        return changed.IsSuccess
+            ? TypedResults.Ok(ToAccountResponse(changed.Value))
+            : OperationResultProblemMapper.ToResult(
+                changed,
+                httpContext);
+    }
+
+    private static async Task<IResult> ChangeEmailAsync<TProfile>(
+        ChangeEmailRequest request,
+        IHelloIdentityApplication<TProfile> application,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var changed = await application.ChangeEmailAsync(
+            new HelloChangeEmailCommand(
+                accessToken,
+                request.ExpectedVersion,
+                request.Email),
+            cancellationToken);
+        return changed.IsSuccess
+            ? TypedResults.Ok(ToAccountResponse(changed.Value))
+            : OperationResultProblemMapper.ToResult(
+                changed,
+                httpContext);
+    }
+
+    private static async Task<IResult> ChangePhoneAsync<TProfile>(
+        ChangePhoneRequest request,
+        IHelloIdentityApplication<TProfile> application,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var changed = await application.ChangePhoneAsync(
+            new HelloChangePhoneCommand(
+                accessToken,
+                request.ExpectedVersion,
+                request.Phone),
+            cancellationToken);
+        return changed.IsSuccess
+            ? TypedResults.Ok(ToAccountResponse(changed.Value))
+            : OperationResultProblemMapper.ToResult(
+                changed,
+                httpContext);
+    }
+
+    private static async Task<IResult> ReplaceProfileAsync<TProfile>(
+        ReplaceProfileRequest<TProfile> request,
+        IHelloIdentityApplication<TProfile> application,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var changed = await application.ReplaceProfileAsync(
+            new HelloReplaceProfileCommand<TProfile>(
+                accessToken,
+                request.ExpectedVersion,
+                request.Profile),
+            cancellationToken);
+        return changed.IsSuccess
+            ? TypedResults.Ok(ToAccountResponse(changed.Value))
+            : OperationResultProblemMapper.ToResult(
+                changed,
+                httpContext);
+    }
+
     private static void ApplySensitiveResponseHeaders(
         HttpContext httpContext)
     {
         httpContext.Response.Headers.CacheControl =
             "no-store, max-age=0";
         httpContext.Response.Headers.Pragma = "no-cache";
+    }
+
+    private static IResult ToStepUpResult(
+        OperationResult<HelloStepUpChallenge> result,
+        HttpContext httpContext)
+        => result.IsSuccess
+            ? TypedResults.Ok(
+                new StepUpChallengeResponse(
+                    result.Value.ChallengeId,
+                    result.Value.ExpiresAt,
+                    result.Value.DeliveryChannel.ToString()
+                        .ToLowerInvariant()))
+            : OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+
+    private static IResult FinishSessionEndingMutation(
+        OperationResult result,
+        IHelloSessionCookieManager cookies,
+        HttpContext httpContext)
+    {
+        if (!result.IsSuccess)
+        {
+            if (result.Errors.Any(error => string.Equals(
+                    error.Code,
+                    HelloAccountSecurityActionErrorCodes
+                        .SessionCleanupRequired,
+                    StringComparison.Ordinal)))
+            {
+                cookies.DeleteSessionCookies(httpContext);
+            }
+
+            return OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+        }
+
+        cookies.DeleteSessionCookies(httpContext);
+        return TypedResults.NoContent();
     }
 
     private static AccountResponse<TProfile> ToAccountResponse<TProfile>(

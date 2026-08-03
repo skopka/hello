@@ -97,6 +97,11 @@ internal sealed class SmtpHelloAccountMessageTransport(
                     message,
                     "Confirm external sign-in removal",
                     "Use this verification code to remove an external sign-in provider:"),
+            HelloAccountMessageKind.AccountSecurityVerification =>
+                CreateVerificationContent(
+                    message,
+                    "Confirm account security action",
+                    "Use this verification code to authorize the requested account security action:"),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(message),
                 message.Kind,

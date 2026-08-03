@@ -20,6 +20,33 @@ public sealed record HelloUiSignIn(
     ClaimsPrincipal Principal,
     HelloSession Session);
 
+public sealed record HelloUiAccount(
+    Guid UserId,
+    string DisplayName,
+    string? UserName,
+    string? Email,
+    bool EmailConfirmed,
+    string? Phone,
+    bool PhoneConfirmed,
+    long Version,
+    IReadOnlyList<HelloUiProfileField> ProfileFields);
+
+public sealed record HelloUiChangeUserNameCommand(
+    long ExpectedVersion,
+    string UserName);
+
+public sealed record HelloUiChangeEmailCommand(
+    long ExpectedVersion,
+    string? Email);
+
+public sealed record HelloUiChangePhoneCommand(
+    long ExpectedVersion,
+    string? Phone);
+
+public sealed record HelloUiUpdateProfileCommand(
+    long ExpectedVersion,
+    IReadOnlyDictionary<string, string?> Values);
+
 public sealed record HelloUiResetPasswordCommand(
     Guid UserId,
     string Token,
@@ -41,6 +68,15 @@ public sealed record HelloUiCompletePasswordChangeCommand(
     string CurrentPassword,
     string NewPassword);
 
+public sealed record HelloUiCompletePasswordSetCommand(
+    Guid ChallengeId,
+    string VerificationCode,
+    string NewPassword);
+
+public sealed record HelloUiCompleteAccountSecurityActionCommand(
+    Guid ChallengeId,
+    string VerificationCode);
+
 public interface IHelloUiApplication
 {
     Task<OperationResult> RegisterAsync(
@@ -51,6 +87,35 @@ public interface IHelloUiApplication
         HelloUiLoginCommand command,
         HttpContext httpContext,
         CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloUiAccount>> GetAccountAsync(
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailable();
+
+    Task<OperationResult<HelloUiAccount>> ChangeUserNameAsync(
+        HelloUiChangeUserNameCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailable();
+
+    Task<OperationResult<HelloUiAccount>> ChangeEmailAsync(
+        HelloUiChangeEmailCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailable();
+
+    Task<OperationResult<HelloUiAccount>> ChangePhoneAsync(
+        HelloUiChangePhoneCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailable();
+
+    Task<OperationResult<HelloUiAccount>> UpdateProfileAsync(
+        HelloUiUpdateProfileCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailable();
 
     Task<OperationResult> RequestPasswordResetAsync(
         string email,
@@ -105,4 +170,64 @@ public interface IHelloUiApplication
         HelloUiCompletePasswordChangeCommand command,
         HttpContext httpContext,
         CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloCredentialState>> GetCredentialStateAsync(
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailable<HelloCredentialState>();
+
+    Task<OperationResult<HelloStepUpChallenge>> BeginPasswordSetAsync(
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailable<HelloStepUpChallenge>();
+
+    Task<OperationResult> CompletePasswordSetAsync(
+        HelloUiCompletePasswordSetCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailableResult();
+
+    Task<OperationResult<HelloStepUpChallenge>> BeginPasswordRemovalAsync(
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailable<HelloStepUpChallenge>();
+
+    Task<OperationResult> CompletePasswordRemovalAsync(
+        HelloUiCompleteAccountSecurityActionCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailableResult();
+
+    Task<OperationResult<HelloStepUpChallenge>> BeginAccountDeletionAsync(
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailable<HelloStepUpChallenge>();
+
+    Task<OperationResult> CompleteAccountDeletionAsync(
+        HelloUiCompleteAccountSecurityActionCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailableResult();
+
+    private static Task<OperationResult<HelloUiAccount>>
+        AccountSelfServiceUnavailable()
+        => AccountSelfServiceUnavailable<HelloUiAccount>();
+
+    private static Task<OperationResult<T>>
+        AccountSelfServiceUnavailable<T>()
+        => Task.FromResult(
+            OperationResultFactory.Fail<T>(
+                new Error(
+                    "hello.ui.account_self_service_unavailable",
+                    "Account self-service is not available.",
+                    ErrorType.Forbidden)));
+
+    private static Task<OperationResult>
+        AccountSelfServiceUnavailableResult()
+        => Task.FromResult(
+            OperationResultFactory.Fail(
+                new Error(
+                    "hello.ui.account_self_service_unavailable",
+                    "Account self-service is not available.",
+                    ErrorType.Forbidden)));
 }

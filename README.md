@@ -10,7 +10,7 @@ provider integration, host composition and a package boundary for
 administration. Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
-The current `0.3.1` vertical slice contains:
+The current `0.4.0` vertical slice contains:
 
 - atomic password registration;
 - automatic email, phone or user-name password login without user
@@ -32,6 +32,10 @@ The current `0.3.1` vertical slice contains:
 - rotating refresh tokens in `Secure`, `HttpOnly` cookies;
 - antiforgery protection for refresh and cookie logout;
 - account and active-session endpoints protected by bearer authentication;
+- optimistic-concurrency self-service for user name, email, phone and the
+  host-defined generic profile;
+- OTP-protected password setup/removal and account deletion with full session
+  revocation and last-sign-in-method protection;
 - Razor registration, login, account and active-session pages;
 - Razor external registration and sign-in-method management pages;
 - startup-configurable self-registration and Razor UI route prefix;
@@ -74,11 +78,21 @@ An OAuth/OIDC authorization server and administration surfaces remain deferred.
 | `POST` | `/auth/phone-confirmation/request` | Anonymous |
 | `POST` | `/auth/phone-confirmation/confirm` | Anonymous action token |
 | `GET` | `/account/me` | Bearer |
+| `PUT` | `/account/user-name` | Bearer |
+| `PUT` | `/account/email` | Bearer |
+| `PUT` | `/account/phone` | Bearer |
+| `PUT` | `/account/profile` | Bearer |
 | `GET` | `/account/sessions` | Bearer |
 | `GET` | `/account/external-logins` | Bearer |
 | `DELETE` | `/account/sessions/{sessionId}` | Bearer |
 | `POST` | `/account/password/change/challenge` | Bearer |
 | `POST` | `/account/password/change` | Bearer + one-time code |
+| `POST` | `/account/password/set/challenge` | Bearer |
+| `PUT` | `/account/password` | Bearer + one-time code |
+| `POST` | `/account/password/remove/challenge` | Bearer |
+| `DELETE` | `/account/password` | Bearer + one-time code |
+| `POST` | `/account/delete/challenge` | Bearer |
+| `DELETE` | `/account` | Bearer + one-time code |
 
 When `SkopkaHelloOptions.SelfRegistrationEnabled` is false, password and
 external self-registration operations return the shared
@@ -116,9 +130,11 @@ With the default prefix, the ready server exposes:
 | `/hello/account` | Current account summary |
 | `/hello/account/sessions` | List and revoke active sessions |
 | `/hello/account/change-password` | Change password after configured-channel OTP step-up |
+| `/hello/account/security` | Set/remove a password or delete the account after OTP step-up |
 | `/hello/account/external-logins` | Link and unlink external providers after configured-channel OTP step-up |
 
-Password API and Razor handlers share `IHelloIdentityApplication<TProfile>`;
+Account and credential API and Razor handlers share
+`IHelloIdentityApplication<TProfile>`;
 external flows use the parallel `IHelloExternalIdentityApplication<TProfile>`
 through the OIDC adapter. The UI uses an encrypted `HttpOnly` authentication
 cookie, keeps the refresh token in its separate `HttpOnly` cookie, validates the

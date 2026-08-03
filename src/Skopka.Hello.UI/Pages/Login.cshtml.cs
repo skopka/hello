@@ -27,6 +27,15 @@ public sealed class LoginModel(
     [BindProperty(SupportsGet = true)]
     public bool PasswordChangedSessionCleanup { get; set; }
 
+    [BindProperty(SupportsGet = true)]
+    public bool AccountDeleted { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public bool SecurityChanged { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public bool AccountSecurityChangedSessionCleanup { get; set; }
+
     public IReadOnlyList<Skopka.Hello.Oidc.HelloOidcProvider>
         ExternalProviders => externalApplication.Providers;
 

@@ -155,6 +155,200 @@ public sealed class AuthenticationFlowTests
     }
 
     [Fact]
+    public async Task AccountSelfServiceMutationsAreGenericAndVersioned()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString());
+        using var client = app.CreateClient();
+        const string password = "correct horse battery staple";
+        using var registration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "self-service",
+                email = "self-service@example.test",
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Self Service",
+                    locale = "en",
+                },
+                password,
+            });
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+
+        var login = await LoginAsync(
+            client,
+            "self-service@example.test",
+            password);
+        using var initial = await GetMeAsync(client, login.AccessToken);
+        var initialVersion = initial.RootElement
+            .GetProperty("version")
+            .GetInt64();
+
+        using var changedName = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Put,
+            "/account/user-name",
+            login.AccessToken,
+            new
+            {
+                expectedVersion = initialVersion,
+                userName = "renamed-self-service",
+            });
+        Assert.Equal(HttpStatusCode.OK, changedName.StatusCode);
+        using var nameAccount = JsonDocument.Parse(
+            await changedName.Content.ReadAsStringAsync());
+        var nameVersion = nameAccount.RootElement
+            .GetProperty("version")
+            .GetInt64();
+        Assert.Equal(
+            "renamed-self-service",
+            nameAccount.RootElement.GetProperty("userName").GetString());
+
+        using var changedEmail = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Put,
+            "/account/email",
+            login.AccessToken,
+            new
+            {
+                expectedVersion = nameVersion,
+                email = "renamed@example.test",
+            });
+        Assert.Equal(HttpStatusCode.OK, changedEmail.StatusCode);
+        using var emailAccount = JsonDocument.Parse(
+            await changedEmail.Content.ReadAsStringAsync());
+        var emailVersion = emailAccount.RootElement
+            .GetProperty("version")
+            .GetInt64();
+        Assert.False(
+            emailAccount.RootElement
+                .GetProperty("emailConfirmed")
+                .GetBoolean());
+
+        using var changedPhone = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Put,
+            "/account/phone",
+            login.AccessToken,
+            new
+            {
+                expectedVersion = emailVersion,
+                phone = "+1 555 010 4242",
+            });
+        Assert.Equal(HttpStatusCode.OK, changedPhone.StatusCode);
+        using var phoneAccount = JsonDocument.Parse(
+            await changedPhone.Content.ReadAsStringAsync());
+        var phoneVersion = phoneAccount.RootElement
+            .GetProperty("version")
+            .GetInt64();
+        Assert.False(
+            phoneAccount.RootElement
+                .GetProperty("phoneConfirmed")
+                .GetBoolean());
+
+        using var changedProfile = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Put,
+            "/account/profile",
+            login.AccessToken,
+            new
+            {
+                expectedVersion = phoneVersion,
+                profile = new
+                {
+                    displayName = "Updated profile",
+                    locale = "ru",
+                },
+            });
+        Assert.Equal(HttpStatusCode.OK, changedProfile.StatusCode);
+        using var profileAccount = JsonDocument.Parse(
+            await changedProfile.Content.ReadAsStringAsync());
+        Assert.Equal(
+            "Updated profile",
+            profileAccount.RootElement
+                .GetProperty("profile")
+                .GetProperty("displayName")
+                .GetString());
+
+        using var staleMutation = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Put,
+            "/account/user-name",
+            login.AccessToken,
+            new
+            {
+                expectedVersion = initialVersion,
+                userName = "stale-write",
+            });
+        Assert.Equal(HttpStatusCode.Conflict, staleMutation.StatusCode);
+
+        using var missingHandle = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = (string?)null,
+                email = (string?)null,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "No Handle",
+                    locale = "en",
+                },
+                password,
+            });
+        Assert.Equal(HttpStatusCode.BadRequest, missingHandle.StatusCode);
+
+        const string phone = "+1 555 010 9898";
+        using var phoneRegistration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = (string?)null,
+                email = (string?)null,
+                phone,
+                profile = new
+                {
+                    displayName = "Phone Only",
+                    locale = "en",
+                },
+                password,
+            });
+        Assert.Equal(HttpStatusCode.Created, phoneRegistration.StatusCode);
+        var phoneOnlyAccount = await phoneRegistration.Content
+            .ReadFromJsonAsync<AccountResponse<IntegrationProfile>>();
+        Assert.NotNull(phoneOnlyAccount);
+        var phoneLogin = await LoginAsync(client, phone, password);
+
+        using var removeLastHandle = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Put,
+            "/account/phone",
+            phoneLogin.AccessToken,
+            new
+            {
+                expectedVersion = phoneOnlyAccount.Version,
+                phone = (string?)null,
+            });
+        Assert.Equal(
+            HttpStatusCode.Conflict,
+            removeLastHandle.StatusCode);
+        using var lastHandleProblem = JsonDocument.Parse(
+            await removeLastHandle.Content.ReadAsStringAsync());
+        Assert.Equal(
+            HelloAccountSecurityActionErrorCodes.LastSignInMethod,
+            lastHandleProblem.RootElement
+                .GetProperty("code")
+                .GetString());
+    }
+
+    [Fact]
     public async Task PasswordChangeRequiresConfirmedEmailAndOneTimeStepUp()
     {
         await using var postgres = new PostgreSqlBuilder(
@@ -390,6 +584,136 @@ public sealed class AuthenticationFlowTests
     }
 
     [Fact]
+    public async Task AccountDeletionRequiresStepUpAndRevokesEverySession()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString());
+        using var client = app.CreateClient(
+            allowAutoRedirect: false);
+        const string email = "delete-alice@example.test";
+        const string password = "correct horse battery staple";
+
+        using var registration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "delete-alice",
+                email,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Delete Alice",
+                    locale = "en",
+                },
+                password,
+            });
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+
+        using var confirmationRequest = await client.PostAsJsonAsync(
+            "/auth/email-confirmation/request",
+            new { email });
+        Assert.Equal(
+            HttpStatusCode.Accepted,
+            confirmationRequest.StatusCode);
+        var confirmationMessage = await app.WaitForMessageAsync(
+            HelloAccountMessageKind.EmailConfirmation);
+        var confirmationQuery = QueryHelpers.ParseQuery(
+            Assert.IsType<Uri>(confirmationMessage.ActionUrl).Query);
+        using var confirmation = await client.PostAsJsonAsync(
+            "/auth/email-confirmation/confirm",
+            new
+            {
+                userId = Guid.Parse(
+                    confirmationQuery["userId"].Single()!),
+                email = confirmationQuery["email"].Single(),
+                token = confirmationQuery["token"].Single(),
+            });
+        Assert.Equal(HttpStatusCode.NoContent, confirmation.StatusCode);
+
+        var firstLogin = await LoginAsync(client, email, password);
+        var secondLogin = await LoginAsync(client, email, password);
+
+        using var passwordRemovalChallenge = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/account/password/remove/challenge");
+        passwordRemovalChallenge.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                firstLogin.AccessToken);
+        using var removalRejected = await client.SendAsync(
+            passwordRemovalChallenge);
+        Assert.Equal(
+            HttpStatusCode.Conflict,
+            removalRejected.StatusCode);
+        using (var problem = JsonDocument.Parse(
+                   await removalRejected.Content.ReadAsStringAsync()))
+        {
+            Assert.Equal(
+                HelloAccountSecurityActionErrorCodes.LastSignInMethod,
+                problem.RootElement.GetProperty("code").GetString());
+        }
+
+        using var deleteChallengeRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/account/delete/challenge");
+        deleteChallengeRequest.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                firstLogin.AccessToken);
+        using var deleteChallengeResponse = await client.SendAsync(
+            deleteChallengeRequest);
+        Assert.Equal(HttpStatusCode.OK, deleteChallengeResponse.StatusCode);
+        using var challengeDocument = JsonDocument.Parse(
+            await deleteChallengeResponse.Content.ReadAsStringAsync());
+        var challengeId = challengeDocument.RootElement
+            .GetProperty("challengeId")
+            .GetGuid();
+        var verificationMessage = await app.WaitForMessageAsync(
+            HelloAccountMessageKind.AccountSecurityVerification);
+        var verificationCode = Assert.IsType<string>(
+            verificationMessage.VerificationCode);
+
+        using var deleted = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Delete,
+            "/account",
+            firstLogin.AccessToken,
+            new
+            {
+                challengeId,
+                verificationCode,
+            });
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+
+        foreach (var accessToken in new[]
+                 {
+                     firstLogin.AccessToken,
+                     secondLogin.AccessToken,
+                 })
+        {
+            using var accountRequest = new HttpRequestMessage(
+                HttpMethod.Get,
+                "/account/me");
+            accountRequest.Headers.Authorization =
+                new AuthenticationHeaderValue("Bearer", accessToken);
+            using var account = await client.SendAsync(accountRequest);
+            Assert.Equal(HttpStatusCode.Unauthorized, account.StatusCode);
+        }
+
+        using var loginAfterDeletion = await client.PostAsJsonAsync(
+            "/auth/login",
+            new { login = email, password });
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            loginAfterDeletion.StatusCode);
+    }
+
+    [Fact]
     public async Task CompleteRazorUiFlow()
     {
         await using var postgres = new PostgreSqlBuilder(
@@ -529,6 +853,40 @@ public sealed class AuthenticationFlowTests
             StringComparison.Ordinal);
         MergeCookies(cookies, account);
 
+        var profileVersion = ReadInputValue(
+            accountHtml,
+            "ProfileExpectedVersion");
+        var profileToken = ReadInputValue(
+            accountHtml,
+            "__RequestVerificationToken");
+        using var updateProfile = await SendFormAsync(
+            client,
+            "/hello/account?handler=UpdateProfile",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["ProfileExpectedVersion"] = profileVersion,
+                ["ProfileValues[displayName]"] =
+                    "Browser Alice Updated",
+                ["ProfileValues[locale]"] = "ru",
+                ["__RequestVerificationToken"] = profileToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, updateProfile.StatusCode);
+        MergeCookies(cookies, updateProfile);
+
+        using var updatedAccount = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/account",
+            cookies);
+        var updatedAccountHtml =
+            await updatedAccount.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "Browser Alice Updated",
+            updatedAccountHtml,
+            StringComparison.Ordinal);
+        MergeCookies(cookies, updatedAccount);
+
         var secondaryLogin = await LoginAsync(
             client,
             "browser-alice@example.test",
@@ -565,6 +923,27 @@ public sealed class AuthenticationFlowTests
             "/hello/account/sessions",
             revoke.Headers.Location?.OriginalString);
         MergeCookies(cookies, revoke);
+
+        using var securityPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/account/security",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, securityPage.StatusCode);
+        Assert.Contains(
+            "no-store",
+            securityPage.Headers.CacheControl?.ToString(),
+            StringComparison.OrdinalIgnoreCase);
+        var securityHtml = await securityPage.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "A password is configured.",
+            securityHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Link another sign-in method",
+            securityHtml,
+            StringComparison.Ordinal);
+        MergeCookies(cookies, securityPage);
 
         using var changePage = await SendAsync(
             client,
@@ -1293,6 +1672,23 @@ public sealed class AuthenticationFlowTests
         return WebUtility.HtmlDecode(match.Groups[1].Value);
     }
 
+    private static async Task<HttpResponseMessage> SendAuthorizedJsonAsync(
+        HttpClient client,
+        HttpMethod method,
+        string requestUri,
+        string accessToken,
+        object body)
+    {
+        using var request = new HttpRequestMessage(method, requestUri)
+        {
+            Content = JsonContent.Create(body),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            accessToken);
+        return await client.SendAsync(request);
+    }
+
     private static async Task<LoginResult> LoginAsync(
         HttpClient client,
         string login = "alice@example.test",
@@ -1403,7 +1799,8 @@ public sealed class AuthenticationFlowTests
         string? Locale);
 
     private sealed class IntegrationProfileUiFactory
-        : IHelloUiProfileFactory<IntegrationProfile>
+        : IHelloUiProfileFactory<IntegrationProfile>,
+            IHelloUiProfileEditor<IntegrationProfile>
     {
         public OperationResult<IntegrationProfile> Create(
             HelloUiRegistrationProfile profile)
@@ -1415,6 +1812,33 @@ public sealed class AuthenticationFlowTests
         public string GetDisplayName(
             IntegrationProfile profile)
             => profile.DisplayName;
+
+        public IReadOnlyList<HelloUiProfileField> GetFields(
+            IntegrationProfile profile)
+            =>
+            [
+                new HelloUiProfileField(
+                    "displayName",
+                    "Display name",
+                    profile.DisplayName,
+                    Required: true),
+                new HelloUiProfileField(
+                    "locale",
+                    "Locale",
+                    profile.Locale),
+            ];
+
+        public OperationResult<IntegrationProfile> Update(
+            IntegrationProfile current,
+            IReadOnlyDictionary<string, string?> values)
+        {
+            values.TryGetValue("displayName", out var displayName);
+            values.TryGetValue("locale", out var locale);
+            return OperationResultFactory.Success(
+                new IntegrationProfile(
+                    displayName ?? current.DisplayName,
+                    locale));
+        }
     }
 
     private sealed record SessionPayload(

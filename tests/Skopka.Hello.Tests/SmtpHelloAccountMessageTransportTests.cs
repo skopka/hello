@@ -19,6 +19,10 @@ public sealed class SmtpHelloAccountMessageTransportTests
         HelloAccountMessageKind.AccountSecurityVerification,
         "Confirm account security action",
         "authorize the requested account security action")]
+    [InlineData(
+        HelloAccountMessageKind.AdminActionVerification,
+        "Confirm administrative action",
+        "authorize the requested administrative action")]
     public void VerificationKindsRenderPurposeSpecificMultipartEmail(
         HelloAccountMessageKind kind,
         string expectedSubject,

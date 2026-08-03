@@ -21,6 +21,14 @@ The account UI is served under the startup-configured
 `SkopkaHello:Ui:PathPrefix`, `/hello` by default. The packaged stylesheet is an
 RCL static asset; the mounted custom stylesheet is linked after it.
 
+The admin API prefix is configured by
+`SkopkaHello:Admin:ApiPathPrefix` (`/admin` by default). Its Razor user page is
+served under the configured Hello UI prefix plus that value, for example
+`/hello/admin/users`. Read, manage and delete policy/role names are configured
+under the same section. Provision the first administrator only with the
+explicit command documented in [administration](administration.md); the normal
+web-server startup never seeds a privileged user.
+
 ## Configuration
 
 Inject the PostgreSQL connection string, Base64 JWT signing key and independent

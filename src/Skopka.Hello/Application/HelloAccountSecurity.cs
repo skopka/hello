@@ -194,8 +194,8 @@ internal static class HelloAccountSecurity
     }
 }
 
-internal sealed class HelloStepUpPolicyProvider<TProfile>
-    : IStepUpPolicyProvider<TProfile>
+internal sealed class HelloAccountStepUpRequirementProvider<TProfile>
+    : IHelloStepUpRequirementProvider<TProfile>
 {
     private static readonly StepUpRequirement PasswordChange =
         new(
@@ -257,5 +257,45 @@ internal sealed class HelloStepUpPolicyProvider<TProfile>
             _ => null,
         };
         return Task.FromResult(requirement);
+    }
+}
+
+internal sealed class HelloStepUpPolicyProvider<TProfile>(
+    IEnumerable<IHelloStepUpRequirementProvider<TProfile>> providers)
+    : IStepUpPolicyProvider<TProfile>
+{
+    public HelloStepUpPolicyProvider()
+        : this([new HelloAccountStepUpRequirementProvider<TProfile>()])
+    {
+    }
+
+    public async Task<StepUpRequirement?> GetRequirementAsync(
+        StepUpAuthorizationContext context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        StepUpRequirement? selected = null;
+        foreach (var provider in providers)
+        {
+            var requirement = await provider.GetRequirementAsync(
+                context,
+                cancellationToken);
+            if (requirement is null)
+            {
+                continue;
+            }
+
+            // Overlapping providers are a configuration error. Identity treats a
+            // missing policy as a safe denial, so fail closed without throwing.
+            if (selected is not null)
+            {
+                return null;
+            }
+
+            selected = requirement;
+        }
+
+        return selected;
     }
 }

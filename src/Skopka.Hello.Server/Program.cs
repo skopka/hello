@@ -5,10 +5,14 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Net;
 using System.Reflection;
 using Skopka.Hello;
+using Skopka.Hello.Admin;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.Server;
 using Skopka.Hello.UI;
 using Skopka.Identity.Ef.PostgreSql;
+using Skopka.Identity.Roles;
+using Skopka.Identity.Roles.Commands;
+using Skopka.Identity.Sessions;
 using Skopka.Identity.Verification;
 
 if (args is ["--health-check"])
@@ -185,6 +189,8 @@ using (var verificationKeys = VersionedSecretKeySet.Load(
         _ => verificationKeyProvider);
 }
 
+identity.AddRoles();
+
 identity.UseJwtBearerAuthentication(options =>
 {
     options.ValidateSessionOnEveryRequest = configuration.GetValue(
@@ -244,6 +250,13 @@ builder.Services.AddSkopkaHelloUi<
         options.AuthenticationCookieName =
             "Skopka.Hello.UI";
     }
+});
+var adminSection = configuration.GetSection("SkopkaHello:Admin");
+builder.Services.AddSkopkaHelloAdmin<
+    HelloProfile,
+    HelloAdminProfileProjector>(options =>
+{
+    adminSection.Bind(options);
 });
 builder.Services.AddHostedService<
     IdentitySessionPruningWorker<HelloProfile>>();
@@ -314,6 +327,7 @@ app.MapGet(
             : Results.StatusCode(
                 StatusCodes.Status503ServiceUnavailable));
 app.MapSkopkaHello<HelloProfile>();
+app.MapSkopkaHelloAdmin<HelloProfile>();
 app.MapSkopkaHelloUi();
 
 if (configuration.GetValue(
@@ -326,7 +340,133 @@ if (configuration.GetValue(
     await database.Database.MigrateAsync();
 }
 
+if (TryReadBootstrapAdminUserId(args, out var bootstrapAdminUserId))
+{
+    await BootstrapAdministratorAsync(
+        app.Services,
+        bootstrapAdminUserId,
+        app.Lifetime.ApplicationStopping);
+    return;
+}
+
 await app.RunAsync();
+
+static bool TryReadBootstrapAdminUserId(
+    string[] arguments,
+    out Guid userId)
+{
+    userId = default;
+    var index = Array.FindIndex(
+        arguments,
+        argument => string.Equals(
+            argument,
+            "--bootstrap-admin",
+            StringComparison.Ordinal));
+    if (index < 0)
+    {
+        return false;
+    }
+
+    if (index + 1 >= arguments.Length
+        || !Guid.TryParse(arguments[index + 1], out userId)
+        || userId == Guid.Empty)
+    {
+        throw new InvalidOperationException(
+            "--bootstrap-admin requires a non-empty user id.");
+    }
+
+    return true;
+}
+
+static async Task BootstrapAdministratorAsync(
+    IServiceProvider services,
+    Guid userId,
+    CancellationToken cancellationToken)
+{
+    await using var scope = services.CreateAsyncScope();
+    var options = scope.ServiceProvider.GetRequiredService<
+        SkopkaHelloAdminOptions>();
+    var roles = scope.ServiceProvider.GetRequiredService<
+        IIdentityRoleService<HelloProfile>>();
+    var roleNames = new[]
+        {
+            options.ReadRoleName,
+            options.ManageRoleName,
+            options.DeleteRoleName,
+        }
+        .Distinct(StringComparer.Ordinal)
+        .ToArray();
+
+    foreach (var roleName in roleNames)
+    {
+        var role = await roles.FindByNameAsync(
+            roleName,
+            cancellationToken);
+        if (role is null)
+        {
+            var created = await roles.CreateAsync(
+                new CreateRoleCommand(
+                    roleName,
+                    "Skopka.Hello administrator role."),
+                cancellationToken);
+            if (!created.IsSuccess)
+            {
+                throw new InvalidOperationException(
+                    $"Could not create admin role '{roleName}': "
+                    + string.Join(
+                        ", ",
+                        created.Errors.Select(error => error.Code)));
+            }
+
+            role = created.Value;
+        }
+
+        var membership = await roles.IsUserInRoleAsync(
+            userId,
+            role.Id,
+            cancellationToken);
+        if (!membership.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"Could not inspect admin role '{roleName}': "
+                + string.Join(
+                    ", ",
+                    membership.Errors.Select(error => error.Code)));
+        }
+
+        if (!membership.Value)
+        {
+            var assigned = await roles.AssignAsync(
+                new AssignRoleCommand(userId, role.Id),
+                cancellationToken);
+            if (!assigned.IsSuccess)
+            {
+                throw new InvalidOperationException(
+                    $"Could not assign admin role '{roleName}': "
+                    + string.Join(
+                        ", ",
+                        assigned.Errors.Select(error => error.Code)));
+            }
+        }
+    }
+
+    var sessions = scope.ServiceProvider.GetRequiredService<
+        IIdentitySessionService<HelloProfile>>();
+    var revoked = await sessions.RevokeAllAsync(
+        new RevokeAllIdentitySessionsCommand(userId),
+        cancellationToken);
+    if (!revoked.IsSuccess)
+    {
+        throw new InvalidOperationException(
+            "Admin roles were assigned, but session revocation failed: "
+            + string.Join(
+                ", ",
+                revoked.Errors.Select(error => error.Code)));
+    }
+
+    Console.WriteLine(
+        $"Administrator roles assigned to user {userId:D}. Sign in again.");
+}
 
 static byte[] ReadSigningKey(string? encoded)
 {

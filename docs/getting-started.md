@@ -83,6 +83,8 @@ SkopkaHello__Jwt__Audience=skopka-hello-api
 SkopkaHello__Jwt__ValidateSessionOnEveryRequest=false
 SkopkaHello__SelfRegistration__Enabled=true
 SkopkaHello__Ui__PathPrefix=/hello
+SkopkaHello__Admin__ApiPathPrefix=/admin
+SkopkaHello__Admin__RazorUiEnabled=true
 SkopkaHello__RateLimiting__CurrentVersion=v1
 SkopkaHello__Verification__CurrentVersion=v1
 SkopkaHello__Database__ApplyMigrations=false
@@ -115,6 +117,11 @@ requires an application restart. Prefixes inside the reserved `/auth`,
 `/account`, `/health`, `/swagger`, `/openapi`, `/_content` and
 `/signin-skopka-oidc` namespaces are rejected at startup to prevent ambiguous
 routes.
+
+The user-administration API uses `Admin:ApiPathPrefix`; its Razor page is
+composed under `{UiPathPrefix}{AdminApiPathPrefix}/users`. Configure current
+read/manage/delete role names and bootstrap the first administrator as
+described in [administration](administration.md).
 
 ## Configure an external OIDC provider
 

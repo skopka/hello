@@ -6,11 +6,11 @@
 Skopka.Hello is an open-source ASP.NET Core host layer for
 [Skopka.Identity](https://github.com/skopka/identity). It supplies HTTP
 contracts, secure browser token transport, Razor account UI, external OIDC
-provider integration, host composition and a package boundary for
-administration. Identity users, credentials, roles, external logins,
+provider integration, host composition and policy-separated administration.
+Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
-The current `0.4.0` vertical slice contains:
+The current `0.5.0` vertical slice contains:
 
 - atomic password registration;
 - automatic email, phone or user-name password login without user
@@ -40,6 +40,10 @@ The current `0.4.0` vertical slice contains:
 - Razor external registration and sign-in-method management pages;
 - startup-configurable self-registration and Razor UI route prefix;
 - online validation and transparent rotation for the protected UI session;
+- bounded administrative user search with host-controlled profile projection;
+- live role-backed read/manage/delete policies and OTP-protected block,
+  unblock, soft-delete, restore and session-revocation actions;
+- a Razor user-administration page and explicit first-administrator bootstrap;
 - PostgreSQL persistence and packaged Skopka.Identity migrations;
 - persistent versioned account/client rate limiting with bounded pruning;
 - shared `OperationResult` application operations mapped to either RFC 9457
@@ -48,7 +52,7 @@ The current `0.4.0` vertical slice contains:
 - a read-only Docker volume hook for host-provided custom CSS;
 - a ready-to-run server, sample host, Docker image and Testcontainers coverage.
 
-An OAuth/OIDC authorization server and administration surfaces remain deferred.
+An OAuth/OIDC authorization server and role-list administration remain deferred.
 
 ## Packages
 
@@ -58,7 +62,7 @@ An OAuth/OIDC authorization server and administration surfaces remain deferred.
 | `Skopka.Hello.Endpoints` | Minimal API routes, HTTP DTOs and ProblemDetails |
 | `Skopka.Hello.UI` | Razor registration/login/account/session pages and theming |
 | `Skopka.Hello.Oidc` | Maintained external OIDC provider adapter and validated browser flow |
-| `Skopka.Hello.Admin` | Future administration API/UI boundary |
+| `Skopka.Hello.Admin` | Policy-authorized user administration API/UI and safe profile projection |
 | `Skopka.Hello.Server` | Executable PostgreSQL host and Docker image |
 
 ## API
@@ -93,6 +97,9 @@ An OAuth/OIDC authorization server and administration surfaces remain deferred.
 | `DELETE` | `/account/password` | Bearer + one-time code |
 | `POST` | `/account/delete/challenge` | Bearer |
 | `DELETE` | `/account` | Bearer + one-time code |
+| `GET` | `/admin/users` | Bearer + current read-role membership |
+| `POST` | `/admin/users/{userId}/actions/{action}/challenge` | Bearer + current manage/delete-role membership |
+| `POST` | `/admin/users/{userId}/actions/{action}` | Bearer + current manage/delete-role membership + one-time code |
 
 When `SkopkaHelloOptions.SelfRegistrationEnabled` is false, password and
 external self-registration operations return the shared
@@ -132,6 +139,7 @@ With the default prefix, the ready server exposes:
 | `/hello/account/change-password` | Change password after configured-channel OTP step-up |
 | `/hello/account/security` | Set/remove a password or delete the account after OTP step-up |
 | `/hello/account/external-logins` | Link and unlink external providers after configured-channel OTP step-up |
+| `/hello/admin/users` | Search and administer users after current role-policy authorization |
 
 Account and credential API and Razor handlers share
 `IHelloIdentityApplication<TProfile>`;
@@ -149,6 +157,7 @@ flow ids make terminal external submissions one-use; the ready Server persists
 that replay guard through its HMAC-backed rate limiter.
 
 See [getting started](docs/getting-started.md) for configuration and requests,
+[administration](docs/administration.md) for policy, projection and bootstrap,
 [architecture](docs/architecture.md) for boundaries and
 [customization](docs/customization.md) for custom CSS volumes, and
 [security](docs/security.md) before deploying. Coordinated package publication

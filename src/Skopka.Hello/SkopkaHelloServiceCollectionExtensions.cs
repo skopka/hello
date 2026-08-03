@@ -63,6 +63,11 @@ public static class SkopkaHelloServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.IHelloExternalIdentityApplication<TProfile>,
             Skopka.Hello.HelloExternalIdentityApplication<TProfile>>();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<
+                Skopka.Hello.IHelloStepUpRequirementProvider<TProfile>,
+                Skopka.Hello
+                    .HelloAccountStepUpRequirementProvider<TProfile>>());
         services.TryAddScoped<
             Skopka.Hello.IHelloSessionCookieManager,
             Skopka.Hello.HelloSessionCookieManager>();

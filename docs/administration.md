@@ -1,0 +1,167 @@
+# Administration
+
+`Skopka.Hello.Admin` supplies a bounded user-administration API and Razor page.
+Identity still owns users, roles, optimistic concurrency, verification and
+session persistence. The module calls `IIdentityUserQueryService<TProfile>`,
+`IIdentityUserService<TProfile>` and `IIdentitySessionService<TProfile>`; it
+does not inject a store, `DbContext` or `IQueryable`.
+
+## Host composition
+
+Enable Identity roles before bearer authentication, register an explicit safe
+profile projector, then map the admin endpoints:
+
+```csharp
+identity.AddRoles();
+identity.UseJwtBearerAuthentication();
+
+services.AddSkopkaHelloAdmin<MyProfile, MyAdminProfileProjector>(options =>
+{
+    options.ApiPathPrefix = "/admin";
+    options.RazorUiEnabled = true;
+    options.ReadRoleName = "Skopka.Hello.Admin";
+    options.ManageRoleName = "Skopka.Hello.Admin";
+    options.DeleteRoleName = "Skopka.Hello.Admin";
+});
+
+app.MapSkopkaHelloAdmin<MyProfile>();
+app.MapSkopkaHelloUi();
+```
+
+The projector is mandatory because a generic `TProfile` must not be serialized
+to an administrator by accident. It receives both actor and target ids, so a
+host can redact fields based on the current administrator:
+
+```csharp
+public sealed class MyAdminProfileProjector
+    : IHelloAdminProfileProjector<MyProfile>
+{
+    public Task<OperationResult<IReadOnlyList<HelloAdminProfileField>>>
+        ProjectAsync(
+            MyProfile profile,
+            HelloAdminProfileProjectionContext context,
+            CancellationToken cancellationToken)
+    {
+        IReadOnlyList<HelloAdminProfileField> fields =
+        [
+            new("displayName", "Display name", profile.DisplayName),
+        ];
+        return Task.FromResult(OperationResultFactory.Success(fields));
+    }
+}
+```
+
+Do not project secrets, internal fraud signals or tenant data the actor is not
+allowed to inspect. A projection failure remains an `OperationResult` and is
+mapped through the common ProblemDetails/Razor validation contract.
+
+## Authorization model
+
+Authentication, authorization and step-up are three separate gates:
+
+1. API routes require bearer authentication; the Razor page requires the
+   protected Hello UI cookie.
+2. Every handler explicitly evaluates a read, manage or delete policy. The
+   built-in policy handler looks up current role membership through
+   `IIdentityRoleService<TProfile>` instead of trusting a possibly stale role
+   claim.
+3. Every mutation requires an Identity-owned one-time-code step-up. The proof
+   is bound to the actor, target user, action, optimistic version, block expiry,
+   reason fingerprint, delivery channel and confirmed-destination fingerprint.
+
+The administrator must have a confirmed contact for the configured
+`SkopkaHello:Delivery:VerificationChannel`. The code is delivered out of band
+and is never returned by HTTP or logged. A wrong code is retryable; a terminal
+verification, changed binding or mutation race requires a new challenge.
+
+The ready Server uses these independent policies and role settings:
+
+```json
+{
+  "SkopkaHello": {
+    "Admin": {
+      "ApiPathPrefix": "/admin",
+      "RazorUiEnabled": true,
+      "ReadPolicyName": "Skopka.Hello.Admin.Read",
+      "ManagePolicyName": "Skopka.Hello.Admin.Manage",
+      "DeletePolicyName": "Skopka.Hello.Admin.Delete",
+      "ReadRoleName": "Skopka.Hello.Admin",
+      "ManageRoleName": "Skopka.Hello.Admin",
+      "DeleteRoleName": "Skopka.Hello.Admin"
+    }
+  }
+}
+```
+
+Use different role names when read, state-management and deletion privileges
+must be separated. Policy names must be distinct. The Razor route is composed
+from the Hello UI prefix plus the admin API prefix, so the defaults expose API
+under `/admin` and UI under `/hello/admin/users`.
+
+Call `AddSkopkaHelloUi<TProfile, TProfileFactory>` before the admin registration
+when `RazorUiEnabled` is true. API-only hosts can set it to false; no admin
+Razor application part or route convention is then installed.
+
+## Bootstrap the first administrator
+
+Create and confirm a normal user first, note its id from the account response,
+then run the ready Server once in explicit bootstrap mode:
+
+```powershell
+dotnet run --project .\src\Skopka.Hello.Server -- `
+  --bootstrap-admin 11111111-1111-1111-1111-111111111111
+```
+
+The command creates the configured role or roles when missing, assigns the
+existing user and revokes that user's sessions. It does not search by email,
+create a user or start the web server. Sign in again after it completes so a
+new token/ticket is issued. The operation is idempotent and must run with the
+same database and secret configuration as the service.
+
+## API
+
+`GET /admin/users` accepts `search`, `status`, `requiredFlags`, `pageSize`,
+`cursorCreatedAt` and `cursorId`. Both cursor values must be supplied together.
+Identity caps a page at 100 and orders its opaque continuation by
+`(CreatedAt, Id)`.
+
+Mutations use the slugs `block`, `unblock`, `delete`, `restore` and
+`revoke-sessions`. Start a challenge with the intended command parameters:
+
+```http
+POST /admin/users/{userId}/actions/block/challenge
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "expectedVersion": 7,
+  "blockedUntil": "2026-08-05T12:00:00Z",
+  "reason": "security review"
+}
+```
+
+Repeat exactly those parameters with the returned challenge and the delivered
+code:
+
+```http
+POST /admin/users/{userId}/actions/block
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "challengeId": "22222222-2222-2222-2222-222222222222",
+  "verificationCode": "123456",
+  "expectedVersion": 7,
+  "blockedUntil": "2026-08-05T12:00:00Z",
+  "reason": "security review"
+}
+```
+
+Block and delete revoke every target refresh session after the user-state
+mutation. Delete is the Skopka.Identity soft-delete operation. An
+administrator cannot block or delete their own account through this surface.
+
+Role CRUD exists in Skopka.Identity, but version `0.7.0` has no bounded public
+role-list query. Hello therefore does not bypass the public API to build a role
+listing page; role administration remains deferred until that query contract
+exists.

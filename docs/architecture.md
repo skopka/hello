@@ -10,6 +10,7 @@ Server / Sample
   -> Skopka.Hello.Endpoints
   -> Skopka.Hello.UI
   -> Skopka.Hello.Oidc
+  -> Skopka.Hello.Admin
 
 Endpoints / UI
   -> Skopka.Hello.Oidc
@@ -22,6 +23,8 @@ Skopka.Hello
 
 Admin
   -> Skopka.Hello
+  -> Skopka.Hello.Endpoints
+  -> Skopka.Hello.UI
 ```
 
 `Skopka.Hello` calls `AddSkopkaIdentity<TProfile>()` and returns its
@@ -124,6 +127,22 @@ Hello reads the current sign-in-method snapshot before password removal and
 again at completion, so a password cannot become the last method removed by a
 stale flow. Successful credential mutations or deletion revoke every session;
 the UI discards its protected ticket and all session cookies.
+
+## Administration flow
+
+`IHelloAdminApplication` is deliberately non-generic at its transport boundary,
+but its implementation is composed for the host's `TProfile`. It queries users
+only through the bounded cursor-based
+`IIdentityUserQueryService<TProfile>` and passes every profile through the
+mandatory `IHelloAdminProfileProjector<TProfile>`. Raw profile values never
+reach an admin DTO or Razor model.
+
+Admin authentication, current role-policy authorization and Identity step-up
+are evaluated separately. Mutations bind the actor, target, exact action,
+optimistic version and action parameters into the one-time proof. Block and
+delete also revoke target sessions after the state mutation. The API and Razor
+page call the same application methods and map expected `OperationResult`
+failures without using EF stores.
 
 ## External OIDC flow
 
@@ -260,6 +279,7 @@ claimed.
 ## Deferred modules
 
 The external-provider client is implemented with the maintained ASP.NET Core
-OpenID Connect handler. An OAuth/OIDC authorization server and administration
-API/UI remain deferred; `Skopka.Hello.Admin` is only a package boundary and the
-project does not implement a home-grown authorization protocol.
+OpenID Connect handler. An OAuth/OIDC authorization server and role-list
+administration remain deferred. The project does not implement a home-grown
+authorization protocol or bypass Identity stores to compensate for a missing
+bounded role-query contract.

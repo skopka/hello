@@ -6,7 +6,7 @@ using Skopka.Identity.RateLimiting;
 
 namespace Skopka.Hello.Endpoints;
 
-internal static class OperationResultProblemMapper
+public static class OperationResultProblemMapper
 {
     public static ProblemMapping Map(
         IReadOnlyCollection<Error> errors)
@@ -150,7 +150,7 @@ internal static class OperationResultProblemMapper
         };
 }
 
-internal sealed record ProblemMapping(
+public sealed record ProblemMapping(
     int Status,
     string Title,
     string Detail,

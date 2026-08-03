@@ -1,0 +1,291 @@
+@page
+@model UsersModel
+@{
+    ViewData["Title"] = "User administration";
+}
+
+<section class="hello-page-heading">
+    <p class="hello-eyebrow">Administration</p>
+    <h1>Users</h1>
+    <p class="hello-muted">
+        Search accounts and perform security-sensitive actions. Every
+        mutation requires a fresh verification code sent to your confirmed
+        contact.
+    </p>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <section class="hello-card" role="status">
+        <p>@Model.StatusMessage</p>
+    </section>
+}
+
+<div asp-validation-summary="All"
+     class="hello-validation"
+     role="alert"></div>
+
+<section class="hello-card">
+    <form method="get" class="hello-form">
+        <label for="admin-search">Search</label>
+        <input id="admin-search"
+               asp-for="Search"
+               autocomplete="off"
+               placeholder="User name, email or phone" />
+
+        <label for="admin-status">Status</label>
+        <select id="admin-status" asp-for="Status">
+            @foreach (var value in Enum.GetValues<IdentityUserStatus>())
+            {
+                <option value="@value">@value</option>
+            }
+        </select>
+
+        <button class="hello-button" type="submit">Apply filters</button>
+    </form>
+</section>
+
+@if (Model.PendingAction is { } pending)
+{
+    <section class="hello-card" aria-labelledby="admin-verification-title">
+        <p class="hello-eyebrow">Step-up verification</p>
+        <h2 id="admin-verification-title">
+            @UsersModel.GetActionLabel(pending.Action)
+        </h2>
+        <p>
+            Enter the one-time code sent to your confirmed
+            @(pending.DeliveryChannel?.ToString().ToLowerInvariant()
+              ?? "contact").
+            @if (pending.ExpiresAt is { } expiresAt)
+            {
+                <span>It expires at @expiresAt.ToLocalTime().</span>
+            }
+        </p>
+
+        <form method="post"
+              asp-page-handler="CompleteAction"
+              class="hello-form">
+            <input type="hidden" name="userId" value="@pending.UserId" />
+            <input type="hidden"
+                   name="action"
+                   value="@UsersModel.GetActionSlug(pending.Action)" />
+            <input type="hidden"
+                   name="challengeId"
+                   value="@pending.ChallengeId" />
+            <input type="hidden"
+                   name="expectedVersion"
+                   value="@pending.Parameters.ExpectedVersion" />
+            <input type="hidden"
+                   name="blockedUntil"
+                   value="@(pending.Parameters.BlockedUntil?.ToString("O"))" />
+            <input type="hidden"
+                   name="reason"
+                   value="@pending.Parameters.Reason" />
+            <input type="hidden" asp-for="Search" />
+            <input type="hidden" asp-for="Status" />
+
+            <label for="admin-verification-code">Verification code</label>
+            <input id="admin-verification-code"
+                   name="verificationCode"
+                   inputmode="numeric"
+                   autocomplete="one-time-code"
+                   required />
+            <button class="hello-button hello-button-danger" type="submit">
+                Confirm @UsersModel.GetActionLabel(pending.Action).ToLowerInvariant()
+            </button>
+        </form>
+    </section>
+}
+
+@if (Model.Users.Count == 0)
+{
+    <section class="hello-card">
+        <p>No users matched the current filters.</p>
+    </section>
+}
+else
+{
+    <div class="hello-session-list">
+        @foreach (var user in Model.Users)
+        {
+            var isBlocked = user.BlockedAt is not null
+                && (user.BlockedUntil is null
+                    || user.BlockedUntil > DateTimeOffset.UtcNow);
+            <article class="hello-card">
+                <div>
+                    <p class="hello-eyebrow">
+                        @if (user.DeletedAt is not null)
+                        {
+                            <span>Deleted</span>
+                        }
+                        else if (isBlocked)
+                        {
+                            <span>Blocked</span>
+                        }
+                        else
+                        {
+                            <span>Active</span>
+                        }
+                        · version @user.Version
+                    </p>
+                    <h2>
+                        @(user.UserName
+                          ?? user.Email
+                          ?? user.Phone
+                          ?? user.Id.ToString("D"))
+                    </h2>
+                    <dl class="hello-session-meta">
+                        <div>
+                            <dt>User id</dt>
+                            <dd>@user.Id</dd>
+                        </div>
+                        <div>
+                            <dt>Flags</dt>
+                            <dd>@user.Flags</dd>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(user.Email))
+                        {
+                            <div>
+                                <dt>Email</dt>
+                                <dd>
+                                    @user.Email
+                                    @(user.EmailConfirmed ? "(confirmed)" : "(unconfirmed)")
+                                </dd>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(user.Phone))
+                        {
+                            <div>
+                                <dt>Phone</dt>
+                                <dd>
+                                    @user.Phone
+                                    @(user.PhoneConfirmed ? "(confirmed)" : "(unconfirmed)")
+                                </dd>
+                            </div>
+                        }
+                        @foreach (var field in user.Profile)
+                        {
+                            <div>
+                                <dt>@field.Label</dt>
+                                <dd>@(field.Value ?? "—")</dd>
+                            </div>
+                        }
+                        <div>
+                            <dt>Created</dt>
+                            <dd>@user.CreatedAt.ToLocalTime()</dd>
+                        </div>
+                    </dl>
+                </div>
+
+                <div class="hello-danger-zone">
+                    @if (user.DeletedAt is not null)
+                    {
+                        <form method="post" asp-page-handler="BeginAction">
+                            <input type="hidden" name="userId" value="@user.Id" />
+                            <input type="hidden" name="action" value="restore" />
+                            <input type="hidden"
+                                   name="expectedVersion"
+                                   value="@user.Version" />
+                            <input type="hidden" asp-for="Search" />
+                            <input type="hidden" asp-for="Status" />
+                            <button class="hello-button" type="submit">
+                                Restore
+                            </button>
+                        </form>
+                    }
+                    else
+                    {
+                        @if (isBlocked)
+                        {
+                            <form method="post" asp-page-handler="BeginAction">
+                                <input type="hidden" name="userId" value="@user.Id" />
+                                <input type="hidden" name="action" value="unblock" />
+                                <input type="hidden"
+                                       name="expectedVersion"
+                                       value="@user.Version" />
+                                <input type="hidden" asp-for="Search" />
+                                <input type="hidden" asp-for="Status" />
+                                <button class="hello-button" type="submit">
+                                    Unblock
+                                </button>
+                            </form>
+                        }
+                        else
+                        {
+                            <form method="post"
+                                  asp-page-handler="BeginAction"
+                                  class="hello-form">
+                                <input type="hidden" name="userId" value="@user.Id" />
+                                <input type="hidden" name="action" value="block" />
+                                <input type="hidden"
+                                       name="expectedVersion"
+                                       value="@user.Version" />
+                                <input type="hidden" asp-for="Search" />
+                                <input type="hidden" asp-for="Status" />
+                                <label>
+                                    Block until (optional)
+                                    <input type="datetime-local" name="blockedUntil" />
+                                </label>
+                                <label>
+                                    Reason (optional)
+                                    <input name="reason" maxlength="512" />
+                                </label>
+                                <button class="hello-button hello-button-danger"
+                                        type="submit">
+                                    Block
+                                </button>
+                            </form>
+                        }
+
+                        <form method="post" asp-page-handler="BeginAction">
+                            <input type="hidden" name="userId" value="@user.Id" />
+                            <input type="hidden"
+                                   name="action"
+                                   value="revoke-sessions" />
+                            <input type="hidden" asp-for="Search" />
+                            <input type="hidden" asp-for="Status" />
+                            <button class="hello-button hello-button-danger"
+                                    type="submit">
+                                Revoke sessions
+                            </button>
+                        </form>
+
+                        <form method="post"
+                              asp-page-handler="BeginAction"
+                              class="hello-form">
+                            <input type="hidden" name="userId" value="@user.Id" />
+                            <input type="hidden" name="action" value="delete" />
+                            <input type="hidden"
+                                   name="expectedVersion"
+                                   value="@user.Version" />
+                            <input type="hidden" asp-for="Search" />
+                            <input type="hidden" asp-for="Status" />
+                            <label>
+                                Deletion reason (optional)
+                                <input name="reason" maxlength="512" />
+                            </label>
+                            <button class="hello-button hello-button-danger"
+                                    type="submit">
+                                Delete
+                            </button>
+                        </form>
+                    }
+                </div>
+            </article>
+        }
+    </div>
+}
+
+@if (Model.NextCursor is { } nextCursor)
+{
+    <p>
+        <a class="hello-button"
+           asp-page="/SkopkaHelloAdmin/Users"
+           asp-route-Search="@Model.Search"
+           asp-route-Status="@Model.Status"
+           asp-route-CursorCreatedAt="@nextCursor.CreatedAt.ToString("O")"
+           asp-route-CursorId="@nextCursor.Id">
+            Next page
+        </a>
+    </p>
+}

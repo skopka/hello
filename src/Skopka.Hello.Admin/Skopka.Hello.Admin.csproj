@@ -1,6 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
     <Description>Administration API and UI boundary for Skopka.Hello.</Description>
   </PropertyGroup>
 
@@ -8,5 +9,6 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\Skopka.Hello\Skopka.Hello.csproj" />
     <ProjectReference Include="..\Skopka.Hello.Endpoints\Skopka.Hello.Endpoints.csproj" />
+    <ProjectReference Include="..\Skopka.Hello.UI\Skopka.Hello.UI.csproj" />
   </ItemGroup>
 </Project>

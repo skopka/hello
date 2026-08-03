@@ -13,11 +13,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Skopka.Abstraction.OperationResult;
+using Skopka.Hello.Admin;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.UI;
 using Skopka.Identity;
 using Skopka.Identity.Ef.PostgreSql;
 using Skopka.Identity.Errors;
+using Skopka.Identity.Roles;
+using Skopka.Identity.Roles.Commands;
 using Skopka.Identity.Users.Commands;
 using Skopka.Identity.Verification;
 using Testcontainers.PostgreSql;
@@ -34,6 +37,165 @@ public sealed class AuthenticationFlowTests
         "__Host-Skopka.Hello.XSRF-TOKEN";
     private const string AntiforgeryHeaderName = "X-CSRF-TOKEN";
     private const string UiCookieName = "__Host-Skopka.Hello.UI";
+
+    [Fact]
+    public async Task AdministratorCanQueryAndOtpBlockUser()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString());
+        using var client = app.CreateClient();
+        const string adminEmail = "admin-alice@example.test";
+        const string targetEmail = "admin-target@example.test";
+        const string password = "correct horse battery staple";
+
+        using var adminRegistration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "admin-alice",
+                email = adminEmail,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Admin Alice",
+                    locale = "en",
+                },
+                password,
+            });
+        Assert.Equal(HttpStatusCode.Created, adminRegistration.StatusCode);
+        var admin = await adminRegistration.Content.ReadFromJsonAsync<
+            AccountResponse<IntegrationProfile>>();
+        Assert.NotNull(admin);
+
+        using var targetRegistration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "admin-target",
+                email = targetEmail,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Admin Target",
+                    locale = "en",
+                },
+                password,
+            });
+        Assert.Equal(HttpStatusCode.Created, targetRegistration.StatusCode);
+        var target = await targetRegistration.Content.ReadFromJsonAsync<
+            AccountResponse<IntegrationProfile>>();
+        Assert.NotNull(target);
+
+        var targetLogin = await LoginAsync(client, targetEmail, password);
+        var unprivilegedAdminLogin = await LoginAsync(
+            client,
+            adminEmail,
+            password);
+        using (var forbiddenQuery = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/admin/users"))
+        {
+            forbiddenQuery.Headers.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    unprivilegedAdminLogin.AccessToken);
+            using var forbidden = await client.SendAsync(forbiddenQuery);
+            Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        }
+
+        using var confirmationRequest = await client.PostAsJsonAsync(
+            "/auth/email-confirmation/request",
+            new { email = adminEmail });
+        Assert.Equal(HttpStatusCode.Accepted, confirmationRequest.StatusCode);
+        var confirmationMessage = await app.WaitForMessageAsync(
+            HelloAccountMessageKind.EmailConfirmation);
+        var confirmationQuery = QueryHelpers.ParseQuery(
+            Assert.IsType<Uri>(confirmationMessage.ActionUrl).Query);
+        using var confirmation = await client.PostAsJsonAsync(
+            "/auth/email-confirmation/confirm",
+            new
+            {
+                userId = Guid.Parse(
+                    confirmationQuery["userId"].Single()!),
+                email = confirmationQuery["email"].Single(),
+                token = confirmationQuery["token"].Single(),
+            });
+        Assert.Equal(HttpStatusCode.NoContent, confirmation.StatusCode);
+
+        await app.GrantAdministratorAsync(admin.Id);
+        var adminLogin = await LoginAsync(client, adminEmail, password);
+
+        using var queryRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/admin/users?search=admin-target");
+        queryRequest.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                adminLogin.AccessToken);
+        using var queried = await client.SendAsync(queryRequest);
+        Assert.Equal(HttpStatusCode.OK, queried.StatusCode);
+        using var queryJson = JsonDocument.Parse(
+            await queried.Content.ReadAsStringAsync());
+        var queriedTarget = Assert.Single(
+            queryJson.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal(target.Id, queriedTarget.GetProperty("id").GetGuid());
+        var profileField = Assert.Single(
+            queriedTarget.GetProperty("profile").EnumerateArray());
+        Assert.Equal(
+            "Admin Target",
+            profileField.GetProperty("value").GetString());
+
+        using var begin = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            $"/admin/users/{target.Id:D}/actions/block/challenge",
+            adminLogin.AccessToken,
+            new
+            {
+                expectedVersion = target.Version,
+                reason = "integration security review",
+            });
+        Assert.Equal(HttpStatusCode.OK, begin.StatusCode);
+        using var beginJson = JsonDocument.Parse(
+            await begin.Content.ReadAsStringAsync());
+        var challengeId = beginJson.RootElement
+            .GetProperty("challengeId")
+            .GetGuid();
+        var verificationMessage = await app.WaitForMessageAsync(
+            HelloAccountMessageKind.AdminActionVerification);
+        Assert.Equal(adminEmail, verificationMessage.RecipientAddress);
+        var verificationCode = Assert.IsType<string>(
+            verificationMessage.VerificationCode);
+
+        using var complete = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            $"/admin/users/{target.Id:D}/actions/block",
+            adminLogin.AccessToken,
+            new
+            {
+                challengeId,
+                verificationCode,
+                expectedVersion = target.Version,
+                reason = "integration security review",
+            });
+        Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
+
+        using var targetMe = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/account/me");
+        targetMe.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                targetLogin.AccessToken);
+        using var targetRejected = await client.SendAsync(targetMe);
+        Assert.Equal(HttpStatusCode.Unauthorized, targetRejected.StatusCode);
+    }
 
     [Fact]
     public async Task CompleteAuthenticationAndSessionFlow()
@@ -1841,6 +2003,24 @@ public sealed class AuthenticationFlowTests
         }
     }
 
+    private sealed class IntegrationAdminProfileProjector
+        : IHelloAdminProfileProjector<IntegrationProfile>
+    {
+        public Task<OperationResult<IReadOnlyList<HelloAdminProfileField>>>
+            ProjectAsync(
+                IntegrationProfile profile,
+                HelloAdminProfileProjectionContext context,
+                CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IReadOnlyList<HelloAdminProfileField> fields =
+            [
+                new("displayName", "Display name", profile.DisplayName),
+            ];
+            return Task.FromResult(OperationResultFactory.Success(fields));
+        }
+    }
+
     private sealed record SessionPayload(
         Guid SessionId,
         string AccessToken,
@@ -2091,11 +2271,15 @@ public sealed class AuthenticationFlowTests
                 }
             }
 
+            identity.AddRoles();
             identity.UseJwtBearerAuthentication();
             builder.Services.AddProblemDetails();
             builder.Services.AddSkopkaHelloUi<
                 IntegrationProfile,
                 IntegrationProfileUiFactory>();
+            builder.Services.AddSkopkaHelloAdmin<
+                IntegrationProfile,
+                IntegrationAdminProfileProjector>();
 
             var application = builder.Build();
             application.UseExceptionHandler();
@@ -2109,6 +2293,7 @@ public sealed class AuthenticationFlowTests
             application.UseAuthentication();
             application.UseAuthorization();
             application.MapSkopkaHello<IntegrationProfile>();
+            application.MapSkopkaHelloAdmin<IntegrationProfile>();
             application.MapSkopkaHelloUi();
 
             await using (var scope =
@@ -2125,6 +2310,31 @@ public sealed class AuthenticationFlowTests
             return new TestApplication(
                 application,
                 messageSender);
+        }
+
+        public async Task GrantAdministratorAsync(Guid userId)
+        {
+            await using var scope =
+                application.Services.CreateAsyncScope();
+            var roles = scope.ServiceProvider.GetRequiredService<
+                IIdentityRoleService<IntegrationProfile>>();
+            var role = await roles.FindByNameAsync(
+                HelloAdminDefaults.AdministratorRole,
+                CancellationToken.None);
+            if (role is null)
+            {
+                var created = await roles.CreateAsync(
+                    new CreateRoleCommand(
+                        HelloAdminDefaults.AdministratorRole),
+                    CancellationToken.None);
+                Assert.True(created.IsSuccess);
+                role = created.Value;
+            }
+
+            var assigned = await roles.AssignAsync(
+                new AssignRoleCommand(userId, role.Id),
+                CancellationToken.None);
+            Assert.True(assigned.IsSuccess);
         }
 
         public HttpClient CreateClient(

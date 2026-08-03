@@ -47,7 +47,8 @@ internal static class HelloAccountMessageValidator
             HelloAccountMessageKind.PasswordChangeVerification
             or HelloAccountMessageKind.ExternalLoginLinkVerification
             or HelloAccountMessageKind.ExternalLoginUnlinkVerification
-            or HelloAccountMessageKind.AccountSecurityVerification;
+            or HelloAccountMessageKind.AccountSecurityVerification
+            or HelloAccountMessageKind.AdminActionVerification;
         if (isVerificationMessage
             && (message.ActionUrl is not null
                 || string.IsNullOrWhiteSpace(

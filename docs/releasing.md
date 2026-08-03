@@ -29,8 +29,8 @@ semantic-version tag:
 ```shell
 git switch main
 git pull --ff-only
-git tag -a v0.4.0 -m "Skopka.Hello 0.4.0"
-git push origin v0.4.0
+git tag -a v0.5.0 -m "Skopka.Hello 0.5.0"
+git push origin v0.5.0
 ```
 
 The workflow removes the leading `v` and uses the remainder as the assembly and

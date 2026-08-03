@@ -102,6 +102,11 @@ internal sealed class SmtpHelloAccountMessageTransport(
                     message,
                     "Confirm account security action",
                     "Use this verification code to authorize the requested account security action:"),
+            HelloAccountMessageKind.AdminActionVerification =>
+                CreateVerificationContent(
+                    message,
+                    "Confirm administrative action",
+                    "Use this verification code to authorize the requested administrative action:"),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(message),
                 message.Kind,

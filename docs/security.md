@@ -252,6 +252,33 @@ handle. Account self-service refuses to clear the final user name, email or
 phone while password sign-in is configured, preventing a valid credential from
 becoming unreachable.
 
+## Administrative actions
+
+Admin API and Razor requests pass three independent gates: an authenticated
+bearer/UI session, a live role-backed read/manage/delete policy, and an
+Identity-owned step-up decision for mutations. The role policy queries current
+membership instead of relying only on the role claim embedded when a token was
+issued. The application also validates the administrator's access token online
+before querying or mutating users.
+
+The host must explicitly project visible `TProfile` fields through
+`IHelloAdminProfileProjector<TProfile>`. Raw profiles are never returned by the
+admin application contract. Do not project secrets or cross-tenant fields the
+current actor cannot inspect.
+
+Mutation proofs include non-reversible bindings for actor, target, action,
+expected version, action parameters, delivery channel and the administrator's
+confirmed destination. A code for one target or command cannot authorize
+another. Self-block and self-delete are denied. Block and soft-delete revoke
+the target's refresh sessions; deployments requiring already-issued access
+tokens to stop immediately must retain online session validation on protected
+resources.
+
+The explicit `--bootstrap-admin <user-id>` operator command assigns only the
+configured roles to an existing user and revokes that user's sessions. Do not
+replace it with an automatic email lookup, checked-in seed user or startup
+assignment from untrusted configuration.
+
 ## Secrets
 
 Keep these values outside source control:

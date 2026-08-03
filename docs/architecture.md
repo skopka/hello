@@ -91,7 +91,9 @@ is outside this self-service policy.
 
 Password-reset and email/phone-confirmation requests validate and normalize the
 target, consume persistent client and target rate-limit partitions, and enter
-one bounded in-memory queue before any account lookup or action-token work.
+`IHelloAnonymousAccountMessageInbox` before any account lookup or action-token
+work. The reusable package defaults to a bounded in-memory implementation; the
+ready Server replaces it with a PostgreSQL lease-based inbox.
 The request therefore returns from the same pipeline for known and unknown
 targets. A denied rate-limit decision or full queue is silently dropped after
 validation so every well-formed request still receives `202 Accepted`. A worker
@@ -102,10 +104,12 @@ link from configured `PublicOrigin` and hands the message to
 `IHelloAccountMessageSender`. The built-in dispatcher selects one
 `IHelloAccountMessageProvider` by configured provider id and semantic channel.
 Provider ids are unique and the selected provider must report the matching
-channel; invalid routing fails at startup. The SMTP email provider has its own
-bounded background queue, while custom hosts can register an SMS provider
+channel; invalid routing fails at startup. The reusable SMTP provider defaults
+to its own bounded background queue. In the ready Server, a PostgreSQL outbox
+wraps the configured email route and SMTP runs directly behind its worker, so
+the row is acknowledged only after the provider reports success. Custom hosts
+can still replace either persistence contract or register an SMS provider
 without moving delivery into Identity.
-Applications can replace the sender with a durable delivery producer.
 Phone-confirmation messages always use SMS. Step-up messages use the configured
 `VerificationChannel`; Hello selects and validates the confirmed destination
 before it creates the challenge and never performs cross-channel fallback.
@@ -275,6 +279,12 @@ with an already committed identity mutation. A consuming application that
 requires that guarantee must write the outbox record inside the transaction
 that owns its protected application operation. No cross-store atomicity is
 claimed.
+
+The ready Server persists these post-commit observer records in
+`skopka_hello.audit_outbox`. A failed audit insert is logged and metered but
+cannot roll back the already committed Identity mutation. Application
+operations that require atomic domain mutation plus audit still need to call
+`IHelloAuditOutbox` inside their own transaction boundary.
 
 ## Deferred modules
 

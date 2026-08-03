@@ -40,6 +40,24 @@ versioned rate-limit and verification-code HMAC keys from a secret manager. Do
 not bake `.env`, database passwords or signing material into the image. Use a
 protected persistent volume for Data Protection keys.
 
+The volume prevents key loss but does not encrypt the XML key ring by itself.
+For production, mount a PFX outside the image and set
+`SkopkaHello:DataProtection:CertificatePath` plus the secret
+`CertificatePassword`. The certificate must contain its private key. All
+replicas need the same current certificate while they share that ring. During
+rotation, configure prior PFX files under
+`DataProtection:DecryptionCertificates:{index}:Path` and `Password`, deploy the
+new current certificate with the old certificates still readable, and remove
+an old certificate only after no retained key-ring entry or protected queue
+payload requires it.
+
+```text
+SkopkaHello__DataProtection__CertificatePath=/run/secrets/dp-current.pfx
+SkopkaHello__DataProtection__CertificatePassword=<secret>
+SkopkaHello__DataProtection__DecryptionCertificates__0__Path=/run/secrets/dp-previous.pfx
+SkopkaHello__DataProtection__DecryptionCertificates__0__Password=<secret>
+```
+
 The base image does not include Kerberos. Set `GSS Encryption Mode=Disable` in
 the PostgreSQL connection string when GSSAPI is not part of the deployment;
 otherwise derive an image that installs the required GSSAPI runtime libraries.
@@ -50,9 +68,9 @@ Set `SkopkaHello:PublicOrigin` to the public TLS origin used in account-message
 links and external OIDC callback URLs. The ready server passes this trusted
 origin to the OIDC adapter, so provider redirects are not derived from the
 request `Host` header. Configure SMTP credentials from a secret manager. The
-built-in SMTP worker uses an in-memory bounded queue; replace
-`IHelloAccountMessageSender` with a durable broker producer when restart-safe
-delivery is required. Configure both
+ready Server persists anonymous requests and email messages in PostgreSQL
+before processing them; SMTP runs directly behind the durable outbox worker.
+Configure both
 `SkopkaHello:Delivery:EmailProviderId` and the matching
 `SkopkaHello:Delivery:Smtp:ProviderId`; provider routing is validated at
 startup. The compose file maps the `SKOPKA_HELLO_EMAIL_PROVIDER_ID` and
@@ -61,8 +79,8 @@ host empty to disable delivery. The ready image contains no SMS vendor adapter;
 a derived host image can register one through
 `AddSkopkaHelloSmsProvider<TProvider>()` and select its id with
 `SkopkaHello:Delivery:SmsProviderId`.
-`SkopkaHello:Delivery:AnonymousRequestQueueCapacity` bounds requests awaiting
-account lookup and token issuance (the compose wrapper is
+`SkopkaHello:Delivery:AnonymousRequestQueueCapacity` bounds the in-memory
+fallback for requests awaiting account lookup and token issuance (the compose wrapper is
 `SKOPKA_HELLO_ANONYMOUS_MESSAGE_QUEUE_CAPACITY`). Size it independently from
 the SMTP provider queue. Anonymous client and normalized-target admission uses
 the persistent Identity rate limiter configured by the ready Server. Denied or
@@ -72,6 +90,29 @@ Set `SkopkaHello:Delivery:VerificationChannel` (or the compose wrapper
 `SKOPKA_HELLO_VERIFICATION_CHANNEL`) to `Email` or `Sms` for password and
 external-account step-up codes. The chosen contact must be confirmed; there is
 no cross-channel fallback after challenge creation.
+
+Durable payloads contain protected normalized targets, recipients, action URLs
+or OTPs. All replicas must share the Data Protection key ring, and old keys
+must remain available until no retained queue record depends on them. Provider
+delivery is at-least-once; use the stable `MessageId` as an idempotency key when
+the provider supports deduplication. Configure leases, retries and retention
+under `SkopkaHello:Persistence`; durable delivery and post-commit audit are
+enabled by default. The command timeout bounds synchronous post-commit audit
+writes so a database fault cannot hold an identity request indefinitely. The
+Compose wrapper exposes the enable flags, maximum-attempt value and both
+retention intervals shown in `.env.example`.
+
+```text
+SkopkaHello__Persistence__DurableDeliveryEnabled=true
+SkopkaHello__Persistence__AuditEnabled=true
+SkopkaHello__Persistence__CommandTimeout=00:00:05
+SkopkaHello__Persistence__LeaseDuration=00:01:00
+SkopkaHello__Persistence__RetryDelay=00:00:10
+SkopkaHello__Persistence__MaximumAttempts=8
+SkopkaHello__Persistence__AnonymousRequestLifetime=01:00:00
+SkopkaHello__Persistence__FailedRecordRetention=7.00:00:00
+SkopkaHello__Persistence__AuditRetention=90.00:00:00
+```
 
 Expose the app through TLS. If TLS terminates at a reverse proxy, configure
 ASP.NET Core forwarded headers with explicit known proxies/networks; otherwise
@@ -187,8 +228,9 @@ login.
 ## Database migrations
 
 Skopka.Identity PostgreSQL migrations are packaged in
-`Skopka.Identity.Ef.PostgreSql`. Apply them once as a controlled deployment
-step before starting the new web replicas:
+`Skopka.Identity.Ef.PostgreSql`; the ready Server also owns versioned
+`skopka_hello` delivery/audit migrations. Apply both once as a controlled
+deployment step before starting the new web replicas:
 
 ```powershell
 docker run --rm `
@@ -196,12 +238,15 @@ docker run --rm `
   ghcr.io/skopka/hello:<version> --migrate
 ```
 
-The command reads only `ConnectionStrings:Identity`, applies all pending
-Skopka.Identity migrations, verifies that none remain and then exits. It is
-idempotent, but the deployment platform must serialize migration jobs. The web
-process never applies migrations during startup. The provided Compose stack
-models the same ordering with a one-shot `migrate` service and
-`service_completed_successfully` dependency.
+The command reads only `ConnectionStrings:Identity`, applies and verifies all
+pending Identity and Hello migrations and then exits. Hello migration ids and
+SHA-256 checksums are recorded in `skopka_hello.schema_migrations`; editing an
+applied migration fails instead of silently changing history. The command is
+idempotent and takes a PostgreSQL advisory transaction lock, but the deployment
+platform should still run one migration job. The web process never applies
+migrations during startup. The provided Compose stack models the same ordering
+with a one-shot `migrate` service and `service_completed_successfully`
+dependency.
 
 Back up the PostgreSQL database and Data Protection key ring and test restoring
 them together.
@@ -264,15 +309,18 @@ extra database read.
 ## Operational checks
 
 - poll `/health/live` for process liveness;
-- poll `/health/ready` for PostgreSQL connectivity;
+- poll `/health/ready` for PostgreSQL connectivity and current Identity/Hello
+  schemas;
 - monitor the hourly bounded refresh-session pruning worker;
 - monitor the hourly bounded rate-limit bucket pruning worker;
 - alert on rate-limit pruning budget exhaustion event `1013`;
 - monitor authentication failures and rate-limit decisions without submitted
   secrets;
 - monitor background account-message failures by safe error code;
-- collect the `Skopka.Hello` meter and alert on
-  `skopka.hello.account_message.queue.dropped`;
+- collect the `Skopka.Hello` and `Skopka.Hello.Server` meters; alert on
+  `skopka.hello.account_message.queue.dropped`,
+  `skopka.hello.persistence.failure` and
+  `skopka.hello.delivery.dead_letter`;
 - monitor external sign-in failures by safe error code without callback query
   strings, subjects, claims or provider tokens;
 - keep container base images and NuGet dependencies patched;

@@ -8,6 +8,17 @@ validation, endpoints, health checks and Docker behavior. Keep secrets outside
 source and appsettings. Migrations run only through the one-shot `--migrate`
 command and must complete before production replicas start.
 
+The ready composition uses PostgreSQL for the anonymous account-message inbox,
+email outbox and post-commit audit outbox. Protect every sensitive delivery
+payload with Data Protection before persistence, keep all replicas on the same
+key ring, and never log decrypted values. Workers use bounded leases with
+`FOR UPDATE SKIP LOCKED`, retry safely and retain failed records only for the
+configured interval. SMTP runs synchronously behind the durable outbox so an
+outbox row is acknowledged only after the provider returns success.
+Production deployments protect the persisted Data Protection key ring with a
+PFX supplied from a secret mount; never add that certificate or password to
+source or the image.
+
 Rate-limit HMAC keys use a current version and optional overlapping historical
 versions. All replicas must share the configured key material during overlap.
 Keep both session and rate-limit bounded pruning workers registered. The

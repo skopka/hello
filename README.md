@@ -46,6 +46,8 @@ The current `0.5.0` vertical slice contains:
 - a Razor user-administration page and explicit first-administrator bootstrap;
 - PostgreSQL persistence and packaged Skopka.Identity migrations;
 - persistent versioned account/client rate limiting with bounded pruning;
+- PostgreSQL-backed restart-safe account-message delivery and audit outbox in
+  the ready Server;
 - shared `OperationResult` application operations mapped to either RFC 9457
   `ProblemDetails` or Razor validation;
 - CSS custom-property theming with optional built-in styles;

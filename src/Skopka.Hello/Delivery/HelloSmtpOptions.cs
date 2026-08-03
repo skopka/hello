@@ -22,6 +22,8 @@ public sealed class HelloSmtpOptions
 
     public int QueueCapacity { get; set; } = 256;
 
+    public bool UseBackgroundQueue { get; set; } = true;
+
     public void Validate()
     {
         _ = HelloAccountMessageDispatcher.NormalizeProviderId(
@@ -37,7 +39,8 @@ public sealed class HelloSmtpOptions
                 "The SMTP port must be between 1 and 65535.");
         }
 
-        if (QueueCapacity is < 1 or > 10_000)
+        if (UseBackgroundQueue
+            && QueueCapacity is < 1 or > 10_000)
         {
             throw new InvalidOperationException(
                 "The SMTP queue capacity must be between 1 and 10000.");

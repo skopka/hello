@@ -18,22 +18,23 @@ internal sealed class HelloAnonymousAccountMessageRequester<TProfile>
     private readonly IIdentityNormalizer normalizer;
     private readonly IdentityRateLimitOptions rateLimitOptions;
     private readonly IIdentityRateLimiter<TProfile>? rateLimiter;
-    private readonly HelloAnonymousAccountMessageQueue<TProfile> queue;
+    private readonly IHelloAnonymousAccountMessageInbox queue;
     private readonly ILogger<HelloAnonymousAccountMessageRequester<TProfile>>?
         logger;
     private static readonly Action<ILogger, HelloAccountMessageKind,
-        Guid, Exception?> LogQueueFull = LoggerMessage.Define<
+        Guid, string, Exception?> LogInboxRejected = LoggerMessage.Define<
             HelloAccountMessageKind,
-            Guid>(
+            Guid,
+            string>(
                 LogLevel.Warning,
-                new EventId(2001, "AnonymousAccountMessageQueueFull"),
-                "Dropped anonymous {MessageKind} account-message request {MessageId} because the queue is full.");
+                new EventId(2001, "AnonymousAccountMessageInboxRejected"),
+                "Dropped anonymous {MessageKind} account-message request {MessageId}; inbox error code: {ErrorCode}.");
 
     public HelloAnonymousAccountMessageRequester(
         IIdentityNormalizer normalizer,
         IdentityRateLimitOptions rateLimitOptions,
         IEnumerable<IIdentityRateLimiter<TProfile>> rateLimiters,
-        HelloAnonymousAccountMessageQueue<TProfile> queue,
+        IHelloAnonymousAccountMessageInbox queue,
         ILogger<HelloAnonymousAccountMessageRequester<TProfile>>? logger =
             null)
     {
@@ -91,7 +92,10 @@ internal sealed class HelloAnonymousAccountMessageRequester<TProfile>
             Guid.NewGuid(),
             kind,
             normalizedTarget.Value);
-        if (!queue.TryWrite(request))
+        var queued = await queue.EnqueueAsync(
+            request,
+            cancellationToken);
+        if (!queued.IsSuccess)
         {
             HelloDiagnostics.AnonymousQueueDrops.Add(
                 1,
@@ -100,7 +104,13 @@ internal sealed class HelloAnonymousAccountMessageRequester<TProfile>
                     kind.ToString()));
             if (logger is not null)
             {
-                LogQueueFull(logger, kind, request.MessageId, null);
+                LogInboxRejected(
+                    logger,
+                    kind,
+                    request.MessageId,
+                    queued.Errors.FirstOrDefault()?.Code
+                        ?? HelloDeliveryErrorCodes.Failed,
+                    null);
             }
         }
 

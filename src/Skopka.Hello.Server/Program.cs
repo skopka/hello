@@ -2,8 +2,10 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Npgsql;
 using System.Net;
 using System.Reflection;
+using System.Security.Cryptography.X509Certificates;
 using Skopka.Hello;
 using Skopka.Hello.Admin;
 using Skopka.Hello.Endpoints;
@@ -58,7 +60,7 @@ var connectionString = configuration.GetConnectionString("Identity")
 
 if (migrationCommand)
 {
-    await ApplyIdentityMigrationsAsync(
+    await ApplyDatabaseMigrationsAsync(
         connectionString,
         CancellationToken.None);
     return;
@@ -103,6 +105,25 @@ var knownProxies = configuration
     .GetSection("SkopkaHello:ForwardedHeaders:KnownProxies")
     .Get<string[]>()
     ?? [];
+var persistenceOptions = new HelloServerPersistenceOptions();
+configuration.GetSection("SkopkaHello:Persistence")
+    .Bind(persistenceOptions);
+persistenceOptions.Validate();
+builder.Services.AddSingleton(persistenceOptions);
+builder.Services.AddSingleton(_ =>
+{
+    var dataSourceConnection = new NpgsqlConnectionStringBuilder(
+        connectionString)
+    {
+        CommandTimeout = checked((int)Math.Ceiling(
+            persistenceOptions.CommandTimeout.TotalSeconds)),
+        Timeout = checked((int)Math.Ceiling(
+            persistenceOptions.CommandTimeout.TotalSeconds)),
+    };
+    return NpgsqlDataSource.Create(
+        dataSourceConnection.ConnectionString);
+});
+builder.Services.AddSingleton<HelloProtectedPayloadSerializer>();
 
 if (useForwardedHeaders && knownProxies.Length == 0)
 {
@@ -135,13 +156,74 @@ if (useForwardedHeaders)
 
 var dataProtectionKeyPath =
     configuration["SkopkaHello:DataProtection:KeyPath"];
+var dataProtection = builder.Services
+    .AddDataProtection()
+    .SetApplicationName("Skopka.Hello");
 if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
 {
-    builder.Services
-        .AddDataProtection()
-        .SetApplicationName("Skopka.Hello")
-        .PersistKeysToFileSystem(
-            new DirectoryInfo(dataProtectionKeyPath));
+    dataProtection.PersistKeysToFileSystem(
+        new DirectoryInfo(dataProtectionKeyPath));
+}
+
+var dataProtectionCertificatePath =
+    configuration["SkopkaHello:DataProtection:CertificatePath"];
+var dataProtectionDecryptionCertificates = configuration
+    .GetSection(
+        "SkopkaHello:DataProtection:DecryptionCertificates")
+    .GetChildren()
+    .ToArray();
+if (string.IsNullOrWhiteSpace(dataProtectionCertificatePath)
+    && dataProtectionDecryptionCertificates.Length > 0)
+{
+    throw new InvalidOperationException(
+        "A current Data Protection certificate is required when decryption certificates are configured.");
+}
+
+if (!string.IsNullOrWhiteSpace(dataProtectionCertificatePath))
+{
+    var dataProtectionCertificates =
+        new List<X509Certificate2>();
+    try
+    {
+        var currentCertificate = LoadDataProtectionCertificate(
+            dataProtectionCertificatePath,
+            configuration[
+                "SkopkaHello:DataProtection:CertificatePassword"]);
+        dataProtectionCertificates.Add(currentCertificate);
+        foreach (var certificateSection in
+            dataProtectionDecryptionCertificates)
+        {
+            var path = certificateSection["Path"];
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                throw new InvalidOperationException(
+                    "Every Data Protection decryption certificate requires a path.");
+            }
+
+            dataProtectionCertificates.Add(
+                LoadDataProtectionCertificate(
+                    path,
+                    certificateSection["Password"]));
+        }
+
+        dataProtection.ProtectKeysWithCertificate(currentCertificate);
+        dataProtection.UnprotectKeysWithAnyCertificate(
+            [.. dataProtectionCertificates]);
+        foreach (var certificate in dataProtectionCertificates)
+        {
+            var ownedCertificate = certificate;
+            builder.Services.AddSingleton(_ => ownedCertificate);
+        }
+    }
+    catch
+    {
+        foreach (var certificate in dataProtectionCertificates)
+        {
+            certificate.Dispose();
+        }
+
+        throw;
+    }
 }
 
 var identity = builder.Services
@@ -234,13 +316,81 @@ builder.Services.AddSkopkaHelloOidc<HelloProfile>(options =>
 
 var deliverySection = configuration.GetSection(
     "SkopkaHello:Delivery");
-builder.Services.AddSkopkaHelloDelivery(
-    options => deliverySection.Bind(options));
+var deliveryOptions = new HelloDeliveryOptions();
+deliverySection.Bind(deliveryOptions);
+deliveryOptions.Validate();
+var destinationEmailProviderId = deliveryOptions.EmailProviderId;
+var durableEmailEnabled =
+    persistenceOptions.DurableDeliveryEnabled
+    && !string.IsNullOrWhiteSpace(destinationEmailProviderId);
+builder.Services.AddSkopkaHelloDelivery(options =>
+{
+    deliverySection.Bind(options);
+    if (durableEmailEnabled)
+    {
+        options.EmailProviderId =
+            PostgreSqlHelloAccountMessageOutbox
+                .DurableEmailProviderId;
+    }
+});
 var smtpSection = deliverySection.GetSection("Smtp");
 if (!string.IsNullOrWhiteSpace(smtpSection["Host"]))
 {
-    builder.Services.AddSkopkaHelloSmtpProvider(
-        options => smtpSection.Bind(options));
+    builder.Services.AddSkopkaHelloSmtpProvider(options =>
+    {
+        smtpSection.Bind(options);
+        options.UseBackgroundQueue = !durableEmailEnabled;
+    });
+}
+
+if (persistenceOptions.DurableDeliveryEnabled)
+{
+    builder.Services.Replace(
+        ServiceDescriptor.Singleton<
+            IHelloAnonymousAccountMessageInbox,
+            PostgreSqlHelloAnonymousAccountMessageInbox>());
+}
+
+if (durableEmailEnabled)
+{
+    var routeProviderId = HelloAccountMessageDispatcher
+        .NormalizeProviderId(
+            destinationEmailProviderId,
+            "The durable email destination provider id");
+    if (string.Equals(
+        routeProviderId,
+        PostgreSqlHelloAccountMessageOutbox
+            .DurableEmailProviderId,
+        StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException(
+            "The durable email destination cannot reference the outbox provider itself.");
+    }
+
+    builder.Services.AddSingleton(
+        new HelloDurableEmailRouteOptions(routeProviderId));
+    builder.Services.AddSkopkaHelloEmailProvider<
+        PostgreSqlHelloAccountMessageOutbox>();
+    builder.Services.AddHostedService<
+        PostgreSqlHelloAccountMessageWorker>();
+}
+
+if (persistenceOptions.AuditEnabled)
+{
+    builder.Services.AddSingleton<PostgreSqlHelloAuditOutbox>();
+    builder.Services.Replace(
+        ServiceDescriptor.Singleton<IHelloSecurityEventSink>(provider =>
+            provider.GetRequiredService<
+                PostgreSqlHelloAuditOutbox>()));
+    builder.Services.AddSingleton<IHelloAuditOutbox>(provider =>
+        provider.GetRequiredService<PostgreSqlHelloAuditOutbox>());
+}
+
+if (persistenceOptions.DurableDeliveryEnabled
+    || persistenceOptions.AuditEnabled)
+{
+    builder.Services.AddHostedService<
+        HelloServerPersistencePruningWorker>();
 }
 
 builder.Services.AddProblemDetails();
@@ -339,8 +489,12 @@ app.MapGet(
     "/health/ready",
     async (
         PostgreSqlIdentityDbContext<HelloProfile> database,
+        NpgsqlDataSource helloDataSource,
         CancellationToken cancellationToken) =>
         await database.Database.CanConnectAsync(cancellationToken)
+            && await HelloServerDatabaseMigrator.IsCurrentAsync(
+                helloDataSource,
+                cancellationToken)
             ? Results.Ok(new { status = "ready" })
             : Results.StatusCode(
                 StatusCodes.Status503ServiceUnavailable));
@@ -359,7 +513,7 @@ if (TryReadBootstrapAdminUserId(args, out var bootstrapAdminUserId))
 
 await app.RunAsync();
 
-static async Task ApplyIdentityMigrationsAsync(
+static async Task ApplyDatabaseMigrationsAsync(
     string connectionString,
     CancellationToken cancellationToken)
 {
@@ -373,23 +527,41 @@ static async Task ApplyIdentityMigrationsAsync(
             .GetPendingMigrationsAsync(cancellationToken))
         .ToArray();
 
-    if (pending.Length == 0)
+    if (pending.Length > 0)
     {
-        Console.WriteLine("Identity database is up to date.");
-        return;
+        await database.Database.MigrateAsync(cancellationToken);
+        if ((await database.Database
+                .GetPendingMigrationsAsync(cancellationToken))
+            .Any())
+        {
+            throw new InvalidOperationException(
+                "Identity database migrations did not complete.");
+        }
     }
 
-    await database.Database.MigrateAsync(cancellationToken);
-    if ((await database.Database
-            .GetPendingMigrationsAsync(cancellationToken))
-        .Any())
-    {
-        throw new InvalidOperationException(
-            "Identity database migrations did not complete.");
-    }
-
+    var helloApplied = await HelloServerDatabaseMigrator.ApplyAsync(
+        connectionString,
+        cancellationToken);
     Console.WriteLine(
-        $"Applied {pending.Length} Identity database migration(s).");
+        $"Database is current. Applied {pending.Length} Identity and {helloApplied} Hello migration(s).");
+}
+
+static X509Certificate2 LoadDataProtectionCertificate(
+    string path,
+    string? password)
+{
+    var certificate = X509CertificateLoader.LoadPkcs12FromFile(
+        path,
+        password,
+        X509KeyStorageFlags.EphemeralKeySet);
+    if (certificate.HasPrivateKey)
+    {
+        return certificate;
+    }
+
+    certificate.Dispose();
+    throw new InvalidOperationException(
+        $"The Data Protection certificate '{path}' must contain a private key.");
 }
 
 static bool TryReadBootstrapAdminUserId(

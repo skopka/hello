@@ -19,17 +19,28 @@ public static class SkopkaHelloSmtpServiceCollectionExtensions
         services.Replace(
             ServiceDescriptor.Singleton(options));
         services.AddSingleton<
-            Skopka.Hello.SmtpHelloAccountMessageQueue>();
-        services.AddSingleton<
             Skopka.Hello.SmtpHelloAccountMessageTransport>();
-        services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<
-                Skopka.Hello.IHelloAccountMessageProvider,
-                Skopka.Hello.QueuedSmtpHelloAccountMessageProvider>());
-        services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<
-                Microsoft.Extensions.Hosting.IHostedService,
-                Skopka.Hello.SmtpHelloAccountMessageWorker>());
+        if (options.UseBackgroundQueue)
+        {
+            services.AddSingleton<
+                Skopka.Hello.SmtpHelloAccountMessageQueue>();
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<
+                    Skopka.Hello.IHelloAccountMessageProvider,
+                    Skopka.Hello.QueuedSmtpHelloAccountMessageProvider>());
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<
+                    Microsoft.Extensions.Hosting.IHostedService,
+                    Skopka.Hello.SmtpHelloAccountMessageWorker>());
+        }
+        else
+        {
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<
+                    Skopka.Hello.IHelloAccountMessageProvider,
+                    Skopka.Hello.DirectSmtpHelloAccountMessageProvider>());
+        }
+
         return services;
     }
 }

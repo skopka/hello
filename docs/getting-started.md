@@ -85,9 +85,14 @@ SkopkaHello__SelfRegistration__Enabled=true
 SkopkaHello__Ui__PathPrefix=/hello
 SkopkaHello__Admin__ApiPathPrefix=/admin
 SkopkaHello__Admin__RazorUiEnabled=true
+SkopkaHello__Persistence__DurableDeliveryEnabled=true
+SkopkaHello__Persistence__AuditEnabled=true
+SkopkaHello__Persistence__AuditRetention=90.00:00:00
 SkopkaHello__RateLimiting__CurrentVersion=v1
 SkopkaHello__Verification__CurrentVersion=v1
 SkopkaHello__DataProtection__KeyPath=/protected/data-protection
+SkopkaHello__DataProtection__CertificatePath=/run/secrets/data-protection.pfx
+SkopkaHello__DataProtection__CertificatePassword=<secret>
 ```
 
 `PublicOrigin` is the externally reachable HTTP(S) origin used to build
@@ -204,13 +209,13 @@ be confirmed and the matching provider must be configured. A challenge never
 falls back to the other channel after it has been issued.
 
 `IHelloAccountMessageSender` remains the application-facing port and dispatches
-semantic messages to the selected provider. The SMTP provider acknowledges
-successful enqueue, not remote delivery. Its queue is bounded and in-memory,
-and its worker skips messages that expire while waiting. Replace the sender
-with a durable application queue when messages must survive a process restart.
-Anonymous password-reset and contact-confirmation requests first enter a
-separate bounded queue before lookup or token issuance; its capacity is
-`AnonymousRequestQueueCapacity`. The ready Server rate-limits queue admission
+semantic messages to the selected provider. The reusable SMTP adapter defaults
+to a bounded in-memory queue. The ready Server instead persists anonymous
+requests and configured email messages in PostgreSQL, then calls SMTP directly
+from the durable outbox worker. Anonymous password-reset and
+contact-confirmation requests enter the inbox before lookup or token issuance.
+The in-memory fallback capacity is `AnonymousRequestQueueCapacity`. The ready
+Server rate-limits inbox admission
 by trusted client key and normalized target using the Identity verification
 limits and resend cooldown. Denied or capacity-exhausted anonymous requests are
 silently dropped after validation and still receive `202 Accepted`.
@@ -220,8 +225,17 @@ requests report a delivery error when their channel has no configured provider.
 
 The web process never changes the database schema. Run the one-shot
 `--migrate` command before starting a new application version. It reads only
-`ConnectionStrings:Identity`, exits successfully when the schema is already up
-to date, and must be serialized by the deployment platform.
+`ConnectionStrings:Identity`, applies both Identity migrations and the
+versioned `skopka_hello` persistence schema, exits successfully when both are
+current, and must be serialized by the deployment platform.
+
+Durable delivery is at-least-once. Rows are leased for one minute, retried up
+to eight times and retained for seven days after terminal failure by default.
+The normalized target and complete provider message are Data
+Protection-encrypted before persistence. Keep the shared key ring and its old
+keys available while queued or retained records may still reference them.
+`AuditEnabled=true` stores enriched Identity events after their domain
+transaction commits; an audit write failure cannot roll that transaction back.
 
 Rate-limit and verification key versions are non-secret stable identifiers.
 Generate each purpose's key independently; never reuse the JWT signing key,

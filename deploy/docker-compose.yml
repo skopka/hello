@@ -37,7 +37,6 @@ services:
   server:
     <<: *hello-image
     environment:
-      ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Identity: Host=postgres;Port=5432;Database=${POSTGRES_DB:-skopka_hello};Username=${POSTGRES_USER:-skopka};Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable
       SkopkaHello__Jwt__SigningKey: ${SKOPKA_HELLO_JWT_SIGNING_KEY:?Set SKOPKA_HELLO_JWT_SIGNING_KEY in .env}
       SkopkaHello__RateLimiting__Keys__v1: ${SKOPKA_HELLO_RATE_LIMIT_KEY_V1:?Set SKOPKA_HELLO_RATE_LIMIT_KEY_V1 in .env}
@@ -45,7 +44,14 @@ services:
       SkopkaHello__PublicOrigin: ${SKOPKA_HELLO_PUBLIC_ORIGIN:-http://localhost:8080}
       SkopkaHello__SelfRegistration__Enabled: "${SKOPKA_HELLO_SELF_REGISTRATION_ENABLED:-true}"
       SkopkaHello__Ui__PathPrefix: "${SKOPKA_HELLO_UI_PATH_PREFIX:-/hello}"
+      SkopkaHello__Persistence__DurableDeliveryEnabled: "${SKOPKA_HELLO_DURABLE_DELIVERY_ENABLED:-true}"
+      SkopkaHello__Persistence__AuditEnabled: "${SKOPKA_HELLO_AUDIT_ENABLED:-true}"
+      SkopkaHello__Persistence__MaximumAttempts: "${SKOPKA_HELLO_DELIVERY_MAXIMUM_ATTEMPTS:-8}"
+      SkopkaHello__Persistence__FailedRecordRetention: "${SKOPKA_HELLO_FAILED_RECORD_RETENTION:-7.00:00:00}"
+      SkopkaHello__Persistence__AuditRetention: "${SKOPKA_HELLO_AUDIT_RETENTION:-90.00:00:00}"
       SkopkaHello__DataProtection__KeyPath: /var/lib/skopka-hello/keys
+      SkopkaHello__DataProtection__CertificatePath: "${SKOPKA_HELLO_DATA_PROTECTION_CERTIFICATE_PATH:-}"
+      SkopkaHello__DataProtection__CertificatePassword: "${SKOPKA_HELLO_DATA_PROTECTION_CERTIFICATE_PASSWORD:-}"
       SkopkaHello__Customization__CssFilePath: /var/lib/skopka-hello/customization/custom.css
       SkopkaHello__Cookies__Secure: "false"
       SkopkaHello__Delivery__EmailProviderId: "${SKOPKA_HELLO_EMAIL_PROVIDER_ID:-}"

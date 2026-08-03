@@ -55,6 +55,11 @@ observability, not durable audit. Use `IHelloAuditOutbox` and
 `HelloAuditOutboxRecord` inside an application-owned transaction when durability
 and atomicity are required.
 
+The ready Server replaces the no-op sink with a PostgreSQL post-commit audit
+outbox when `SkopkaHello:Persistence:AuditEnabled` is true. That makes each
+successfully inserted record restart-safe, but it cannot make an observer write
+atomic with the Identity transaction that already committed.
+
 ## UI and styles
 
 Register the Razor Class Library with an application-specific profile factory:

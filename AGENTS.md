@@ -47,6 +47,13 @@ source; the public test-only Development example is excluded from publish and
 Docker output. Rotation retains overlapping versions, and a bounded worker
 prunes old buckets.
 
+The ready Server also replaces the facade's best-effort anonymous inbox and
+SMTP queue with PostgreSQL inbox/outbox delivery by default. Sensitive targets,
+action URLs and OTPs are protected with the shared Data Protection key ring.
+Workers use leases and `SKIP LOCKED`; delivery is at-least-once. Identity
+security events are copied post-commit to the Hello audit outbox, without
+claiming cross-transaction atomicity.
+
 Anonymous account-message requests suppress exact-lookup not-found results and
 return the same accepted response for every well-formed email or phone. Links use a
 configured public origin, confirmation GET requests never mutate state, and
@@ -116,5 +123,6 @@ and pack all five source packages without publishing them. Tag pushes matching
 `v*` publish `Skopka.Hello`, `.Admin`, `.Endpoints`, `.Oidc` and `.UI` together
 through `.github/workflows/release.yml`. Keep the tag-derived version, exact
 package-set validation, NuGet.org publication and GitHub Release attachments in
-one coordinated job. Docker image build and publication are intentionally
-deferred. Release setup and operator steps live in `docs/releasing.md`.
+one coordinated job. The same tag publishes the ready Server image to GHCR
+with its exact SemVer and commit-SHA tags. Release setup and operator steps
+live in `docs/releasing.md`.

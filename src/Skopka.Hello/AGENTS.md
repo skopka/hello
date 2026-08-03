@@ -11,9 +11,11 @@ credentials and tokens remain explicit choices.
 This package also owns channel-aware account-message orchestration, custom
 email/SMS provider contracts and the optional bounded background SMTP adapter.
 Public request operations must suppress user-not-found and delivery outcomes.
-The built-in queue is intentionally best-effort; durable delivery remains a
-replaceable host concern. Step-up selects the configured confirmed-contact
-channel before challenge creation and never falls back across channels.
+The built-in inbox and SMTP queue are intentionally best-effort. Keep
+`IHelloAnonymousAccountMessageInbox` and `IHelloAccountMessageSender`
+replaceable so a host can provide durable storage. Step-up selects the
+configured confirmed-contact channel before challenge creation and never falls
+back across channels.
 
 Do not add endpoint DTOs, EF entities, OAuth protocol handling or identity
 business rules here. Security-event observers are post-commit and must never

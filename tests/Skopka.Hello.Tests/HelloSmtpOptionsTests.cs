@@ -55,6 +55,16 @@ public sealed class HelloSmtpOptionsTests
     }
 
     [Fact]
+    public void ValidateIgnoresQueueCapacityForDirectTransport()
+    {
+        var options = CreateValidOptions();
+        options.UseBackgroundQueue = false;
+        options.QueueCapacity = 0;
+
+        options.Validate();
+    }
+
+    [Fact]
     public void ValidateRejectsInvalidFromAddress()
     {
         var options = CreateValidOptions();
@@ -106,6 +116,35 @@ public sealed class HelloSmtpOptionsTests
             provider.GetServices<IHostedService>(),
             service =>
                 service is SmtpHelloAccountMessageWorker);
+    }
+
+    [Fact]
+    public void RegistrationCanUseDirectEmailProviderWithoutWorker()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSkopkaHelloDelivery(options =>
+            options.EmailProviderId = "smtp");
+        services.AddSkopkaHelloSmtpProvider(options =>
+        {
+            options.Host = "smtp.example.test";
+            options.FromAddress = "accounts@example.test";
+            options.UseBackgroundQueue = false;
+        });
+        using var provider = services.BuildServiceProvider(
+            new ServiceProviderOptions
+            {
+                ValidateOnBuild = true,
+                ValidateScopes = true,
+            });
+
+        var smtpProvider = Assert.Single(
+            provider.GetServices<IHelloAccountMessageProvider>());
+        Assert.IsType<DirectSmtpHelloAccountMessageProvider>(
+            smtpProvider);
+        Assert.DoesNotContain(
+            provider.GetServices<IHostedService>(),
+            service => service is SmtpHelloAccountMessageWorker);
     }
 
     private static HelloSmtpOptions CreateValidOptions()

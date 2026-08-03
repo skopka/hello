@@ -175,10 +175,13 @@ the resulting message in its own bounded background queue. Neither lookup nor
 SMTP network latency is exposed in the anonymous response. A successful result
 means the request was queued, not delivered. Workers log only safe provider,
 message-kind, message-id and error-code metadata. They never log recipients,
-action links or verification codes. Both queues are best-effort and in-memory.
-Applications requiring durable delivery should replace
-`IHelloAccountMessageSender` with a durable queue producer and protect its
-sensitive payload at rest.
+action links or verification codes. The reusable package's default inbox and
+SMTP queue are best-effort and in-memory. The ready Server replaces both email
+stages with PostgreSQL lease-based persistence and protects normalized targets,
+recipients, action URLs and OTPs with Data Protection before writing them.
+Delivery is at-least-once: a provider success followed by an acknowledgement
+failure may produce a duplicate with the same `MessageId`, so custom providers
+should use that id for deduplication where supported.
 
 Action links are built only from configured `SkopkaHello:PublicOrigin`; request
 host headers are not trusted. Their reset/confirmation path is derived from the
@@ -327,5 +330,6 @@ error details.
 - Keep access-token lifetimes short.
 - Configure a trusted public origin and rate-limit anonymous account-message
   requests.
-- Use a durable delivery queue when message loss during restart is unacceptable.
+- Keep the ready Server's durable delivery enabled, or replace both inbox and
+  sender contracts when message loss during restart is unacceptable.
 - Scan images and dependencies and perform an application-specific review.

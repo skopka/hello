@@ -43,7 +43,8 @@ public static class SkopkaHelloServiceCollectionExtensions
             Skopka.Hello.NullHelloSecurityEventSink>();
         services.AddSkopkaHelloDelivery();
         services.TryAddSingleton<
-            Skopka.Hello.HelloAnonymousAccountMessageQueue<TProfile>>();
+            Skopka.Hello.IHelloAnonymousAccountMessageInbox,
+            Skopka.Hello.InMemoryHelloAnonymousAccountMessageInbox>();
         services.TryAddScoped<
             Skopka.Hello.HelloAnonymousAccountMessageRequester<TProfile>>();
         services.TryAddScoped<

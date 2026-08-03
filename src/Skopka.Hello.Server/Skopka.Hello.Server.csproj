@@ -13,6 +13,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.OpenApi" />
+    <PackageReference Include="Npgsql" />
     <PackageReference Include="Skopka.Identity" />
     <PackageReference Include="Skopka.Identity.Abstractions" />
     <PackageReference Include="Skopka.Identity.Ef.PostgreSql" />

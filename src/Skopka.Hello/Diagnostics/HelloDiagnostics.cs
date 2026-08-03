@@ -12,5 +12,5 @@ public static class HelloDiagnostics
         Meter.CreateCounter<long>(
             "skopka.hello.account_message.queue.dropped",
             "{message}",
-            "Anonymous account-message requests dropped because the in-memory queue was full.");
+            "Anonymous account-message requests dropped because their configured inbox rejected them.");
 }

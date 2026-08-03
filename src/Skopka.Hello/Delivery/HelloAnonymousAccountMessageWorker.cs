@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace Skopka.Hello;
 
 internal sealed partial class HelloAnonymousAccountMessageWorker<TProfile>(
-    HelloAnonymousAccountMessageQueue<TProfile> queue,
+    IHelloAnonymousAccountMessageInbox queue,
     IServiceScopeFactory scopeFactory,
     ILogger<HelloAnonymousAccountMessageWorker<TProfile>> logger)
     : BackgroundService
@@ -13,9 +13,11 @@ internal sealed partial class HelloAnonymousAccountMessageWorker<TProfile>(
     protected override async Task ExecuteAsync(
         CancellationToken stoppingToken)
     {
-        await foreach (var request in queue.ReadAllAsync(
+        await foreach (var lease in queue.ReadAllAsync(
             stoppingToken))
         {
+            var request = lease.Request;
+            string? errorCode = null;
             try
             {
                 await using var scope =
@@ -28,12 +30,13 @@ internal sealed partial class HelloAnonymousAccountMessageWorker<TProfile>(
                     stoppingToken);
                 if (!result.IsSuccess)
                 {
+                    errorCode = result.Errors.FirstOrDefault()?.Code
+                        ?? HelloDeliveryErrorCodes.Failed;
                     AccountMessageProcessingFailed(
                         logger,
                         request.MessageId,
                         request.Kind,
-                        result.Errors.FirstOrDefault()?.Code
-                            ?? HelloDeliveryErrorCodes.Failed);
+                        errorCode);
                 }
             }
             catch (OperationCanceledException)
@@ -43,12 +46,59 @@ internal sealed partial class HelloAnonymousAccountMessageWorker<TProfile>(
             }
             catch (Exception)
             {
+                errorCode = HelloDeliveryErrorCodes.Failed;
                 AccountMessageProcessingFailed(
                     logger,
                     request.MessageId,
                     request.Kind,
-                    HelloDeliveryErrorCodes.Failed);
+                    errorCode);
             }
+
+            await TryFinishAsync(
+                lease,
+                errorCode,
+                stoppingToken);
+        }
+    }
+
+    private async Task TryFinishAsync(
+        HelloAnonymousAccountMessageLease lease,
+        string? errorCode,
+        CancellationToken cancellationToken)
+    {
+        var operation = errorCode is null ? "complete" : "fail";
+        try
+        {
+            var result = errorCode is null
+                ? await queue.CompleteAsync(lease, cancellationToken)
+                : await queue.FailAsync(
+                    lease,
+                    errorCode,
+                    cancellationToken);
+            if (!result.IsSuccess)
+            {
+                AccountMessageQueueOperationFailed(
+                    logger,
+                    lease.Request.MessageId,
+                    operation,
+                    result.Errors.FirstOrDefault()?.Code
+                        ?? HelloDeliveryErrorCodes.Failed,
+                    null);
+            }
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            AccountMessageQueueOperationFailed(
+                logger,
+                lease.Request.MessageId,
+                operation,
+                HelloDeliveryErrorCodes.Failed,
+                exception);
         }
     }
 
@@ -62,4 +112,16 @@ internal sealed partial class HelloAnonymousAccountMessageWorker<TProfile>(
         Guid messageId,
         HelloAccountMessageKind messageKind,
         string errorCode);
+
+    [LoggerMessage(
+        EventId = 1005,
+        Level = LogLevel.Error,
+        Message =
+            "Anonymous account-message inbox operation failed. Message: {messageId}; operation: {operation}; error code: {errorCode}.")]
+    private static partial void AccountMessageQueueOperationFailed(
+        ILogger logger,
+        Guid messageId,
+        string operation,
+        string errorCode,
+        Exception? exception);
 }

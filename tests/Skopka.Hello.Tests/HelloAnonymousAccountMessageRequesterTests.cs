@@ -77,13 +77,13 @@ public sealed class HelloAnonymousAccountMessageRequesterTests
             .ReadAllAsync(timeout.Token)
             .GetAsyncEnumerator(timeout.Token);
         Assert.True(await reader.MoveNextAsync());
-        Assert.NotEqual(Guid.Empty, reader.Current.MessageId);
+        Assert.NotEqual(Guid.Empty, reader.Current.Request.MessageId);
         Assert.Equal(
             HelloAccountMessageKind.EmailConfirmation,
-            reader.Current.Kind);
+            reader.Current.Request.Kind);
         Assert.Equal(
             "ALICE@EXAMPLE.TEST",
-            reader.Current.NormalizedTarget);
+            reader.Current.Request.NormalizedTarget);
     }
 
     [Fact]
@@ -108,11 +108,12 @@ public sealed class HelloAnonymousAccountMessageRequesterTests
             error => error.Code == IdentityErrorCodes.Validation);
         Assert.Empty(limiter.Hits);
         Assert.True(
-            queue.TryWrite(
+            (await queue.EnqueueAsync(
                 new HelloAnonymousAccountMessageRequest(
                     Guid.NewGuid(),
                     HelloAccountMessageKind.PhoneConfirmation,
-                    "15551234567")));
+                    "15551234567"),
+                CancellationToken.None)).IsSuccess);
     }
 
     [Fact]
@@ -137,11 +138,12 @@ public sealed class HelloAnonymousAccountMessageRequesterTests
         Assert.True(result.IsSuccess);
         Assert.Equal("unavailable", limiter.Hits[0].Key);
         Assert.True(
-            queue.TryWrite(
+            (await queue.EnqueueAsync(
                 new HelloAnonymousAccountMessageRequest(
                     Guid.NewGuid(),
                     HelloAccountMessageKind.PasswordReset,
-                    "ALICE@EXAMPLE.TEST")));
+                    "ALICE@EXAMPLE.TEST"),
+                CancellationToken.None)).IsSuccess);
     }
 
     [Fact]
@@ -152,11 +154,12 @@ public sealed class HelloAnonymousAccountMessageRequesterTests
             HelloAnonymousAccountMessageRequester<object>>();
         var queue = CreateQueue(capacity: 1);
         Assert.True(
-            queue.TryWrite(
+            (await queue.EnqueueAsync(
                 new HelloAnonymousAccountMessageRequest(
                     Guid.NewGuid(),
                     HelloAccountMessageKind.PasswordReset,
-                    "OTHER@EXAMPLE.TEST")));
+                    "OTHER@EXAMPLE.TEST"),
+                CancellationToken.None)).IsSuccess);
         var requester = CreateRequester(
             queue,
             CreateRateLimitOptions(),
@@ -182,12 +185,12 @@ public sealed class HelloAnonymousAccountMessageRequesterTests
         Assert.True(await reader.MoveNextAsync());
         Assert.Equal(
             "OTHER@EXAMPLE.TEST",
-            reader.Current.NormalizedTarget);
+            reader.Current.Request.NormalizedTarget);
     }
 
     private static HelloAnonymousAccountMessageRequester<object>
         CreateRequester(
-            HelloAnonymousAccountMessageQueue<object> queue,
+            IHelloAnonymousAccountMessageInbox queue,
             IdentityRateLimitOptions options,
             IIdentityRateLimiter<object> limiter,
             ILogger<HelloAnonymousAccountMessageRequester<object>>? logger =
@@ -199,9 +202,9 @@ public sealed class HelloAnonymousAccountMessageRequesterTests
             queue,
             logger);
 
-    private static HelloAnonymousAccountMessageQueue<object> CreateQueue(
+    private static InMemoryHelloAnonymousAccountMessageInbox CreateQueue(
         int capacity = 8)
-        => new(
+        => new InMemoryHelloAnonymousAccountMessageInbox(
             new HelloDeliveryOptions
             {
                 AnonymousRequestQueueCapacity = capacity,

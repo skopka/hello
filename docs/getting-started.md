@@ -68,7 +68,7 @@ docker compose -f .\deploy\docker-compose.postgres.yml down
 Equivalent required configuration for another environment is:
 
 ```text
-ConnectionStrings__Identity=Host=localhost;Port=5432;Database=skopka_hello;Username=skopka;Password=...
+ConnectionStrings__Identity=Host=localhost;Port=5432;Database=skopka_hello;Username=skopka;Password=...;GSS Encryption Mode=Disable
 SkopkaHello__Jwt__SigningKey=<Base64 encoded 32+ random bytes>
 SkopkaHello__RateLimiting__Keys__v1=<different Base64 encoded 32+ random bytes>
 SkopkaHello__Verification__Keys__v1=<third Base64 encoded 32+ random bytes>

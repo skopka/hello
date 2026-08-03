@@ -1,4 +1,5 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+ARG RELEASE_VERSION
 WORKDIR /src
 
 COPY NuGet.Config Directory.Build.props Directory.Packages.props ./
@@ -20,7 +21,8 @@ COPY src/Skopka.Hello.Server src/Skopka.Hello.Server
 RUN dotnet publish src/Skopka.Hello.Server/Skopka.Hello.Server.csproj \
     --configuration Release \
     --no-restore \
-    --output /app/publish
+    --output /app/publish \
+    ${RELEASE_VERSION:+-p:Version=${RELEASE_VERSION}}
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app

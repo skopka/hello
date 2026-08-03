@@ -1,7 +1,8 @@
 # Releasing
 
 Releases are published from Git tags by `.github/workflows/release.yml`.
-The workflow treats all Skopka.Hello libraries as one coordinated release.
+The workflow treats all Skopka.Hello libraries and the ready Server container
+as one coordinated release.
 
 ## Repository setup
 
@@ -16,6 +17,10 @@ it in the GitHub repository Actions secret named `NUGET_API_KEY`:
 
 The same semantic version is assigned to all five packages. Do not publish an
 individual project or create package-specific release jobs.
+
+The workflow publishes the server image to GitHub Container Registry using the
+repository's `GITHUB_TOKEN`. In repository package settings, keep Actions write
+access enabled for `ghcr.io/skopka/hello`.
 
 ## Publish a release
 
@@ -48,14 +53,15 @@ same GitHub Actions job safe: already accepted packages are skipped and the
 remaining packages are submitted.
 
 After the push, the workflow waits until the exact version of all five package
-IDs is readable from NuGet.org's public flat-container endpoint. The GitHub
-Release is created only after the complete package set is visible.
+IDs is readable from NuGet.org's public flat-container endpoint. It then builds
+and publishes `ghcr.io/skopka/hello:<version>` and a commit-SHA tag from the
+same source. Stable tags also update `latest`; prereleases do not. The image
+contains SBOM and maximum provenance attestations. The GitHub Release is
+created only after both the complete package set and the exact container tag
+are visible.
 
 The generated GitHub Release contains the same `.nupkg` and `.snupkg` files.
 Normal branch pushes and pull requests never publish; their package artifacts
-are retained by CI for 14 days.
-
-Container image build and publication are intentionally not part of this
-release workflow yet. The test phase still requires the Docker Engine available
-on GitHub-hosted runners because the integration suite uses PostgreSQL
-Testcontainers.
+are retained by CI for 14 days, and CI builds the Server image without pushing
+it. Both CI and the release integration suite require Docker Engine for
+PostgreSQL Testcontainers and the container build.

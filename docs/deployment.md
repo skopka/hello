@@ -9,6 +9,10 @@ context:
 docker build -f .\src\Skopka.Hello.Server\Dockerfile -t skopka-hello:local .
 ```
 
+Coordinated releases publish the same server build as
+`ghcr.io/skopka/hello:<version>`. Stable releases also update `latest`; pin the
+exact version or digest in production rather than following `latest`.
+
 The runtime image runs as the non-root .NET image user and includes a
 process-based health check for `/health/live`.
 
@@ -35,6 +39,12 @@ Inject the PostgreSQL connection string, Base64 JWT signing key and independent
 versioned rate-limit and verification-code HMAC keys from a secret manager. Do
 not bake `.env`, database passwords or signing material into the image. Use a
 protected persistent volume for Data Protection keys.
+
+The base image does not include Kerberos. Set `GSS Encryption Mode=Disable` in
+the PostgreSQL connection string when GSSAPI is not part of the deployment;
+otherwise derive an image that installs the required GSSAPI runtime libraries.
+Configure PostgreSQL TLS independently through Npgsql `SSL Mode` according to
+the deployment trust boundary.
 
 Set `SkopkaHello:PublicOrigin` to the public TLS origin used in account-message
 links and external OIDC callback URLs. The ready server passes this trusted

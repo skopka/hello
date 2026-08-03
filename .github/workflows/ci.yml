@@ -107,6 +107,15 @@ jobs:
             exit 1
           fi
 
+      - name: Build server container
+        env:
+          PACKAGE_VERSION: ${{ steps.package_version.outputs.value }}
+        run: >
+          docker build .
+          --file src/Skopka.Hello.Server/Dockerfile
+          --build-arg RELEASE_VERSION="$PACKAGE_VERSION"
+          --tag skopka-hello:ci
+
       - name: Upload NuGet packages
         uses: actions/upload-artifact@v7
         with:

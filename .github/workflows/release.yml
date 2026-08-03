@@ -6,8 +6,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -18,14 +17,16 @@ env:
   DOTNET_NOLOGO: "1"
 
 jobs:
-  publish:
-    name: Publish NuGet packages
+  validate:
+    name: Validate release artifacts
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      release_version: ${{ steps.version.outputs.value }}
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -42,7 +43,7 @@ jobs:
           fi
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           global-json-file: global.json
 
@@ -65,6 +66,24 @@ jobs:
         run: >
           dotnet restore Skopka.Hello.slnx
           --configfile NuGet.Config
+
+      - name: Verify declared release line
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          DECLARED_VERSION=$(dotnet msbuild src/Skopka.Hello/Skopka.Hello.csproj -getProperty:VersionPrefix -nologo)
+          RELEASE_BASE_VERSION="${RELEASE_VERSION%%-*}"
+          if [[ "$DECLARED_VERSION" != "$RELEASE_BASE_VERSION" ]]; then
+            echo "Tag base version '$RELEASE_BASE_VERSION' does not match VersionPrefix '$DECLARED_VERSION'." >&2
+            exit 1
+          fi
+
+      - name: Verify formatting
+        run: >
+          dotnet format Skopka.Hello.slnx
+          --no-restore
+          --verify-no-changes
 
       - name: Build
         env:
@@ -132,19 +151,102 @@ jobs:
             exit 1
           fi
 
-      - name: Push all packages to NuGet.org
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: >
-          dotnet nuget push "artifacts/packages/*.nupkg"
-          --api-key "$NUGET_API_KEY"
-          --source "https://api.nuget.org/v3/index.json"
-          --skip-duplicate
-
-      - name: Wait until every package is available on NuGet.org
-        shell: bash
+      - name: Build server container
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: >
+          docker build .
+          --file src/Skopka.Hello.Server/Dockerfile
+          --build-arg RELEASE_VERSION="$RELEASE_VERSION"
+          --tag skopka-hello:release-validation
+
+      - name: Upload release packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-packages
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.snupkg
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-nuget:
+    name: Publish coordinated NuGet set
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out release metadata
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Download release packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-packages
+          path: artifacts/packages
+
+      - name: Require a completely unpublished version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+        run: |
+          VERSION_LOWER="${RELEASE_VERSION,,}"
+          PACKAGE_IDS=(
+            "skopka.hello"
+            "skopka.hello.admin"
+            "skopka.hello.endpoints"
+            "skopka.hello.oidc"
+            "skopka.hello.ui"
+          )
+
+          for PACKAGE_ID in "${PACKAGE_IDS[@]}"; do
+            PACKAGE_URL="https://api.nuget.org/v3-flatcontainer/${PACKAGE_ID}/${VERSION_LOWER}/${PACKAGE_ID}.${VERSION_LOWER}.nupkg"
+            STATUS=$(curl --silent --output /dev/null --write-out '%{http_code}' "$PACKAGE_URL")
+            if [[ "$STATUS" == "200" ]]; then
+              echo "Package ${PACKAGE_ID} ${RELEASE_VERSION} already exists; release artifacts are immutable." >&2
+              exit 1
+            fi
+            if [[ "$STATUS" != "404" ]]; then
+              echo "Could not prove ${PACKAGE_ID} ${RELEASE_VERSION} is unpublished; NuGet.org returned HTTP ${STATUS}." >&2
+              exit 1
+            fi
+          done
+
+      - name: Push every package to NuGet.org
+        id: nuget_push
+        shell: bash
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+        run: |
+          PACKAGE_IDS=(
+            "Skopka.Hello"
+            "Skopka.Hello.Oidc"
+            "Skopka.Hello.Endpoints"
+            "Skopka.Hello.UI"
+            "Skopka.Hello.Admin"
+          )
+
+          for PACKAGE_ID in "${PACKAGE_IDS[@]}"; do
+            dotnet nuget push "artifacts/packages/${PACKAGE_ID}.${RELEASE_VERSION}.nupkg" \
+              --api-key "$NUGET_API_KEY" \
+              --source "https://api.nuget.org/v3/index.json"
+          done
+
+      - name: Wait until every package is available on NuGet.org
+        if: ${{ always() }}
+        shell: bash
+        env:
+          PUSH_OUTCOME: ${{ steps.nuget_push.outcome }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
         run: |
           VERSION_LOWER="${RELEASE_VERSION,,}"
           PACKAGE_IDS=(
@@ -165,6 +267,10 @@ jobs:
             done
 
             if [[ "${#MISSING[@]}" -eq 0 ]]; then
+              if [[ "$PUSH_OUTCOME" != "success" ]]; then
+                echo "All packages are visible, but NuGet push reported a failure; symbol publication is not proven. Do not reuse this version." >&2
+                exit 1
+              fi
               echo "All packages are available on NuGet.org."
               exit 0
             fi
@@ -173,14 +279,31 @@ jobs:
             sleep 10
           done
 
-          echo "Not every package became available on NuGet.org within ten minutes." >&2
+          echo "The version was only partially published. Do not reuse it; fix the cause and release a new patch version." >&2
           exit 1
 
+  publish-container:
+    name: Publish server container
+    needs:
+      - validate
+      - publish-nuget
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -188,7 +311,7 @@ jobs:
 
       - name: Generate container metadata
         id: container_metadata
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -196,7 +319,7 @@ jobs:
             type=sha,format=long
 
       - name: Build and publish server container
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           file: src/Skopka.Hello.Server/Dockerfile
@@ -204,7 +327,7 @@ jobs:
           tags: ${{ steps.container_metadata.outputs.tags }}
           labels: ${{ steps.container_metadata.outputs.labels }}
           build-args: |
-            RELEASE_VERSION=${{ steps.version.outputs.value }}
+            RELEASE_VERSION=${{ needs.validate.outputs.release_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: mode=max
@@ -212,15 +335,33 @@ jobs:
 
       - name: Verify published container
         env:
-          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
         run: >
           docker buildx imagetools inspect
           "ghcr.io/${GITHUB_REPOSITORY,,}:$RELEASE_VERSION"
 
+  publish-release:
+    name: Publish GitHub release
+    needs:
+      - validate
+      - publish-container
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-packages
+          path: artifacts/packages
+
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           generate_release_notes: true
+          prerelease: ${{ contains(needs.validate.outputs.release_version, '-') }}
           fail_on_unmatched_files: true
           files: |
             artifacts/packages/*.nupkg

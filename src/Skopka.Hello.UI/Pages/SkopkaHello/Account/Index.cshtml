@@ -1,4 +1,4 @@
-@page "/hello/account"
+@page
 @model AccountModel
 @inject IHelloUiExternalApplication ExternalIdentity
 @{
@@ -20,11 +20,19 @@
          class="hello-validation"
          role="alert"></div>
 
-    @if (Model.ConfirmationRequested)
+    @if (Model.EmailConfirmationRequested)
     {
         <p class="hello-status" role="status">
-            If the address still needs confirmation, a new link has
-            been sent.
+            The request was accepted. If the address still needs
+            confirmation, delivery of a new link will be attempted.
+        </p>
+    }
+
+    @if (Model.PhoneConfirmationRequested)
+    {
+        <p class="hello-status" role="status">
+            The request was accepted. If the phone still needs
+            confirmation, delivery of a new SMS will be attempted.
         </p>
     }
 
@@ -45,21 +53,29 @@
             <dt>Email status</dt>
             <dd>@(Model.EmailConfirmed ? "Confirmed" : "Not confirmed")</dd>
         </div>
+        <div>
+            <dt>Phone</dt>
+            <dd>@(Model.Phone ?? "Not set")</dd>
+        </div>
+        <div>
+            <dt>Phone status</dt>
+            <dd>@(Model.PhoneConfirmed ? "Confirmed" : "Not confirmed")</dd>
+        </div>
     </dl>
 
     <div class="hello-actions">
         <a class="hello-button"
-           href="@HelloUiDefaults.SessionsPath">
+           asp-page="/SkopkaHello/Account/Sessions">
             Manage sessions
         </a>
         <a class="hello-button hello-button-secondary"
-           href="@HelloUiDefaults.ChangePasswordPath">
+           asp-page="/SkopkaHello/Account/ChangePassword">
             Change password
         </a>
         @if (ExternalIdentity.IsConfigured)
         {
             <a class="hello-button hello-button-secondary"
-               href="@HelloUiDefaults.ExternalLoginsPath">
+               asp-page="/SkopkaHello/Account/ExternalLogins">
                 External sign-in methods
             </a>
         }
@@ -76,6 +92,16 @@
                 <button class="hello-button hello-button-secondary"
                         type="submit">
                     Send confirmation link
+                </button>
+            </form>
+        }
+        @if (!Model.PhoneConfirmed && Model.Phone is not null)
+        {
+            <form method="post"
+                  asp-page-handler="RequestPhoneConfirmation">
+                <button class="hello-button hello-button-secondary"
+                        type="submit">
+                    Send phone confirmation
                 </button>
             </form>
         }

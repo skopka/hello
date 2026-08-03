@@ -91,12 +91,18 @@ auto-links accounts. A user who already owns that address must authenticate the
 existing account and link explicitly.
 
 The cross-site protocol callback only creates the validated temporary ticket
-and redirects to `/hello/external/complete`. A separate same-origin,
+and redirects to `{UiPathPrefix}/external/complete`. A separate same-origin,
 antiforgery-protected POST completes sign-in or registration. This preserves
 the default `SameSite=Strict` local-session policy and prevents a callback GET
 from directly performing an account mutation. Callback, completion and pending
 registration responses are no-store/no-referrer. Do not log callback query
 strings, provider error descriptions or external claims.
+
+The completion and pending registration routes are derived from the immutable
+UI prefix registered by `AddSkopkaHello<TProfile>`. When self-registration is
+disabled, an unknown external identity is rejected before a pending registration
+ticket is created; stale pending tickets are cleared. Existing linked external
+identities continue through the normal sign-in path.
 
 Every terminal external or pending POST first consumes a random flow id from
 the encrypted ticket through `IHelloOidcFlowStore`. A copied ticket therefore
@@ -109,22 +115,31 @@ fallback. Multi-replica hosts must use the persistent limiter or replace the
 flow store with an atomic shared implementation.
 
 Linking and unlinking require the current UI session to pass online access-token
-validation and require a confirmed local email. The provider/subject pair,
-local user, logical session and optimistic version are bound into a protected
-pending ticket. Identity issues and consumes a one-time email code bound to the
-exact link or unlink action. A step-up decision is never carried across the
-provider redirect.
+validation and require a confirmed contact for the configured channel. The
+provider/subject pair,
+local user, logical session and challenge id are bound into a protected pending
+ticket. Identity issues and consumes a one-time code bound to the exact link or
+unlink action, provider/subject target, configured delivery channel and a
+non-reversible fingerprint of the confirmed destination. A step-up decision is
+never carried across the provider redirect.
 
 Before unlink, Hello reads the current sign-in-method snapshot and refuses to
-remove the final enabled method. The snapshot version is used for the mutation;
-a concurrent account change fails instead of being retried after the OTP was
-consumed. Link and unlink rotate the security stamp. Hello then revokes all
+remove the final enabled method. Completion reads a fresh snapshot and uses its
+version for the mutation, so an unrelated profile edit while the OTP is pending
+does not invalidate the code. A race after that fresh read still fails the
+Identity optimistic-concurrency check instead of being retried after the OTP
+was consumed. Link and unlink rotate the security stamp. Hello then revokes all
 existing refresh sessions and issues a new session only to the current browser.
-Any failure after the OTP proof has been consumed is terminal and is surfaced
-as `hello.account.external_mutation_restart_required`, never as a retryable code
-form. The Razor UI clears the pending flow, refresh/antiforgery cookies and its
-local authentication ticket, then requires a fresh sign-in so the user reviews
-the authoritative current account state.
+Only a wrong OTP response is retryable. An expired, superseded or locked
+challenge and an authorization failure before account mutation return
+`hello.account.external_challenge_restart_required`; the Razor UI clears only
+the pending flow and keeps the authenticated local session so the user can
+start the provider change again. A mutation, revocation or fresh-session
+failure after authorization returns
+`hello.account.external_mutation_restart_required`. At that point account state
+may have changed, so the UI also clears refresh/antiforgery cookies and its
+local authentication ticket, then requires a fresh sign-in to review the
+authoritative current account state.
 Stateless bearer access tokens can still validate cryptographically until their
 short expiry; enable online bearer validation when the stamp change must take
 effect on every API request immediately.
@@ -137,38 +152,81 @@ a correctly configured TLS reverse proxy.
 
 ## Account messages and action tokens
 
-Password-reset and email-confirmation request endpoints return the same
-`202 Accepted` response for every well-formed address. Exact normalized lookup
-is performed through Skopka.Identity, but a not-found result is suppressed at
-the public boundary. Rate-limit these endpoints at the deployment edge.
+Password-reset and email/phone-confirmation request endpoints return the same
+`202 Accepted` response for every well-formed address or phone. Before lookup,
+Hello applies the configured Identity verification client limit to the trusted
+server-derived client key and the verification intent limit plus resend
+cooldown to the normalized target. The persistent HMAC rate limiter used by the
+ready Server makes these partitions atomic across replicas. A denied decision
+or full anonymous queue is silently dropped; it does not change the HTTP
+response. Queue admission happens before exact normalized lookup, token
+issuance and provider dispatch, so known and unknown targets share the complete
+HTTP path. An edge rate limit remains useful as an additional coarse
+protection.
 
-The built-in SMTP implementation places messages in a bounded background queue,
-so SMTP network latency is not exposed in the anonymous request. This queue is
-best-effort and in-memory. Applications requiring durable delivery should
-replace `IHelloAccountMessageSender` with a durable queue producer.
+The account-message dispatcher routes only to the provider id configured for
+the semantic email or SMS channel. Missing, duplicate and channel-mismatched
+providers fail startup validation. An anonymous-request worker performs lookup
+and token work in a fresh scope, then the built-in SMTP email provider places
+the resulting message in its own bounded background queue. Neither lookup nor
+SMTP network latency is exposed in the anonymous response. A successful result
+means the request was queued, not delivered. Workers log only safe provider,
+message-kind, message-id and error-code metadata. They never log recipients,
+action links or verification codes. Both queues are best-effort and in-memory.
+Applications requiring durable delivery should replace
+`IHelloAccountMessageSender` with a durable queue producer and protect its
+sensitive payload at rest.
 
 Action links are built only from configured `SkopkaHello:PublicOrigin`; request
-host headers are not trusted. Token pages set `Cache-Control: no-store`,
+host headers are not trusted. Their reset/confirmation path is derived from the
+same configured UI prefix used by Razor routing. Token pages set
+`Cache-Control: no-store`,
 `Referrer-Policy: no-referrer` and `X-Robots-Tag: noindex, nofollow`.
-Email confirmation is a POST mutation, preventing link-preview and mail-scanner
-GET requests from confirming an address.
+Email and phone confirmation are POST mutations, preventing link-preview and
+message-scanner GET requests from confirming a contact. The email-confirmation
+landing page automatically submits its antiforgery-protected form with an
+external same-origin script; if scripting is unavailable or blocked, the same
+form remains available as a visible manual fallback. Before submitting, the
+script removes the query string from browser history and the address bar. The
+initial GET still reaches the edge with its action token, so reverse-proxy and
+request logging must redact confirmation and reset query strings.
 
 Action tokens are purpose-, user-, target-, security-stamp- and expiry-bound by
 Skopka.Identity. Tokens, recipient addresses and passwords are not logged.
 
 ## Authenticated password change and step-up
 
-Changing a password requires a confirmed email and an OTP challenge issued by
-Skopka.Identity. The application validates the bearer or protected UI access
+Changing a password requires a confirmed contact for the configured
+`VerificationChannel` and an OTP challenge issued by Skopka.Identity. The
+application validates the bearer or protected UI access
 token online and derives the user id, action and binding itself. None of these
 values or the user's optimistic-concurrency version are accepted from the
 request.
 
-The HTTP response contains only the challenge id and expiry. The OTP is passed
-directly to `IHelloAccountMessageSender`, is HMAC-protected at rest and is never
-logged or serialized to the client. Identity rate-limits challenge issuance
-and attempts, binds the proof to the password-change action and user, and
-consumes it once before the credential mutation.
+The HTTP response contains only the challenge id, expiry and the non-sensitive
+delivery channel (`email` or `sms`). The OTP is passed directly to
+`IHelloAccountMessageSender`, is HMAC-protected at rest and is never logged or
+serialized to the client. Identity rate-limits challenge issuance
+and attempts, binds the proof to the password-change action, user, security
+stamp, delivery channel and a non-reversible fingerprint of the confirmed
+destination, and consumes it once before the credential mutation. An unrelated
+profile edit does not invalidate the code; changing the confirmed destination
+or security stamp does.
+
+Only `identity.verification.response_invalid` is retryable with the same
+challenge. An expired, superseded, locked or concurrently changed challenge,
+and every failure after successful verification but before the password is
+changed, returns
+`hello.account.password_change_restart_required`. API clients must request a
+new challenge. The Razor UI clears its challenge id and renders the request-code
+state while retaining the underlying password or concurrency error as
+additional diagnostic context.
+
+If the password change commits but refresh-session revocation fails, Hello
+returns `hello.account.password_change_session_cleanup_required` instead. The
+password is already changed: the UI discards its local cookies and asks the user
+to sign in with the new password, while API clients must treat the mutation as
+completed and reauthenticate rather than retrying it.
 
 After a successful change Identity rotates the security stamp and Hello revokes
 all refresh sessions. The UI clears both local cookies. Because bearer mode can
@@ -219,6 +277,8 @@ error details.
   URL and client credentials are configured.
 - Share provider configuration and Data Protection keys across replicas.
 - Exclude OIDC callback query strings and provider tokens from proxy and
+  application logs.
+- Exclude password-reset and contact-confirmation query strings from proxy and
   application logs.
 - Keep access-token lifetimes short.
 - Configure a trusted public origin and rate-limit anonymous account-message

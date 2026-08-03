@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Mail;
+using System.Net.Mime;
+using System.Text;
 using Skopka.Abstraction.OperationResult;
 
 namespace Skopka.Hello;
@@ -13,6 +15,20 @@ internal sealed class SmtpHelloAccountMessageTransport(
     {
         ArgumentNullException.ThrowIfNull(message);
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (message.Channel != HelloDeliveryChannel.Email)
+        {
+            return OperationResultFactory.Fail(
+                HelloAccountMessageValidator.ChannelMismatch());
+        }
+
+        var validation = HelloAccountMessageValidator.Validate(
+            message,
+            DateTimeOffset.UtcNow);
+        if (validation is not null)
+        {
+            return OperationResultFactory.Fail(validation);
+        }
 
         try
         {
@@ -50,63 +66,101 @@ internal sealed class SmtpHelloAccountMessageTransport(
         }
     }
 
-    private MailMessage CreateMessage(
+    internal MailMessage CreateMessage(
         HelloAccountMessage message)
     {
-        if (message.Kind
-            == HelloAccountMessageKind.StepUpVerification)
+        ArgumentNullException.ThrowIfNull(message);
+        var content = message.Kind switch
         {
-            return CreateVerificationMessage(message);
-        }
-
-        var (subject, introduction, linkText) = message.Kind switch
-        {
-            HelloAccountMessageKind.PasswordReset => (
+            HelloAccountMessageKind.PasswordReset => CreateActionContent(
+                message,
                 "Reset your password",
                 "A password reset was requested for your account.",
                 "Reset password"),
-            HelloAccountMessageKind.EmailConfirmation => (
+            HelloAccountMessageKind.EmailConfirmation => CreateActionContent(
+                message,
                 "Confirm your email address",
                 "Confirm the email address for your account.",
                 "Confirm email"),
+            HelloAccountMessageKind.PasswordChangeVerification =>
+                CreateVerificationContent(
+                    message,
+                    "Confirm your password change",
+                    "Use this verification code to change your password:"),
+            HelloAccountMessageKind.ExternalLoginLinkVerification =>
+                CreateVerificationContent(
+                    message,
+                    "Confirm external sign-in linking",
+                    "Use this verification code to link an external sign-in provider:"),
+            HelloAccountMessageKind.ExternalLoginUnlinkVerification =>
+                CreateVerificationContent(
+                    message,
+                    "Confirm external sign-in removal",
+                    "Use this verification code to remove an external sign-in provider:"),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(message),
                 message.Kind,
-                "The account message kind is unsupported."),
+                "The SMTP account message kind is unsupported."),
         };
+
+        var mail = new MailMessage
+        {
+            From = new MailAddress(
+                options.FromAddress,
+                options.FromName),
+            To = { new MailAddress(message.RecipientAddress) },
+            Subject = content.Subject,
+            SubjectEncoding = Encoding.UTF8,
+            Body = content.TextBody,
+            BodyEncoding = Encoding.UTF8,
+            IsBodyHtml = false,
+        };
+        mail.AlternateViews.Add(
+            AlternateView.CreateAlternateViewFromString(
+                content.HtmlBody,
+                Encoding.UTF8,
+                MediaTypeNames.Text.Html));
+        return mail;
+    }
+
+    private static EmailContent CreateActionContent(
+        HelloAccountMessage message,
+        string subject,
+        string introduction,
+        string linkText)
+    {
         if (message.ActionUrl is null)
         {
             throw new InvalidOperationException(
                 "An action URL is required for this account message.");
         }
 
-        var encodedUrl = WebUtility.HtmlEncode(
-            message.ActionUrl.AbsoluteUri);
-        var encodedIntroduction = WebUtility.HtmlEncode(
-            introduction);
-        var encodedLinkText = WebUtility.HtmlEncode(linkText);
-        var expires = WebUtility.HtmlEncode(
-            message.ExpiresAt.ToUniversalTime().ToString("u"));
+        var url = message.ActionUrl.AbsoluteUri;
+        var expires = message.ExpiresAt
+            .ToUniversalTime()
+            .ToString("u");
+        return new EmailContent(
+            subject,
+            $"""
+            {introduction}
 
-        return new MailMessage
-        {
-            From = new MailAddress(
-                options.FromAddress,
-                options.FromName),
-            To = { new MailAddress(message.RecipientAddress) },
-            Subject = subject,
-            IsBodyHtml = true,
-            Body = $"""
-                <p>{encodedIntroduction}</p>
-                <p><a href="{encodedUrl}">{encodedLinkText}</a></p>
-                <p>This link expires at {expires} UTC.</p>
-                <p>If you did not request this action, ignore this message.</p>
-                """,
-        };
+            {linkText}: {url}
+
+            This link expires at {expires}.
+            If you did not request this action, ignore this message.
+            """,
+            $"""
+            <p>{WebUtility.HtmlEncode(introduction)}</p>
+            <p><a href="{WebUtility.HtmlEncode(url)}">{WebUtility.HtmlEncode(linkText)}</a></p>
+            <p>This link expires at {WebUtility.HtmlEncode(expires)}.</p>
+            <p>If you did not request this action, ignore this message.</p>
+            """);
     }
 
-    private MailMessage CreateVerificationMessage(
-        HelloAccountMessage message)
+    private static EmailContent CreateVerificationContent(
+        HelloAccountMessage message,
+        string subject,
+        string introduction)
     {
         if (string.IsNullOrWhiteSpace(message.VerificationCode))
         {
@@ -114,26 +168,25 @@ internal sealed class SmtpHelloAccountMessageTransport(
                 "A verification code is required for this account message.");
         }
 
-        var encodedCode = WebUtility.HtmlEncode(
-            message.VerificationCode);
-        var expires = WebUtility.HtmlEncode(
-            message.ExpiresAt.ToUniversalTime().ToString("u"));
+        var expires = message.ExpiresAt
+            .ToUniversalTime()
+            .ToString("u");
+        return new EmailContent(
+            subject,
+            $"""
+            {introduction}
 
-        return new MailMessage
-        {
-            From = new MailAddress(
-                options.FromAddress,
-                options.FromName),
-            To = { new MailAddress(message.RecipientAddress) },
-            Subject = "Confirm your password change",
-            IsBodyHtml = true,
-            Body = $"""
-                <p>Use this verification code to change your password:</p>
-                <p><strong>{encodedCode}</strong></p>
-                <p>This code expires at {expires} UTC.</p>
-                <p>If you did not request this action, ignore this message.</p>
-                """,
-        };
+            {message.VerificationCode}
+
+            This code expires at {expires}.
+            If you did not request this action, ignore this message.
+            """,
+            $"""
+            <p>{WebUtility.HtmlEncode(introduction)}</p>
+            <p><strong>{WebUtility.HtmlEncode(message.VerificationCode)}</strong></p>
+            <p>This code expires at {WebUtility.HtmlEncode(expires)}.</p>
+            <p>If you did not request this action, ignore this message.</p>
+            """);
     }
 
     private static OperationResult DeliveryFailed()
@@ -142,4 +195,9 @@ internal sealed class SmtpHelloAccountMessageTransport(
                 HelloDeliveryErrorCodes.Failed,
                 "The account message could not be delivered.",
                 ErrorType.Failure));
+
+    private sealed record EmailContent(
+        string Subject,
+        string TextBody,
+        string HtmlBody);
 }

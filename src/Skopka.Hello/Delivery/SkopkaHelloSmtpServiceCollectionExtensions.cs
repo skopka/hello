@@ -4,7 +4,7 @@ namespace Microsoft.Extensions.DependencyInjection;
 
 public static class SkopkaHelloSmtpServiceCollectionExtensions
 {
-    public static IServiceCollection AddSkopkaHelloSmtpDelivery(
+    public static IServiceCollection AddSkopkaHelloSmtpProvider(
         this IServiceCollection services,
         Action<Skopka.Hello.HelloSmtpOptions> configure)
     {
@@ -15,18 +15,21 @@ public static class SkopkaHelloSmtpServiceCollectionExtensions
         configure(options);
         options.Validate();
 
+        services.AddSkopkaHelloDelivery();
         services.Replace(
             ServiceDescriptor.Singleton(options));
-        services.Replace(
-            ServiceDescriptor.Singleton<
-                Skopka.Hello.IHelloAccountMessageSender,
-                Skopka.Hello.QueuedHelloAccountMessageSender>());
         services.AddSingleton<
-            Skopka.Hello.HelloAccountMessageQueue>();
+            Skopka.Hello.SmtpHelloAccountMessageQueue>();
         services.AddSingleton<
             Skopka.Hello.SmtpHelloAccountMessageTransport>();
-        services.AddHostedService<
-            Skopka.Hello.SmtpHelloAccountMessageWorker>();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<
+                Skopka.Hello.IHelloAccountMessageProvider,
+                Skopka.Hello.QueuedSmtpHelloAccountMessageProvider>());
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<
+                Microsoft.Extensions.Hosting.IHostedService,
+                Skopka.Hello.SmtpHelloAccountMessageWorker>());
         return services;
     }
 }

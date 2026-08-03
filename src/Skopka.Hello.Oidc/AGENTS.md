@@ -23,3 +23,9 @@ absolute ticket expiry. The default store uses Identity's persistent rate
 limiter when present and otherwise fails closed through a bounded process-local
 fallback. Multi-replica hosts must retain the persistent limiter or replace the
 store with an atomic shared implementation.
+
+Completion, pending-registration, failure and account-management redirects use
+the immutable UI routes registered by the facade. The raw provider callback
+remains `/signin-skopka-oidc/{provider}`. When self-registration is disabled,
+an unknown validated identity must be rejected and cleared before promotion to
+a pending registration ticket; existing linked identities still sign in.

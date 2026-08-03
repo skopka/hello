@@ -9,7 +9,8 @@ namespace Skopka.Hello.UI.Pages;
 [Authorize(Policy = HelloUiDefaults.AuthorizationPolicy)]
 public sealed class AccountModel(
     IHelloUiApplication application,
-    IHelloSessionCookieManager sessionCookies)
+    IHelloSessionCookieManager sessionCookies,
+    IHelloAccountMessageSender messageSender)
     : PageModel
 {
     public Guid UserId { get; private set; }
@@ -22,7 +23,13 @@ public sealed class AccountModel(
 
     public bool EmailConfirmed { get; private set; }
 
-    public bool ConfirmationRequested { get; private set; }
+    public string? Phone { get; private set; }
+
+    public bool PhoneConfirmed { get; private set; }
+
+    public bool EmailConfirmationRequested { get; private set; }
+
+    public bool PhoneConfirmationRequested { get; private set; }
 
     public IActionResult OnGet()
         => LoadAccount();
@@ -45,9 +52,20 @@ public sealed class AccountModel(
             return Page();
         }
 
+        var deliveryAvailable = messageSender.CheckAvailability(
+            HelloDeliveryChannel.Email);
+        if (!deliveryAvailable.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(
+                ModelState,
+                deliveryAvailable.Errors);
+            return Page();
+        }
+
         var result =
             await application.RequestEmailConfirmationAsync(
                 Email,
+                HttpContext,
                 cancellationToken);
         if (!result.IsSuccess)
         {
@@ -57,7 +75,52 @@ public sealed class AccountModel(
             return Page();
         }
 
-        ConfirmationRequested = true;
+        EmailConfirmationRequested = true;
+        return Page();
+    }
+
+    public async Task<IActionResult>
+        OnPostRequestPhoneConfirmationAsync(
+            CancellationToken cancellationToken)
+    {
+        var loaded = LoadAccount();
+        if (loaded is not PageResult)
+        {
+            return loaded;
+        }
+
+        if (string.IsNullOrWhiteSpace(Phone))
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                "The account does not have a phone number.");
+            return Page();
+        }
+
+        var deliveryAvailable = messageSender.CheckAvailability(
+            HelloDeliveryChannel.Sms);
+        if (!deliveryAvailable.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(
+                ModelState,
+                deliveryAvailable.Errors);
+            return Page();
+        }
+
+        var result =
+            await application.RequestPhoneConfirmationAsync(
+                Phone,
+                HttpContext,
+                cancellationToken);
+        if (!result.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors);
+            return Page();
+        }
+
+        PhoneConfirmationRequested = true;
         return Page();
     }
 
@@ -82,6 +145,12 @@ public sealed class AccountModel(
                 HelloUiPrincipalFactory.EmailConfirmedClaim),
             out var confirmed)
             && confirmed;
+        Phone = User.FindFirstValue(ClaimTypes.MobilePhone);
+        PhoneConfirmed = bool.TryParse(
+            User.FindFirstValue(
+                HelloUiPrincipalFactory.PhoneConfirmedClaim),
+            out var phoneConfirmed)
+            && phoneConfirmed;
         return Page();
     }
 
@@ -100,6 +169,6 @@ public sealed class AccountModel(
         sessionCookies.DeleteSessionCookies(HttpContext);
         await HttpContext.SignOutAsync(
             HelloUiDefaults.AuthenticationScheme);
-        return Redirect(HelloUiDefaults.LoginPath);
+        return RedirectToPage("/SkopkaHello/Login");
     }
 }

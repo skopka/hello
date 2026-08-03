@@ -2,6 +2,8 @@ namespace Skopka.Hello.Oidc;
 
 public static class HelloOidcDefaults
 {
+    // Compatibility constants for the default UI prefix. Runtime browser
+    // redirects use HelloUiRoutePaths from dependency injection.
     public const string ExternalCookieScheme =
         "Skopka.Hello.Oidc.External";
 
@@ -21,14 +23,18 @@ public static class HelloOidcDefaults
         "/signin-skopka-oidc/";
 
     public const string CompletionPath =
-        "/hello/external/complete";
+        Skopka.Hello.HelloUiRoutePaths.DefaultPathPrefix
+        + "/external/complete";
 
     public const string RegistrationPath =
-        "/hello/external/register";
+        Skopka.Hello.HelloUiRoutePaths.DefaultPathPrefix
+        + "/external/register";
 
     public const string ExternalLoginsPath =
-        "/hello/account/external-logins";
+        Skopka.Hello.HelloUiRoutePaths.DefaultPathPrefix
+        + "/account/external-logins";
 
     public const string FailureRedirectPath =
-        "/hello/login?externalError=true";
+        Skopka.Hello.HelloUiRoutePaths.DefaultPathPrefix
+        + "/login?externalError=true";
 }

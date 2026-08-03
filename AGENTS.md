@@ -18,13 +18,21 @@ responses.
 ## Current vertical
 
 The implemented surfaces are registration, password and external OIDC login,
-sessions, account, password-reset, email-confirmation, external-login
+sessions, account, password-reset, email/phone-confirmation, external-login
 management and step-up password-change Minimal APIs plus their Razor UI.
 Registration must remain atomic through
 `IIdentityRegistrationService<TProfile>` for both password and external
 registration. HTTP handlers call
 `IHelloIdentityApplication<TProfile>` or Skopka.Identity application services,
 never EF stores.
+
+Self-registration is a startup policy owned by `SkopkaHelloOptions`. When it is
+disabled, password and external application operations fail before calling
+Identity and the built-in registration API/Razor selectors are not mapped.
+Existing sign-in and explicit external link/unlink remain available. The Razor
+UI prefix is also configured once through `AddSkopkaHello<TProfile>`; core
+action links, UI routing and OIDC browser redirects consume the same immutable
+route snapshot. It is not the host application's `PathBase`.
 
 Refresh tokens stay only in `Secure`, `HttpOnly` cookies. Cookie-authorized
 mutations require antiforgery validation. API access tokens are returned as
@@ -39,19 +47,20 @@ Docker output. Rotation retains overlapping versions, and a bounded worker
 prunes old buckets.
 
 Anonymous account-message requests suppress exact-lookup not-found results and
-return the same accepted response for every well-formed email. Links use a
+return the same accepted response for every well-formed email or phone. Links use a
 configured public origin, confirmation GET requests never mutate state, and
 delivery stays behind `IHelloAccountMessageSender`.
 
-Password change requires an online-validated session, confirmed email and
-Identity-owned OTP step-up. User, action, binding and optimistic version are
-server-derived; the OTP is delivered out of band and never returned by HTTP.
+Password change requires an online-validated session, a confirmed contact for
+the configured delivery channel and Identity-owned OTP step-up. User, action,
+binding and optimistic version are server-derived; the OTP is delivered out of
+band and never returned by HTTP. A challenge never silently changes channel.
 
 External OIDC uses one maintained ASP.NET Core handler per configured provider.
 The handler owns state, nonce, PKCE, code redemption and token validation.
 Only the configured provider id and validated subject reach Skopka.Identity;
 provider tokens and subjects never reach UI/API responses. Matching email never
-links accounts. Link and unlink require an online session, confirmed-email OTP,
+links accounts. Link and unlink require an online session, a confirmed-contact OTP,
 an exact provider/subject binding and a fresh optimistic snapshot. They preserve
 at least one enabled sign-in method, revoke old sessions and issue a fresh one.
 Terminal external and pending POSTs atomically consume a protected flow id. The

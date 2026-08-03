@@ -1,0 +1,66 @@
+@page
+@model ConfirmEmailModel
+@{
+    ViewData["Title"] = "Confirm email";
+}
+
+<section class="hello-card hello-auth-card">
+    <p class="hello-eyebrow">Email confirmation</p>
+    <h1>Confirm your email</h1>
+
+    @if (Model.Confirmed)
+    {
+        <p class="hello-status" role="status">
+            Your email address is confirmed.
+        </p>
+        <p class="hello-card-footer">
+            <a asp-page="/SkopkaHello/Account/Index">Continue to account</a>
+        </p>
+    }
+    else if (!Model.LinkValid)
+    {
+        <p class="hello-validation" role="alert">
+            This email confirmation link is incomplete or invalid.
+        </p>
+    }
+    else
+    {
+        <p class="hello-muted"
+           role="status"
+           aria-live="polite"
+           data-hello-confirmation-status>
+            Confirming your email automatically. If confirmation does not
+            continue, use the button below.
+        </p>
+
+        <form method="post"
+              asp-page="/SkopkaHello/ConfirmEmail"
+              asp-antiforgery="true"
+              class="hello-form"
+              data-hello-auto-submit="@(Model.AutoSubmit ? "true" : "false")">
+            <input asp-for="UserId" type="hidden" />
+            <input asp-for="Email" type="hidden" />
+            <input asp-for="Token" type="hidden" />
+            <div asp-validation-summary="ModelOnly"
+                 class="hello-validation"
+                 role="alert"></div>
+
+            <button class="hello-button" type="submit">
+                Confirm email
+            </button>
+
+            <noscript>
+                <p class="hello-muted">
+                    Automatic confirmation requires JavaScript. Use the
+                    button above to confirm your email.
+                </p>
+            </noscript>
+        </form>
+
+        @if (Model.AutoSubmit)
+        {
+            <script src="/_content/Skopka.Hello.UI/js/confirm-email.js"
+                    defer></script>
+        }
+    }
+</section>

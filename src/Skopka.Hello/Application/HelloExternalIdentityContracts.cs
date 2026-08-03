@@ -7,6 +7,9 @@ namespace Skopka.Hello;
 
 public static class HelloExternalIdentityErrorCodes
 {
+    public const string ChallengeRestartRequired =
+        "hello.account.external_challenge_restart_required";
+
     public const string RestartRequired =
         "hello.account.external_mutation_restart_required";
 }

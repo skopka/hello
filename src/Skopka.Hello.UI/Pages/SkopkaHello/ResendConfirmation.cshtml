@@ -1,26 +1,23 @@
-@page "/hello/forgot-password"
-@model ForgotPasswordModel
+@page
+@model ResendConfirmationModel
 @{
-    ViewData["Title"] = "Reset password";
+    ViewData["Title"] = "Confirm email";
 }
 
 <section class="hello-card hello-auth-card">
-    <p class="hello-eyebrow">Account recovery</p>
-    <h1>Reset your password</h1>
+    <p class="hello-eyebrow">Email confirmation</p>
+    <h1>Send a confirmation link</h1>
 
     @if (Model.Sent)
     {
         <p class="hello-status" role="status">
-            If an active account uses that email address, a reset link
-            has been sent.
+            The request was accepted. If that email belongs to an
+            unconfirmed active account, delivery of a confirmation link
+            will be attempted.
         </p>
     }
     else
     {
-        <p class="hello-muted">
-            Enter the email address associated with your account.
-        </p>
-
         <form method="post" class="hello-form">
             <div asp-validation-summary="ModelOnly"
                  class="hello-validation"
@@ -34,12 +31,12 @@
                   class="hello-field-error"></span>
 
             <button class="hello-button" type="submit">
-                Send reset link
+                Send confirmation link
             </button>
         </form>
     }
 
     <p class="hello-card-footer">
-        <a href="@HelloUiDefaults.LoginPath">Back to sign in</a>
+        <a asp-page="/SkopkaHello/Login">Back to sign in</a>
     </p>
 </section>

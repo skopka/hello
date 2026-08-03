@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Net;
 using Skopka.Hello;
 using Skopka.Hello.Endpoints;
-using Skopka.Hello.Oidc;
 using Skopka.Hello.Server;
 using Skopka.Hello.UI;
 using Skopka.Identity.Ef.PostgreSql;
@@ -13,11 +12,9 @@ using Skopka.Identity.Verification;
 
 if (args is ["--health-check"])
 {
-    using var healthClient = new HttpClient
-    {
-        BaseAddress = new Uri("http://127.0.0.1:8080"),
-        Timeout = TimeSpan.FromSeconds(2),
-    };
+    using var healthClient = new HttpClient();
+    healthClient.BaseAddress = new Uri("http://127.0.0.1:8080");
+    healthClient.Timeout = TimeSpan.FromSeconds(2);
 
     try
     {
@@ -58,6 +55,12 @@ var publicOrigin = new Uri(
         ?? throw new InvalidOperationException(
             "SkopkaHello:PublicOrigin is required."),
     UriKind.Absolute);
+var selfRegistrationEnabled = configuration.GetValue(
+    "SkopkaHello:SelfRegistration:Enabled",
+    true);
+var uiPathPrefix = configuration[
+        "SkopkaHello:Ui:PathPrefix"]
+    ?? HelloUiRoutePaths.DefaultPathPrefix;
 var useForwardedHeaders = configuration.GetValue(
     "SkopkaHello:ForwardedHeaders:Enabled",
     false);
@@ -112,6 +115,8 @@ var identity = builder.Services
         options.SecureCookies = secureCookies;
         options.ClientName = "Skopka.Hello.Server";
         options.PublicOrigin = publicOrigin;
+        options.SelfRegistrationEnabled = selfRegistrationEnabled;
+        options.UiPathPrefix = uiPathPrefix;
         if (!secureCookies)
         {
             options.RefreshCookieName =
@@ -184,11 +189,14 @@ builder.Services.AddSkopkaHelloOidc<HelloProfile>(options =>
     }
 });
 
-var smtpSection = configuration.GetSection(
-    "SkopkaHello:Delivery:Smtp");
+var deliverySection = configuration.GetSection(
+    "SkopkaHello:Delivery");
+builder.Services.AddSkopkaHelloDelivery(
+    options => deliverySection.Bind(options));
+var smtpSection = deliverySection.GetSection("Smtp");
 if (!string.IsNullOrWhiteSpace(smtpSection["Host"]))
 {
-    builder.Services.AddSkopkaHelloSmtpDelivery(
+    builder.Services.AddSkopkaHelloSmtpProvider(
         options => smtpSection.Bind(options));
 }
 
@@ -262,7 +270,7 @@ app.MapGet(
         new
         {
             name = "Skopka.Hello",
-            version = "0.2.0",
+            version = "0.3.0",
         }));
 app.MapGet(
     "/health/live",

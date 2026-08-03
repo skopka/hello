@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Skopka.Identity.Authentication;
 using Skopka.Hello.Oidc;
 
 namespace Skopka.Hello.UI.Pages;
@@ -22,7 +23,8 @@ public sealed class ExternalRegisterModel(
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
         if (await IsUiAuthenticatedAsync())
         {
-            return Redirect(HelloUiDefaults.ExternalLoginsPath);
+            return RedirectToPage(
+                "/SkopkaHello/Account/ExternalLogins");
         }
 
         await LoadHintsAsync(prefill: true, cancellationToken);
@@ -35,7 +37,8 @@ public sealed class ExternalRegisterModel(
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
         if (await IsUiAuthenticatedAsync())
         {
-            return Redirect(HelloUiDefaults.ExternalLoginsPath);
+            return RedirectToPage(
+                "/SkopkaHello/Account/ExternalLogins");
         }
 
         if (!ModelState.IsValid)
@@ -74,7 +77,7 @@ public sealed class ExternalRegisterModel(
             result.Value.SignIn);
         return Url.IsLocalUrl(result.Value.ReturnUrl)
             ? LocalRedirect(result.Value.ReturnUrl)
-            : Redirect(HelloUiDefaults.AccountPath);
+            : RedirectToPage("/SkopkaHello/Account/Index");
     }
 
     public async Task<IActionResult> OnPostCancelAsync(
@@ -84,7 +87,7 @@ public sealed class ExternalRegisterModel(
         await application.ClearBrowserFlowAsync(
             HttpContext,
             cancellationToken);
-        return Redirect(HelloUiDefaults.LoginPath);
+        return RedirectToPage("/SkopkaHello/Login");
     }
 
     private async Task LoadHintsAsync(
@@ -131,8 +134,7 @@ public sealed class ExternalRegisterModel(
         [Display(Name = "User name")]
         public string? UserName { get; set; }
 
-        [Phone]
-        [StringLength(50)]
+        [StringLength(IdentityLoginLimits.MaximumLoginLength)]
         public string? Phone { get; set; }
 
         [StringLength(32)]

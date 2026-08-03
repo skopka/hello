@@ -1,0 +1,42 @@
+@page
+@model ResendPhoneConfirmationModel
+@{
+    ViewData["Title"] = "Confirm phone";
+}
+
+<section class="hello-card hello-auth-card">
+    <p class="hello-eyebrow">Phone confirmation</p>
+    <h1>Send a confirmation SMS</h1>
+
+    @if (Model.Sent)
+    {
+        <p class="hello-status" role="status">
+            The request was accepted. If that phone belongs to an
+            unconfirmed active account, delivery of a confirmation SMS
+            will be attempted.
+        </p>
+    }
+    else
+    {
+        <form method="post" class="hello-form">
+            <div asp-validation-summary="ModelOnly"
+                 class="hello-validation"
+                 role="alert"></div>
+
+            <label asp-for="Input.Phone"></label>
+            <input asp-for="Input.Phone"
+                   autocomplete="tel"
+                   inputmode="tel" />
+            <span asp-validation-for="Input.Phone"
+                  class="hello-field-error"></span>
+
+            <button class="hello-button" type="submit">
+                Send confirmation SMS
+            </button>
+        </form>
+    }
+
+    <p class="hello-card-footer">
+        <a asp-page="/SkopkaHello/Login">Back to sign in</a>
+    </p>
+</section>

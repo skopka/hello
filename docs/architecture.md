@@ -30,7 +30,11 @@ JWT sessions and bearer validation explicitly:
 
 ```csharp
 var identity = services
-    .AddSkopkaHello<MyProfile>()
+    .AddSkopkaHello<MyProfile>(options =>
+    {
+        options.SelfRegistrationEnabled = true;
+        options.UiPathPrefix = "/hello";
+    })
     .UsePostgreSql(connectionString)
     .UsePbkdf2PasswordHasher()
     .UseDataProtectionActionTokens()
@@ -60,26 +64,51 @@ services.AddSkopkaHelloOidc<MyProfile>(options =>
 `IHelloIdentityApplication<TProfile>` is the shared transport-facing
 orchestrator. Registration maps to
 `RegisterPasswordUserCommand<TProfile>` and uses the atomic registration
-service. Login authenticates one explicit `PasswordLoginHandle`, then passes
-the returned user id and current security stamp to session creation. Refresh
+service. Login always uses Identity's single automatic identifier lookup; the
+caller cannot select a handle type or multiply per-account rate-limit buckets.
+It then passes the returned user id and current security stamp to session creation. Refresh
 delegates strict rotation to Skopka.Identity. Minimal API and Razor handlers
 call the same operations and never call EF stores directly.
 
-Password-reset and email-confirmation requests use the exact normalized
-`IIdentityUserLookupService<TProfile>` contract. The application suppresses
-not-found and delivery outcomes at the anonymous boundary, issues a
-purpose-bound Identity action token, builds the link from configured
-`PublicOrigin` and hands the message to `IHelloAccountMessageSender`. The
-built-in SMTP adapter enqueues to a bounded background worker; applications can
-replace it with a durable delivery producer.
+`AddSkopkaHello<TProfile>` validates the UI prefix and registers one immutable
+`HelloUiRoutePaths` snapshot. Core action links, Razor route conventions and
+OIDC browser redirects consume that same snapshot, so hosts cannot configure
+different paths for the three layers. Disabling self-registration gates both
+password and external application operations before Identity is called and
+removes their public Minimal API/Razor selectors. Administrative registration
+is outside this self-service policy.
+
+Password-reset and email/phone-confirmation requests validate and normalize the
+target, consume persistent client and target rate-limit partitions, and enter
+one bounded in-memory queue before any account lookup or action-token work.
+The request therefore returns from the same pipeline for known and unknown
+targets. A denied rate-limit decision or full queue is silently dropped after
+validation so every well-formed request still receives `202 Accepted`. A worker
+creates a new dependency-injection scope for every queued item and uses the
+exact normalized `IIdentityUserLookupService<TProfile>` contract,
+suppresses not-found, issues the purpose-bound Identity action token, builds the
+link from configured `PublicOrigin` and hands the message to
+`IHelloAccountMessageSender`. The built-in dispatcher selects one
+`IHelloAccountMessageProvider` by configured provider id and semantic channel.
+Provider ids are unique and the selected provider must report the matching
+channel; invalid routing fails at startup. The SMTP email provider has its own
+bounded background queue, while custom hosts can register an SMS provider
+without moving delivery into Identity.
+Applications can replace the sender with a durable delivery producer.
+Phone-confirmation messages always use SMS. Step-up messages use the configured
+`VerificationChannel`; Hello selects and validates the confirmed destination
+before it creates the challenge and never performs cross-channel fallback.
 
 Authenticated password change validates the access token online, derives the
 user id, optimistic-concurrency version, action and binding on the server, and
 uses Skopka.Identity step-up verification before calling
 `IPasswordCredentialService<TProfile>.ChangePasswordAsync`. API and Razor UI
-share this operation. The transport receives only a safe challenge id and
-expiry; the OTP is sent through `IHelloAccountMessageSender`. A successful
-change revokes all sessions after Identity rotates the security stamp.
+share this operation. The transport receives only a safe challenge id, expiry
+and delivery channel; the OTP is sent through the provider configured for that
+channel. A successful change revokes all sessions after Identity rotates the
+security stamp.
+Password change, external link and external unlink use distinct semantic
+message kinds so providers cannot render a misleading shared step-up template.
 
 ## External OIDC flow
 
@@ -97,7 +126,7 @@ The raw callback is derived from the normalized provider id:
 {SkopkaHello:PublicOrigin}/signin-skopka-oidc/{provider-id}
 ```
 
-It redirects to `/hello/external/complete`. That page performs a separate
+It redirects to `{UiPathPrefix}/external/complete`. That page performs a separate
 antiforgery-protected POST before resolving the external identity, registering
 an account or retaining a pending link. This two-stage flow also ensures the
 strict same-site local UI cookie is available again after the cross-site
@@ -109,21 +138,30 @@ mutation. The default `IHelloOidcFlowStore` reuses the persistent Identity rate
 limiter when available and falls back to a bounded process-local store. A
 retryable failure rotates the id without extending the ticket deadline.
 
-An unknown external identity opens `/hello/external/register` and is persisted
-atomically through `RegisterExternalAsync`. A provider-verified email may prefill
+When self-registration is enabled, an unknown external identity opens
+`{UiPathPrefix}/external/register` and is persisted atomically through
+`RegisterExternalAsync`. When disabled, the external ticket is cleared and the
+shared `hello.registration.disabled` result is returned instead. A
+provider-verified email may prefill
 the form, but remains unconfirmed locally. Matching an existing email never
 authorizes linking; the user must sign in to that account and start an explicit
-link from `/hello/account/external-logins`.
+link from `{UiPathPrefix}/account/external-logins`.
 
-Link and unlink require an online-validated local session, confirmed account
-email and an Identity-owned OTP bound to the exact provider/subject operation.
-The pending protected ticket also binds the local user, session and optimistic
-version. Unlink refuses to remove the last enabled sign-in method. A successful
-mutation rotates the Identity security stamp; Hello revokes all prior sessions
-and creates a fresh session for the current browser. Once Identity consumes the
-step-up proof, every later failure is marked terminal. The Razor adapter clears
-the browser session and requires a new login instead of displaying the consumed
-OTP as retryable.
+Link and unlink require an online-validated local session, a confirmed contact
+for the configured channel and an Identity-owned OTP bound to the exact
+provider/subject operation, delivery channel and confirmed-destination
+fingerprint. The pending protected ticket binds the local user, session and
+challenge id. Completion reads a fresh sign-in-method snapshot, rechecks that
+unlink retains another enabled method and uses that current version for the
+Identity compare-and-swap mutation. Unrelated profile edits while the OTP is
+pending therefore remain valid, while a later race still fails safely. A
+successful mutation rotates the Identity security stamp; Hello revokes all
+prior sessions and creates a fresh session for the current browser. A terminal
+challenge or authorization failure before mutation clears the pending OIDC
+flow but retains the local browser session. A failure after the mutation is
+attempted also clears that session and requires a new login because the account
+state may already have changed. Only a wrong OTP response remains retryable
+with the same challenge.
 
 Skopka.Identity owns:
 
@@ -163,6 +201,8 @@ the stable error type and code:
 | Not found | `404` |
 | Conflict | `409` |
 | `identity.rate_limit.exceeded` | `429` plus `Retry-After` |
+| `hello.delivery.queue_full` | `429` plus `Retry-After` when available |
+| `hello.delivery.not_configured`, `hello.delivery.failed` | `503` |
 
 Arbitrary error details are not serialized. Validation fields and the safe
 rate-limit retry timestamp are handled explicitly.

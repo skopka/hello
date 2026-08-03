@@ -13,7 +13,6 @@ public sealed record HelloUiRegisterCommand(
     string Password);
 
 public sealed record HelloUiLoginCommand(
-    string Handle,
     string Login,
     string Password);
 
@@ -29,6 +28,11 @@ public sealed record HelloUiResetPasswordCommand(
 public sealed record HelloUiConfirmEmailCommand(
     Guid UserId,
     string Email,
+    string Token);
+
+public sealed record HelloUiConfirmPhoneCommand(
+    Guid UserId,
+    string Phone,
     string Token);
 
 public sealed record HelloUiCompletePasswordChangeCommand(
@@ -50,6 +54,7 @@ public interface IHelloUiApplication
 
     Task<OperationResult> RequestPasswordResetAsync(
         string email,
+        HttpContext httpContext,
         CancellationToken cancellationToken);
 
     Task<OperationResult> ResetPasswordAsync(
@@ -58,10 +63,20 @@ public interface IHelloUiApplication
 
     Task<OperationResult> RequestEmailConfirmationAsync(
         string email,
+        HttpContext httpContext,
         CancellationToken cancellationToken);
 
     Task<OperationResult> ConfirmEmailAsync(
         HelloUiConfirmEmailCommand command,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult> RequestPhoneConfirmationAsync(
+        string phone,
+        HttpContext httpContext,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult> ConfirmPhoneAsync(
+        HelloUiConfirmPhoneCommand command,
         CancellationToken cancellationToken);
 
     Task<OperationResult<IReadOnlyList<HelloSessionInfo>>> ListSessionsAsync(

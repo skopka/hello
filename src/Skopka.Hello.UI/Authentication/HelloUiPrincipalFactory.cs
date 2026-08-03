@@ -10,6 +10,8 @@ internal static class HelloUiPrincipalFactory
         "skopka_hello_display_name";
     public const string EmailConfirmedClaim =
         "email_confirmed";
+    public const string PhoneConfirmedClaim =
+        "phone_number_verified";
 
     public static ClaimsPrincipal Create<TProfile>(
         HelloAccount<TProfile> account,
@@ -24,6 +26,7 @@ internal static class HelloUiPrincipalFactory
         {
             displayName = account.UserName
                 ?? account.Email
+                ?? account.Phone
                 ?? "Account";
         }
 
@@ -41,6 +44,10 @@ internal static class HelloUiPrincipalFactory
                 EmailConfirmedClaim,
                 account.EmailConfirmed.ToString(
                     CultureInfo.InvariantCulture)),
+            new(
+                PhoneConfirmedClaim,
+                account.PhoneConfirmed.ToString(
+                    CultureInfo.InvariantCulture)),
         ];
         if (!string.IsNullOrWhiteSpace(account.UserName))
         {
@@ -54,6 +61,13 @@ internal static class HelloUiPrincipalFactory
             claims.Add(new Claim(
                 ClaimTypes.Email,
                 account.Email));
+        }
+
+        if (!string.IsNullOrWhiteSpace(account.Phone))
+        {
+            claims.Add(new Claim(
+                ClaimTypes.MobilePhone,
+                account.Phone));
         }
 
         return new ClaimsPrincipal(

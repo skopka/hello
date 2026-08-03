@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Skopka.Identity.Authentication;
 
 namespace Skopka.Hello.UI.Pages;
 
@@ -23,6 +24,9 @@ public sealed class LoginModel(
     [BindProperty(SupportsGet = true)]
     public bool AccountChangeRestarted { get; set; }
 
+    [BindProperty(SupportsGet = true)]
+    public bool PasswordChangedSessionCleanup { get; set; }
+
     public IReadOnlyList<Skopka.Hello.Oidc.HelloOidcProvider>
         ExternalProviders => externalApplication.Providers;
 
@@ -38,7 +42,7 @@ public sealed class LoginModel(
             HelloUiDefaults.AuthenticationScheme);
         if (authentication.Succeeded)
         {
-            return Redirect(HelloUiDefaults.AccountPath);
+            return RedirectToPage("/SkopkaHello/Account/Index");
         }
 
         Registered = registered;
@@ -64,7 +68,6 @@ public sealed class LoginModel(
 
         var result = await application.LoginAsync(
             new HelloUiLoginCommand(
-                Input.Handle,
                 Input.Login,
                 Input.Password),
             HttpContext,
@@ -84,7 +87,7 @@ public sealed class LoginModel(
 
         return Url.IsLocalUrl(ReturnUrl)
             ? LocalRedirect(ReturnUrl)
-            : Redirect(HelloUiDefaults.AccountPath);
+            : RedirectToPage("/SkopkaHello/Account/Index");
     }
 
     public async Task<IActionResult> OnPostExternalAsync(
@@ -96,7 +99,8 @@ public sealed class LoginModel(
             HelloUiDefaults.AuthenticationScheme);
         if (authentication.Succeeded)
         {
-            return Redirect(HelloUiDefaults.ExternalLoginsPath);
+            return RedirectToPage(
+                "/SkopkaHello/Account/ExternalLogins");
         }
 
         var transport = sessionCookies.ValidateTransport(HttpContext);
@@ -129,12 +133,8 @@ public sealed class LoginModel(
     public sealed class InputModel
     {
         [Required]
-        [Display(Name = "Sign in with")]
-        public string Handle { get; set; } = "email";
-
-        [Required]
-        [StringLength(320)]
-        [Display(Name = "Email or user name")]
+        [StringLength(IdentityLoginLimits.MaximumLoginLength)]
+        [Display(Name = "Email, phone, or user name")]
         public string Login { get; set; } = string.Empty;
 
         [Required]

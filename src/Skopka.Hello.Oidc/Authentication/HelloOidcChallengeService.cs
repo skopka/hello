@@ -21,7 +21,8 @@ public interface IHelloOidcChallengeService
 
 internal sealed class HelloOidcChallengeService(
     HelloOidcProviderCatalog providers,
-    HelloOidcOptions options)
+    HelloOidcOptions options,
+    HelloUiRoutePaths uiRoutes)
     : IHelloOidcChallengeService
 {
     public OperationResult<HelloOidcChallenge> CreateSignIn(
@@ -32,7 +33,8 @@ internal sealed class HelloOidcChallengeService(
             HelloOidcProperties.SignInIntent,
             HelloOidcReturnUrl.Normalize(
                 returnUrl,
-                "/hello/account"),
+                uiRoutes.AccountPath,
+                uiRoutes.ExternalCompletionPath),
             userId: null,
             sessionId: null);
 
@@ -50,7 +52,7 @@ internal sealed class HelloOidcChallengeService(
         return Create(
             providerId,
             HelloOidcProperties.LinkIntent,
-            HelloOidcDefaults.ExternalLoginsPath,
+            uiRoutes.ExternalLoginsPath,
             userId,
             sessionId);
     }
@@ -75,7 +77,7 @@ internal sealed class HelloOidcChallengeService(
             IsPersistent = false,
             IssuedUtc = now,
             ExpiresUtc = now.Add(options.ExternalCookieLifetime),
-            RedirectUri = HelloOidcDefaults.CompletionPath,
+            RedirectUri = uiRoutes.ExternalCompletionPath,
         };
         properties.Items[HelloOidcProperties.Intent] = intent;
         properties.Items[HelloOidcProperties.Provider] = provider.Id;

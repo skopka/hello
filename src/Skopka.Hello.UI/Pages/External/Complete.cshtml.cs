@@ -37,9 +37,11 @@ public sealed class ExternalCompleteModel(
             HelloOidcCompletionKind.SignedIn =>
                 await CompleteSignInAsync(result.Value),
             HelloOidcCompletionKind.RegistrationRequired =>
-                Redirect(HelloUiDefaults.ExternalRegistrationPath),
+                RedirectToPage("/SkopkaHello/External/Register"),
             HelloOidcCompletionKind.LinkPending =>
-                Redirect($"{HelloUiDefaults.ExternalLoginsPath}?pending=true"),
+                RedirectToPage(
+                    "/SkopkaHello/Account/ExternalLogins",
+                    new { pending = true }),
             _ => InvalidCompletion(),
         };
     }
@@ -51,7 +53,7 @@ public sealed class ExternalCompleteModel(
         await application.ClearBrowserFlowAsync(
             HttpContext,
             cancellationToken);
-        return Redirect(HelloUiDefaults.LoginPath);
+        return RedirectToPage("/SkopkaHello/Login");
     }
 
     private async Task<IActionResult> CompleteSignInAsync(
@@ -68,7 +70,7 @@ public sealed class ExternalCompleteModel(
             completion.SignIn);
         return Url.IsLocalUrl(completion.ReturnUrl)
             ? LocalRedirect(completion.ReturnUrl)
-            : Redirect(HelloUiDefaults.AccountPath);
+            : RedirectToPage("/SkopkaHello/Account/Index");
     }
 
     private PageResult InvalidCompletion()

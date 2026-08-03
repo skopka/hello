@@ -1,4 +1,4 @@
-@page "/hello/login"
+@page
 @model LoginModel
 @{
     ViewData["Title"] = "Sign in";
@@ -39,6 +39,14 @@
         </p>
     }
 
+    @if (Model.PasswordChangedSessionCleanup)
+    {
+        <p class="hello-status" role="status">
+            Your password was changed, but session cleanup could not be
+            completed. Sign in again with the new password.
+        </p>
+    }
+
     @if (Model.ExternalProviders.Count > 0)
     {
         <div class="hello-external-providers"
@@ -68,14 +76,6 @@
              class="hello-validation"
              role="alert"></div>
 
-        <label asp-for="Input.Handle"></label>
-        <select asp-for="Input.Handle">
-            <option value="email">Email</option>
-            <option value="userName">User name</option>
-        </select>
-        <span asp-validation-for="Input.Handle"
-              class="hello-field-error"></span>
-
         <label asp-for="Input.Login"></label>
         <input asp-for="Input.Login" autocomplete="username" />
         <span asp-validation-for="Input.Login"
@@ -88,7 +88,7 @@
               class="hello-field-error"></span>
 
         <a class="hello-form-help"
-           href="@HelloUiDefaults.ForgotPasswordPath">
+           asp-page="/SkopkaHello/ForgotPassword">
             Forgot your password?
         </a>
 
@@ -98,11 +98,18 @@
     </form>
 
     <p class="hello-card-footer">
-        Need an account?
-        <a href="@HelloUiDefaults.RegisterPath">Register</a>
-        <br />
-        <a href="@HelloUiDefaults.ResendConfirmationPath">
+        @if (HelloOptions.SelfRegistrationEnabled)
+        {
+            <span>Need an account?</span>
+            <a asp-page="/SkopkaHello/Register">Register</a>
+            <br />
+        }
+        <a asp-page="/SkopkaHello/ResendConfirmation">
             Resend email confirmation
+        </a>
+        <br />
+        <a asp-page="/SkopkaHello/ResendPhoneConfirmation">
+            Resend phone confirmation
         </a>
     </p>
 </section>

@@ -14,10 +14,10 @@
     <PackageVersion Include="OpenIddict.Server.AspNetCore" Version="7.6.0" />
     <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
     <PackageVersion Include="Skopka.Abstraction.OperationResult" Version="0.2.0" />
-    <PackageVersion Include="Skopka.Identity" Version="0.5.0" />
-    <PackageVersion Include="Skopka.Identity.Abstractions" Version="0.5.0" />
-    <PackageVersion Include="Skopka.Identity.Ef.PostgreSql" Version="0.5.0" />
-    <PackageVersion Include="Skopka.Identity.Infrastructure" Version="0.5.0" />
+    <PackageVersion Include="Skopka.Identity" Version="0.7.0" />
+    <PackageVersion Include="Skopka.Identity.Abstractions" Version="0.7.0" />
+    <PackageVersion Include="Skopka.Identity.Ef.PostgreSql" Version="0.7.0" />
+    <PackageVersion Include="Skopka.Identity.Infrastructure" Version="0.7.0" />
     <PackageVersion Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.13.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />

@@ -60,7 +60,7 @@ public sealed class ResetPasswordModel(
         await HttpContext.SignOutAsync(
             HelloUiDefaults.AuthenticationScheme);
         return RedirectToPage(
-            "/Login",
+            "/SkopkaHello/Login",
             new { passwordReset = true });
     }
 

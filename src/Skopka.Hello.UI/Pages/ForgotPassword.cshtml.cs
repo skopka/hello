@@ -27,6 +27,7 @@ public sealed class ForgotPasswordModel(
 
         var result = await application.RequestPasswordResetAsync(
             Input.Email,
+            HttpContext,
             cancellationToken);
         if (!result.IsSuccess)
         {

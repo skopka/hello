@@ -64,11 +64,22 @@ public sealed class HelloSmtpOptionsTests
     }
 
     [Fact]
-    public void RegistrationUsesQueuedSenderAndBackgroundWorker()
+    public void ValidateRejectsInvalidProviderId()
+    {
+        var options = CreateValidOptions();
+        options.ProviderId = "not a provider";
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Fact]
+    public void RegistrationUsesQueuedEmailProviderAndBackgroundWorker()
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSkopkaHelloSmtpDelivery(options =>
+        services.AddSkopkaHelloDelivery(options =>
+            options.EmailProviderId = "smtp");
+        services.AddSkopkaHelloSmtpProvider(options =>
         {
             options.Host = "smtp.example.test";
             options.FromAddress = "accounts@example.test";
@@ -80,9 +91,17 @@ public sealed class HelloSmtpOptionsTests
                 ValidateScopes = true,
             });
 
-        Assert.IsType<QueuedHelloAccountMessageSender>(
+        Assert.IsType<HelloAccountMessageDispatcher>(
             provider.GetRequiredService<
                 IHelloAccountMessageSender>());
+        var smtpProvider = Assert.Single(
+            provider.GetServices<IHelloAccountMessageProvider>());
+        Assert.IsType<QueuedSmtpHelloAccountMessageProvider>(
+            smtpProvider);
+        Assert.Equal("smtp", smtpProvider.ProviderId);
+        Assert.Equal(
+            HelloDeliveryChannel.Email,
+            smtpProvider.Channel);
         Assert.Contains(
             provider.GetServices<IHostedService>(),
             service =>

@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -62,14 +64,20 @@ public static class SkopkaHelloUiServiceCollectionExtensions
                         ? Microsoft.AspNetCore.Http.CookieSecurePolicy.Always
                         : Microsoft.AspNetCore.Http.CookieSecurePolicy
                             .SameAsRequest;
-                    cookie.LoginPath =
-                        Skopka.Hello.UI.HelloUiDefaults.LoginPath;
-                    cookie.AccessDeniedPath =
-                        Skopka.Hello.UI.HelloUiDefaults.LoginPath;
                     cookie.SlidingExpiration = false;
                     cookie.EventsType = typeof(
                         Skopka.Hello.UI
                             .HelloUiCookieAuthenticationEvents<TProfile>);
+                });
+
+        services
+            .AddOptions<CookieAuthenticationOptions>(
+                Skopka.Hello.UI.HelloUiDefaults.AuthenticationScheme)
+            .Configure<Skopka.Hello.HelloUiRoutePaths>(
+                (cookie, routes) =>
+                {
+                    cookie.LoginPath = routes.LoginPath;
+                    cookie.AccessDeniedPath = routes.LoginPath;
                 });
 
         services
@@ -88,6 +96,10 @@ public static class SkopkaHelloUiServiceCollectionExtensions
             .AddRazorPages()
             .AddApplicationPart(
                 typeof(Skopka.Hello.UI.HelloUiDefaults).Assembly);
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<
+                IConfigureOptions<RazorPagesOptions>,
+                Skopka.Hello.UI.HelloUiRazorPagesOptionsSetup>());
 
         return services;
     }

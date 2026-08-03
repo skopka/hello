@@ -11,7 +11,9 @@ internal sealed class HelloOidcApplication<TProfile>(
     HelloOidcProviderCatalog providers,
     HelloOidcTicketService tickets,
     IHelloOidcFlowStore flows,
-    HelloOidcOptions options)
+    HelloOidcOptions options,
+    SkopkaHelloOptions helloOptions,
+    HelloUiRoutePaths uiRoutes)
     : IHelloOidcApplication<TProfile>
 {
     public async Task<OperationResult<HelloOidcCompletion<TProfile>>>
@@ -93,6 +95,14 @@ internal sealed class HelloOidcApplication<TProfile>(
                     signedIn.Errors);
             }
 
+            if (!helloOptions.SelfRegistrationEnabled)
+            {
+                await HelloOidcTicketService.DeleteExternalAsync(
+                    httpContext);
+                return Fail<HelloOidcCompletion<TProfile>>(
+                    HelloRegistrationErrors.Disabled());
+            }
+
             if (!await tickets.PromoteToPendingAsync(httpContext, ticket))
             {
                 await HelloOidcTicketService.DeleteExternalAsync(
@@ -148,7 +158,7 @@ internal sealed class HelloOidcApplication<TProfile>(
                 null,
                 null,
                 publicProvider,
-                HelloOidcDefaults.ExternalLoginsPath));
+                uiRoutes.ExternalLoginsPath));
     }
 
     public async Task<OperationResult<HelloOidcRegistrationHints>>
@@ -156,7 +166,15 @@ internal sealed class HelloOidcApplication<TProfile>(
             HttpContext httpContext,
             CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(httpContext);
         cancellationToken.ThrowIfCancellationRequested();
+        if (!helloOptions.SelfRegistrationEnabled)
+        {
+            await HelloOidcTicketService.DeletePendingAsync(httpContext);
+            return Fail<HelloOidcRegistrationHints>(
+                HelloRegistrationErrors.Disabled());
+        }
+
         var read = await tickets.ReadPendingAsync(httpContext);
         if (!read.IsSuccess)
         {
@@ -184,6 +202,13 @@ internal sealed class HelloOidcApplication<TProfile>(
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(httpContext);
+
+        if (!helloOptions.SelfRegistrationEnabled)
+        {
+            await HelloOidcTicketService.DeletePendingAsync(httpContext);
+            return Fail<HelloSignIn<TProfile>>(
+                HelloRegistrationErrors.Disabled());
+        }
 
         var read = await tickets.ReadPendingAsync(httpContext);
         if (!read.IsSuccess
@@ -360,7 +385,6 @@ internal sealed class HelloOidcApplication<TProfile>(
             httpContext,
             ticket with
             {
-                ExpectedVersion = local.Value.Version,
                 ChallengeId = begun.Value.ChallengeId,
             }))
         {
@@ -435,13 +459,12 @@ internal sealed class HelloOidcApplication<TProfile>(
                 HelloOidcFlowId.Create(),
                 HelloOidcProperties.UnlinkIntent,
                 target.Value,
-                HelloOidcDefaults.ExternalLoginsPath,
+                uiRoutes.ExternalLoginsPath,
                 null,
                 null,
                 null,
                 localSession.UserId,
                 localSession.SessionId,
-                snapshot.Value.Version,
                 begun.Value.ChallengeId,
                 DateTimeOffset.UtcNow.Add(
                     options.PendingCookieLifetime))))
@@ -491,7 +514,6 @@ internal sealed class HelloOidcApplication<TProfile>(
         var read = await tickets.ReadPendingAsync(httpContext);
         if (!read.IsSuccess
             || read.Value.Intent != expectedIntent
-            || read.Value.ExpectedVersion is null
             || read.Value.ChallengeId is null)
         {
             return Fail<HelloSignIn<TProfile>>(
@@ -519,13 +541,6 @@ internal sealed class HelloOidcApplication<TProfile>(
         {
             await HelloOidcTicketService.DeletePendingAsync(httpContext);
             return Fail<HelloSignIn<TProfile>>(local.Errors);
-        }
-
-        if (local.Value.Version != ticket.ExpectedVersion)
-        {
-            await HelloOidcTicketService.DeletePendingAsync(httpContext);
-            return Fail<HelloSignIn<TProfile>>(
-                HelloOidcErrors.ConcurrencyConflict());
         }
 
         if (link)
@@ -558,7 +573,7 @@ internal sealed class HelloOidcApplication<TProfile>(
         var command = new HelloCompleteExternalLoginMutationCommand(
             localSession.AccessToken,
             ticket.Login,
-            ticket.ExpectedVersion.Value,
+            local.Value.Version,
             ticket.ChallengeId.Value,
             verificationCode,
             sessionMetadata);
@@ -571,7 +586,7 @@ internal sealed class HelloOidcApplication<TProfile>(
                 cancellationToken);
         if (completed.IsSuccess
             || completed.Errors.Any(error => error.Code is
-                IdentityErrorCodes.ConcurrencyConflict
+                HelloExternalIdentityErrorCodes.ChallengeRestartRequired
                 or HelloExternalIdentityErrorCodes.RestartRequired))
         {
             await HelloOidcTicketService.DeletePendingAsync(httpContext);

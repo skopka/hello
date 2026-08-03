@@ -4,6 +4,8 @@ namespace Skopka.Hello;
 
 public sealed class HelloSmtpOptions
 {
+    public string ProviderId { get; set; } = "smtp";
+
     public string Host { get; set; } = string.Empty;
 
     public int Port { get; set; } = 587;
@@ -22,6 +24,9 @@ public sealed class HelloSmtpOptions
 
     public void Validate()
     {
+        _ = HelloAccountMessageDispatcher.NormalizeProviderId(
+            ProviderId,
+            "The SMTP provider id");
         ArgumentException.ThrowIfNullOrWhiteSpace(Host);
         ArgumentException.ThrowIfNullOrWhiteSpace(FromAddress);
         ArgumentException.ThrowIfNullOrWhiteSpace(FromName);

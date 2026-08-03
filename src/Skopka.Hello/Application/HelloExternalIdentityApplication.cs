@@ -19,7 +19,9 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
     IIdentitySignInMethodQueryService<TProfile> signInMethods,
     IIdentityStepUpService<TProfile> stepUp,
     IIdentityVerificationService<TProfile> verification,
-    IHelloAccountMessageSender messageSender)
+    IHelloAccountMessageSender messageSender,
+    HelloDeliveryOptions deliveryOptions,
+    SkopkaHelloOptions options)
     : IHelloExternalIdentityApplication<TProfile>
 {
     public async Task<OperationResult<HelloSignIn<TProfile>>> SignInAsync(
@@ -45,6 +47,13 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
+
+        if (!options.SelfRegistrationEnabled)
+        {
+            return OperationResultFactory.Fail<
+                HelloSignIn<TProfile>>(
+                    HelloRegistrationErrors.Disabled());
+        }
 
         var registered = await registration.RegisterExternalAsync(
             new RegisterExternalUserCommand<TProfile>(
@@ -137,10 +146,22 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
         }
 
         var user = validated.Value;
-        if (!HelloAccountSecurity.HasConfirmedEmail(user))
+        if (!HelloAccountSecurity.TryGetConfirmedDestination(
+                user,
+                deliveryOptions.VerificationChannel,
+                out var destination))
         {
             return OperationResultFactory.Fail<HelloStepUpChallenge>(
-                HelloAccountSecurity.ConfirmedEmailRequired());
+                HelloAccountSecurity.ConfirmedDestinationRequired(
+                    deliveryOptions.VerificationChannel));
+        }
+
+        var deliveryAvailable = messageSender.CheckAvailability(
+            deliveryOptions.VerificationChannel);
+        if (!deliveryAvailable.IsSuccess)
+        {
+            return OperationResultFactory.Fail<HelloStepUpChallenge>(
+                deliveryAvailable.Errors);
         }
 
         var issued = await stepUp.BeginAsync(
@@ -148,7 +169,10 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
                 user.Id,
                 action,
                 HelloAccountSecurity.CreateExternalLoginBinding(
-                    command.Login),
+                    command.Login,
+                    user.Id,
+                    deliveryOptions.VerificationChannel,
+                    destination!),
                 VerificationMethods.OneTimeCode,
                 command.ClientKey),
             cancellationToken);
@@ -169,8 +193,18 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
 
         var delivered = await messageSender.SendAsync(
             new HelloAccountMessage(
-                HelloAccountMessageKind.StepUpVerification,
-                user.Email!,
+                Guid.NewGuid(),
+                action switch
+                {
+                    HelloAccountSecurity.ExternalLinkAction =>
+                        HelloAccountMessageKind.ExternalLoginLinkVerification,
+                    HelloAccountSecurity.ExternalUnlinkAction =>
+                        HelloAccountMessageKind.ExternalLoginUnlinkVerification,
+                    _ => throw new InvalidOperationException(
+                        "The external account operation is unsupported."),
+                },
+                deliveryOptions.VerificationChannel,
+                destination!,
                 null,
                 issued.Value.ExpiresAt,
                 issued.Value.DeliveryCode),
@@ -179,7 +213,8 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
             ? OperationResultFactory.Success(
                 new HelloStepUpChallenge(
                     issued.Value.ChallengeId,
-                    issued.Value.ExpiresAt))
+                    issued.Value.ExpiresAt,
+                    deliveryOptions.VerificationChannel))
             : OperationResultFactory.Fail<HelloStepUpChallenge>(
                 delivered.Errors);
     }
@@ -203,10 +238,14 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
         }
 
         var user = validated.Value;
-        if (!HelloAccountSecurity.HasConfirmedEmail(user))
+        if (!HelloAccountSecurity.TryGetConfirmedDestination(
+                user,
+                deliveryOptions.VerificationChannel,
+                out var destination))
         {
             return OperationResultFactory.Fail<HelloSignIn<TProfile>>(
-                HelloAccountSecurity.ConfirmedEmailRequired());
+                HelloAccountSecurity.ConfirmedDestinationRequired(
+                    deliveryOptions.VerificationChannel));
         }
 
         if (user.Version != command.ExpectedVersion)
@@ -223,8 +262,11 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
             cancellationToken);
         if (!verified.IsSuccess)
         {
-            return OperationResultFactory.Fail<HelloSignIn<TProfile>>(
-                verified.Errors);
+            return HelloAccountSecurity.IsRetryableVerificationResponse(
+                verified.Errors)
+                ? OperationResultFactory.Fail<HelloSignIn<TProfile>>(
+                    verified.Errors)
+                : ChallengeRestartRequired<TProfile>(verified.Errors);
         }
 
         var authorized = await stepUp.AuthorizeAsync(
@@ -232,14 +274,16 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
                 user.Id,
                 action,
                 HelloAccountSecurity.CreateExternalLoginBinding(
-                    command.Login),
+                    command.Login,
+                    user.Id,
+                    deliveryOptions.VerificationChannel,
+                    destination!),
                 command.ChallengeId,
                 verified.Value.Token),
             cancellationToken);
         if (!authorized.IsSuccess)
         {
-            return OperationResultFactory.Fail<HelloSignIn<TProfile>>(
-                authorized.Errors);
+            return ChallengeRestartRequired<TProfile>(authorized.Errors);
         }
 
         var mutated = link
@@ -257,7 +301,7 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
                 cancellationToken);
         if (!mutated.IsSuccess)
         {
-            return RestartRequired<TProfile>();
+            return RestartRequired<TProfile>(mutated.Errors);
         }
 
         var revoked = await sessions.RevokeAllAsync(
@@ -265,7 +309,7 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
             cancellationToken);
         if (!revoked.IsSuccess)
         {
-            return RestartRequired<TProfile>();
+            return RestartRequired<TProfile>(revoked.Errors);
         }
 
         var signedIn = await CreateSignInAsync(
@@ -274,7 +318,7 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
             cancellationToken);
         return signedIn.IsSuccess
             ? signedIn
-            : RestartRequired<TProfile>();
+            : RestartRequired<TProfile>(signedIn.Errors);
     }
 
     private async Task<OperationResult<HelloSignIn<TProfile>>>
@@ -321,10 +365,25 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
             session.RefreshToken,
             session.RefreshTokenExpiresAt);
 
-    private static OperationResult<HelloSignIn<T>> RestartRequired<T>()
+    private static OperationResult<HelloSignIn<T>> RestartRequired<T>(
+        IReadOnlyCollection<Error> causes)
         => OperationResultFactory.Fail<HelloSignIn<T>>(
-            new Error(
-                HelloExternalIdentityErrorCodes.RestartRequired,
-                "The account change could not be finalized. Refresh the account and start the operation again.",
-                ErrorType.Conflict));
+            causes.Prepend(
+                    new Error(
+                        HelloExternalIdentityErrorCodes.RestartRequired,
+                        "The account change could not be finalized. Refresh the account and start the operation again.",
+                        ErrorType.Conflict))
+                .ToArray());
+
+    private static OperationResult<HelloSignIn<T>>
+        ChallengeRestartRequired<T>(
+            IReadOnlyCollection<Error> causes)
+        => OperationResultFactory.Fail<HelloSignIn<T>>(
+            causes.Prepend(
+                    new Error(
+                        HelloExternalIdentityErrorCodes
+                            .ChallengeRestartRequired,
+                        "The verification challenge can no longer be used. Start the account change again.",
+                        ErrorType.Conflict))
+                .ToArray());
 }

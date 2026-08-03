@@ -5,7 +5,7 @@
 - .NET SDK 10.0.101 or a compatible patch;
 - PostgreSQL;
 - Docker Engine for integration tests and the provided compose stack;
-- published Skopka.Identity `0.5.0` packages.
+- published Skopka.Identity `0.7.0` packages.
 
 ## Configure the server
 
@@ -81,6 +81,8 @@ Optional settings:
 SkopkaHello__Jwt__Issuer=https://localhost:8443
 SkopkaHello__Jwt__Audience=skopka-hello-api
 SkopkaHello__Jwt__ValidateSessionOnEveryRequest=false
+SkopkaHello__SelfRegistration__Enabled=true
+SkopkaHello__Ui__PathPrefix=/hello
 SkopkaHello__RateLimiting__CurrentVersion=v1
 SkopkaHello__Verification__CurrentVersion=v1
 SkopkaHello__Database__ApplyMigrations=false
@@ -91,6 +93,20 @@ SkopkaHello__DataProtection__KeyPath=/protected/data-protection
 confirmation and password-reset links and external OIDC callback URIs. It must
 not contain credentials, a path, query or fragment. It is configuration, never
 inferred from the request `Host` header.
+
+`SelfRegistration:Enabled` controls both password and external OIDC account
+creation. When false, the ready Server does not map `/auth/register`, the
+password registration page or the pending external-registration page. Existing
+users can still sign in and manage linked providers.
+
+`Ui:PathPrefix` is a startup-only route prefix for the built-in Razor UI. It
+defaults to `/hello` and must be a non-empty absolute prefix other than `/`.
+It is not ASP.NET Core `PathBase`: API, health, static assets and the raw OIDC
+callback remain at their existing root-relative paths. Changing either setting
+requires an application restart. Prefixes inside the reserved `/auth`,
+`/account`, `/health`, `/swagger`, `/openapi`, `/_content` and
+`/signin-skopka-oidc` namespaces are rejected at startup to prevent ambiguous
+routes.
 
 ## Configure an external OIDC provider
 
@@ -131,9 +147,9 @@ https://localhost:8443/signin-skopka-oidc/google
 ```
 
 The HTTPS authority, client id and callback must also be allowed in the provider
-console. The internal `/hello/external/complete` page is not a provider
-callback. The Server derives the callback only from trusted `PublicOrigin` and
-the configured provider id.
+console. With the default UI prefix, the internal completion page is
+`/hello/external/complete`; it is not a provider callback. The Server derives
+the callback only from trusted `PublicOrigin` and the configured provider id.
 
 External and pending OIDC tickets expire after five and ten minutes by default;
 `ExternalCookieLifetime` and `PendingCookieLifetime` accept values from one to
@@ -143,9 +159,14 @@ limiter, the ready Server shares this replay guard across replicas; custom hosts
 without it should register an atomic shared `IHelloOidcFlowStore` before
 scaling out.
 
-To enable the built-in background SMTP sender:
+To select and enable the built-in queued SMTP email provider:
 
 ```text
+SkopkaHello__Delivery__EmailProviderId=smtp
+SkopkaHello__Delivery__SmsProviderId=
+SkopkaHello__Delivery__VerificationChannel=Email
+SkopkaHello__Delivery__AnonymousRequestQueueCapacity=256
+SkopkaHello__Delivery__Smtp__ProviderId=smtp
 SkopkaHello__Delivery__Smtp__Host=smtp.example.com
 SkopkaHello__Delivery__Smtp__Port=587
 SkopkaHello__Delivery__Smtp__EnableSsl=true
@@ -156,12 +177,32 @@ SkopkaHello__Delivery__Smtp__FromName=Example Accounts
 SkopkaHello__Delivery__Smtp__QueueCapacity=256
 ```
 
-Omit `Host` to leave delivery disabled, or register a custom
-`IHelloAccountMessageSender` before `AddSkopkaHello<TProfile>()`. The built-in
-queue is bounded and in-memory; use a durable application queue when account
-messages must survive a process restart. Email confirmation, password reset,
-password-change OTP and external link/unlink OTP delivery all use this adapter;
-step-up challenge requests report a delivery error when no sender is configured.
+Leave `EmailProviderId` and `Host` empty to keep email delivery disabled. The
+configured provider id must identify exactly one provider registered for the
+same channel; missing, duplicate and channel-mismatched registrations fail at
+startup. Custom hosts add an SMS implementation with
+`AddSkopkaHelloSmsProvider<TProvider>()`; the ready Server does not ship a
+vendor-specific SMS adapter.
+
+`VerificationChannel` selects where password-change and external-account
+mutation codes are sent. Set it to `Email` or `Sms`; the selected address must
+be confirmed and the matching provider must be configured. A challenge never
+falls back to the other channel after it has been issued.
+
+`IHelloAccountMessageSender` remains the application-facing port and dispatches
+semantic messages to the selected provider. The SMTP provider acknowledges
+successful enqueue, not remote delivery. Its queue is bounded and in-memory,
+and its worker skips messages that expire while waiting. Replace the sender
+with a durable application queue when messages must survive a process restart.
+Anonymous password-reset and contact-confirmation requests first enter a
+separate bounded queue before lookup or token issuance; its capacity is
+`AnonymousRequestQueueCapacity`. The ready Server rate-limits queue admission
+by trusted client key and normalized target using the Identity verification
+limits and resend cooldown. Denied or capacity-exhausted anonymous requests are
+silently dropped after validation and still receive `202 Accepted`.
+Email confirmation, password reset, password-change OTP and purpose-specific
+external link/unlink OTP delivery all use this dispatcher. Step-up challenge
+requests report a delivery error when their channel has no configured provider.
 
 `ApplyMigrations=true` is intended for local development or a single controlled
 deployment job, not every production replica.
@@ -259,11 +300,13 @@ POST /auth/login
 Content-Type: application/json
 
 {
-  "handle": "email",
   "login": "alice@example.test",
   "password": "a sufficiently long passphrase"
 }
 ```
+
+Hello resolves the value as an email, phone number or user name in one Identity
+lookup. The HTTP contract intentionally has no caller-selected handle type.
 
 The response contains `sessionId`, `accessToken`, `accessTokenExpiresAt` and
 `refreshTokenExpiresAt`. It never contains the refresh token. Preserve the
@@ -298,18 +341,18 @@ flows; there is no native-app token-in-query callback or external mutation API.
 
 ## Sign in with an external provider
 
-Open `/hello/login` and choose an enabled provider. ASP.NET Core performs the
+Open `{UiPathPrefix}/login` and choose an enabled provider. ASP.NET Core performs the
 authorization-code flow with PKCE, state and nonce validation. After the raw
-provider callback, `/hello/external/complete` requires an explicit
+provider callback, `{UiPathPrefix}/external/complete` requires an explicit
 antiforgery-protected POST.
 
 If the validated provider/subject is already linked, Hello issues the normal
 JWT/refresh session and protected UI ticket. Otherwise
-`/hello/external/register` collects the local profile and atomically creates the
+`{UiPathPrefix}/external/register` collects the local profile and atomically creates the
 user plus external login. A provider-verified email may prefill the form but is
 not locally confirmed. An email matching another account never links it; sign
 in to that account with an existing method and link from
-`/hello/account/external-logins`.
+`{UiPathPrefix}/account/external-logins`. These paths use `/hello` by default.
 
 Link and unlink require a confirmed local email. The UI sends a one-time code
 through `IHelloAccountMessageSender`, binds it to the exact provider identity
@@ -322,10 +365,10 @@ enabled.
 Every failure produced from an operation result uses
 `application/problem+json`, including `code` and `traceId` extensions.
 
-## Confirm email and reset a password
+## Confirm email or phone and reset a password
 
-Request endpoints accept an email and always return `202 Accepted` for a
-well-formed address, whether or not an active account exists:
+Request endpoints accept an email or phone and always return `202 Accepted`
+for a well-formed contact, whether or not an active account exists:
 
 ```http
 POST /auth/password-reset/request
@@ -337,7 +380,8 @@ Content-Type: application/json
 The email link opens a no-store Razor page. Confirmation links require a
 button-backed antiforgery POST so automated mail scanners cannot mutate the
 account by following a GET. API clients can submit the link values directly to
-`/auth/password-reset/confirm` or `/auth/email-confirmation/confirm`.
+`/auth/password-reset/confirm`, `/auth/email-confirmation/confirm` or
+`/auth/phone-confirmation/confirm`.
 
 A successful password reset rotates the security stamp. Refresh sessions can no
 longer be used; stateless access tokens remain valid only until their short
@@ -345,17 +389,17 @@ expiry unless online validation is enabled.
 
 ## Change an authenticated password
 
-Password change requires an active bearer session and a confirmed email
-address. First request an OTP challenge:
+Password change requires an active bearer session and a confirmed contact for
+the configured `VerificationChannel`. First request an OTP challenge:
 
 ```http
 POST /account/password/change/challenge
 Authorization: Bearer <access-token>
 ```
 
-The response contains only `challengeId` and `expiresAt`. The OTP is delivered
-through `IHelloAccountMessageSender` and is never returned by HTTP. Submit it
-with both passwords:
+The response contains only `challengeId`, `expiresAt` and `deliveryChannel`
+(`email` or `sms`). The OTP is delivered through the provider configured for
+that channel and is never returned by HTTP. Submit it with both passwords:
 
 ```http
 POST /account/password/change
@@ -373,7 +417,7 @@ Content-Type: application/json
 The action, user and resource binding are created by the server from the
 online-validated access token; clients cannot select them. The proof is
 single-use. A successful change rotates the security stamp, revokes all
-sessions and requires a fresh login. The Razor page at
+sessions and requires a fresh login. With the default prefix, the Razor page at
 `/hello/account/change-password` uses the same application operation and
 antiforgery-protected POSTs.
 

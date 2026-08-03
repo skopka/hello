@@ -21,10 +21,13 @@ public sealed class ConfirmEmailModel(
 
     public bool Confirmed { get; private set; }
 
+    public bool AutoSubmit { get; private set; }
+
     public void OnGet()
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
         LinkValid = IsLinkValid();
+        AutoSubmit = LinkValid;
     }
 
     public async Task<IActionResult> OnPostAsync(
@@ -32,6 +35,7 @@ public sealed class ConfirmEmailModel(
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
         LinkValid = IsLinkValid();
+        AutoSubmit = false;
         if (!LinkValid)
         {
             ModelState.AddModelError(

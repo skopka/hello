@@ -18,6 +18,9 @@ public static class SkopkaHelloServiceCollectionExtensions
         options.Validate();
 
         services.AddSingleton(options);
+        services.AddSingleton(
+            new Skopka.Hello.HelloUiRoutePaths(
+                options.UiPathPrefix));
         services.AddHttpContextAccessor();
         services.AddAntiforgery(antiforgery =>
         {
@@ -38,9 +41,17 @@ public static class SkopkaHelloServiceCollectionExtensions
         services.TryAddSingleton<
             Skopka.Hello.IHelloSecurityEventSink,
             Skopka.Hello.NullHelloSecurityEventSink>();
+        services.AddSkopkaHelloDelivery();
         services.TryAddSingleton<
-            Skopka.Hello.IHelloAccountMessageSender,
-            Skopka.Hello.NullHelloAccountMessageSender>();
+            Skopka.Hello.HelloAnonymousAccountMessageQueue<TProfile>>();
+        services.TryAddScoped<
+            Skopka.Hello.HelloAnonymousAccountMessageRequester<TProfile>>();
+        services.TryAddScoped<
+            Skopka.Hello.HelloAnonymousAccountMessageProcessor<TProfile>>();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<
+                Microsoft.Extensions.Hosting.IHostedService,
+                Skopka.Hello.HelloAnonymousAccountMessageWorker<TProfile>>());
         services.TryAddSingleton<
             IIdentitySecurityEventObserver,
             Skopka.Hello.HelloIdentitySecurityEventObserver>();

@@ -1,4 +1,4 @@
-@page "/hello/register"
+@page
 @model RegisterModel
 @{
     ViewData["Title"] = "Create account";
@@ -60,6 +60,6 @@
 
     <p class="hello-card-footer">
         Already registered?
-        <a href="@HelloUiDefaults.LoginPath">Sign in</a>
+        <a asp-page="/SkopkaHello/Login">Sign in</a>
     </p>
 </section>

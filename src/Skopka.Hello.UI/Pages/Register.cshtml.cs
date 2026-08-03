@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Skopka.Identity.Authentication;
 
 namespace Skopka.Hello.UI.Pages;
 
@@ -36,7 +37,7 @@ public sealed class RegisterModel(IHelloUiApplication application)
         }
 
         return RedirectToPage(
-            "/Login",
+            "/SkopkaHello/Login",
             new { registered = true });
     }
 
@@ -56,8 +57,7 @@ public sealed class RegisterModel(IHelloUiApplication application)
         [Display(Name = "User name")]
         public string? UserName { get; set; }
 
-        [Phone]
-        [StringLength(50)]
+        [StringLength(IdentityLoginLimits.MaximumLoginLength)]
         public string? Phone { get; set; }
 
         [StringLength(32)]

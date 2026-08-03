@@ -103,9 +103,25 @@ internal static class OperationResultProblemMapper
         if (string.Equals(
                 error.Code,
                 IdentityErrorCodes.RateLimitExceeded,
+                StringComparison.Ordinal)
+            || string.Equals(
+                error.Code,
+                HelloDeliveryErrorCodes.QueueFull,
                 StringComparison.Ordinal))
         {
             return StatusCodes.Status429TooManyRequests;
+        }
+
+        if (string.Equals(
+                error.Code,
+                HelloDeliveryErrorCodes.NotConfigured,
+                StringComparison.Ordinal)
+            || string.Equals(
+                error.Code,
+                HelloDeliveryErrorCodes.Failed,
+                StringComparison.Ordinal))
+        {
+            return StatusCodes.Status503ServiceUnavailable;
         }
 
         return error.Type switch
@@ -128,6 +144,8 @@ internal static class OperationResultProblemMapper
             StatusCodes.Status404NotFound => "Not Found",
             StatusCodes.Status409Conflict => "Conflict",
             StatusCodes.Status429TooManyRequests => "Too Many Requests",
+            StatusCodes.Status503ServiceUnavailable =>
+                "Service Unavailable",
             _ => "Operation Failed",
         };
 }

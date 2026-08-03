@@ -27,6 +27,7 @@ public sealed class ResendConfirmationModel(
 
         var result = await application.RequestEmailConfirmationAsync(
             Input.Email,
+            HttpContext,
             cancellationToken);
         if (!result.IsSuccess)
         {

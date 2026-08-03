@@ -21,6 +21,23 @@ public sealed class SkopkaHelloUiOptionsTests
             options.Validate);
     }
 
+    [Theory]
+    [InlineData("/")]
+    [InlineData("/{tenant}/custom.css")]
+    [InlineData("/assets/{*path}")]
+    [InlineData("/assets//custom.css")]
+    [InlineData("/assets/../custom.css")]
+    public void ValidateRejectsNonLiteralOrAmbiguousRequestPath(
+        string requestPath)
+    {
+        var options = new SkopkaHelloUiOptions
+        {
+            CustomCssRequestPath = requestPath,
+        };
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
     [Fact]
     public void ValidateAllowsDisabledCustomCss()
     {
@@ -125,5 +142,42 @@ public sealed class SkopkaHelloUiOptionsTests
         {
             File.Delete(temporaryFile);
         }
+    }
+
+    [Fact]
+    public async Task EndpointRejectsConfiguredUiRouteCollision()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Services.AddSingleton(
+            new HelloUiRoutePaths("/portal"));
+        builder.Services.AddSkopkaHelloUi(options =>
+            options.CustomCssRequestPath = "/portal/login");
+        await using var application = builder.Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            application.MapSkopkaHelloCustomCss);
+
+        Assert.Contains(
+            "collides",
+            exception.Message,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task EndpointRejectsExistingHostRouteCollision()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Services.AddSkopkaHelloUi(options =>
+            options.CustomCssRequestPath = "/host-info");
+        await using var application = builder.Build();
+        application.MapGet("/host-info", () => "host");
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            application.MapSkopkaHelloCustomCss);
+
+        Assert.Contains(
+            "collides",
+            exception.Message,
+            StringComparison.OrdinalIgnoreCase);
     }
 }

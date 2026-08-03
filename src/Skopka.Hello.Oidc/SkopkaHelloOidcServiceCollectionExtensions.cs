@@ -262,7 +262,10 @@ public static class SkopkaHelloOidcServiceCollectionExtensions
         await ClearBrowserFlowAsync(context.HttpContext);
         context.HandleResponse();
         ApplySensitiveRedirectHeaders(context.Response);
-        context.Response.Redirect(GetFailureRedirect(context.Properties));
+        context.Response.Redirect(
+            GetFailureRedirect(
+                context.HttpContext,
+                context.Properties));
     }
 
     private static async Task RedirectFailure(
@@ -271,21 +274,28 @@ public static class SkopkaHelloOidcServiceCollectionExtensions
         await ClearBrowserFlowAsync(context.HttpContext);
         context.HandleResponse();
         ApplySensitiveRedirectHeaders(context.Response);
-        context.Response.Redirect(GetFailureRedirect(context.Properties));
+        context.Response.Redirect(
+            GetFailureRedirect(
+                context.HttpContext,
+                context.Properties));
     }
 
     private static string GetFailureRedirect(
+        HttpContext httpContext,
         AuthenticationProperties? properties)
-        => properties?.Items.TryGetValue(
+    {
+        var uiRoutes = httpContext.RequestServices
+            .GetRequiredService<Skopka.Hello.HelloUiRoutePaths>();
+        return properties?.Items.TryGetValue(
                 Skopka.Hello.Oidc.HelloOidcProperties.Intent,
                 out var intent) == true
             && string.Equals(
                 intent,
                 Skopka.Hello.Oidc.HelloOidcProperties.LinkIntent,
                 StringComparison.Ordinal)
-                ? $"{Skopka.Hello.Oidc.HelloOidcDefaults.ExternalLoginsPath}?externalError=true"
-                : Skopka.Hello.Oidc.HelloOidcDefaults
-                    .FailureRedirectPath;
+                ? $"{uiRoutes.ExternalLoginsPath}?externalError=true"
+                : $"{uiRoutes.LoginPath}?externalError=true";
+    }
 
     private static async Task ClearBrowserFlowAsync(
         HttpContext httpContext)

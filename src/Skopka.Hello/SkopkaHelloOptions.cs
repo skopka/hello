@@ -4,6 +4,11 @@ namespace Skopka.Hello;
 
 public sealed class SkopkaHelloOptions
 {
+    public bool SelfRegistrationEnabled { get; set; } = true;
+
+    public string UiPathPrefix { get; set; } =
+        HelloUiRoutePaths.DefaultPathPrefix;
+
     public string RefreshCookieName { get; set; } =
         "__Host-Skopka.Hello.Refresh";
 
@@ -27,6 +32,7 @@ public sealed class SkopkaHelloOptions
 
     public void Validate()
     {
+        HelloUiRoutePaths.ValidatePathPrefix(UiPathPrefix);
         ArgumentException.ThrowIfNullOrWhiteSpace(RefreshCookieName);
         ArgumentException.ThrowIfNullOrWhiteSpace(AntiforgeryCookieName);
         ArgumentException.ThrowIfNullOrWhiteSpace(

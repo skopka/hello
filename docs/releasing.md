@@ -19,14 +19,18 @@ individual project or create package-specific release jobs.
 
 ## Publish a release
 
+Publish and verify the complete Skopka.Identity `0.7.0` package set first.
+Hello release jobs restore dependencies from NuGet.org and must not depend on a
+developer's local package source.
+
 Start from a verified commit on `main`, then create and push an annotated
 semantic-version tag:
 
 ```shell
 git switch main
 git pull --ff-only
-git tag -a v0.2.0 -m "Skopka.Hello 0.2.0"
-git push origin v0.2.0
+git tag -a v0.3.0 -m "Skopka.Hello 0.3.0"
+git push origin v0.3.0
 ```
 
 The workflow removes the leading `v` and uses the remainder as the assembly and

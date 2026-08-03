@@ -27,3 +27,10 @@ The optional custom CSS endpoint serves one explicitly configured file and
 must not expose or browse the mounted directory. CSS custom properties are the
 theming contract, built-in styles can be disabled, and custom CSS is linked
 after built-in styles.
+
+Hello pages live under the collision-resistant `/SkopkaHello` Razor page-name
+namespace. Their selectors are replaced by the DI-configured UI prefix through
+the exact RCL page-route convention. Do not reintroduce absolute `@page
+"/hello"` templates or raw route constants in links/redirects; use `asp-page`
+and `RedirectToPage`. Password and external registration selectors and links
+must be absent when the shared self-registration policy is disabled.

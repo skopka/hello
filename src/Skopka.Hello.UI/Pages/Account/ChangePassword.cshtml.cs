@@ -18,6 +18,8 @@ public sealed class ChangePasswordModel(
     public bool CodeRequested =>
         Input.ChallengeId != Guid.Empty;
 
+    public bool RestartRequired { get; private set; }
+
     public DateTimeOffset? CodeExpiresAt { get; private set; }
 
     public void OnGet()
@@ -69,7 +71,50 @@ public sealed class ChangePasswordModel(
             cancellationToken);
         if (!result.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            if (result.Errors.Any(error => string.Equals(
+                    error.Code,
+                    HelloPasswordChangeErrorCodes
+                        .SessionCleanupRequired,
+                    StringComparison.Ordinal)))
+            {
+                Input = new InputModel();
+                ModelState.Clear();
+                sessionCookies.DeleteSessionCookies(HttpContext);
+                await HttpContext.SignOutAsync(
+                    HelloUiDefaults.AuthenticationScheme);
+                return RedirectToPage(
+                    "/SkopkaHello/Login",
+                    new { passwordChangedSessionCleanup = true });
+            }
+
+            var restart = result.Errors.FirstOrDefault(error =>
+                string.Equals(
+                    error.Code,
+                    HelloPasswordChangeErrorCodes.RestartRequired,
+                    StringComparison.Ordinal));
+            if (restart is null)
+            {
+                HelloUiModelState.AddErrors(
+                    ModelState,
+                    result.Errors);
+                return Page();
+            }
+
+            Input = new InputModel();
+            ModelState.Clear();
+            RestartRequired = true;
+            ModelState.AddModelError(string.Empty, restart.Message);
+            foreach (var cause in result.Errors.Where(error =>
+                !string.Equals(
+                    error.Code,
+                    HelloPasswordChangeErrorCodes.RestartRequired,
+                    StringComparison.Ordinal)))
+            {
+                ModelState.AddModelError(
+                    string.Empty,
+                    cause.Message);
+            }
+
             return Page();
         }
 
@@ -77,7 +122,7 @@ public sealed class ChangePasswordModel(
         await HttpContext.SignOutAsync(
             HelloUiDefaults.AuthenticationScheme);
         return RedirectToPage(
-            "/Login",
+            "/SkopkaHello/Login",
             new { passwordReset = true });
     }
 

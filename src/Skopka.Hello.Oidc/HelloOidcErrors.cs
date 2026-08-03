@@ -50,12 +50,6 @@ internal static class HelloOidcErrors
             "Sign in to the existing account and link this provider.",
             ErrorType.Conflict);
 
-    public static Error ConcurrencyConflict()
-        => new(
-            IdentityErrorCodes.ConcurrencyConflict,
-            "Concurrency conflict.",
-            ErrorType.Conflict);
-
     public static Error AmbiguousProvider()
         => new(
             IdentityErrorCodes.ConcurrencyConflict,

@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Authentication;
 using Skopka.Abstraction.OperationResult;
-using Skopka.Identity.Authentication;
 using Skopka.Identity.Errors;
 
 namespace Skopka.Hello.UI;
@@ -18,6 +17,12 @@ internal sealed class HelloUiApplication<TProfile>(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
+
+        if (!helloOptions.SelfRegistrationEnabled)
+        {
+            return OperationResultFactory.Fail(
+                HelloRegistrationErrors.Disabled());
+        }
 
         var profile = profiles.Create(
             new HelloUiRegistrationProfile(
@@ -49,26 +54,8 @@ internal sealed class HelloUiApplication<TProfile>(
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(httpContext);
 
-        if (!TryParseHandle(command.Handle, out var handle))
-        {
-            return OperationResultFactory.Fail<HelloUiSignIn>(
-                new Error(
-                    IdentityErrorCodes.Validation,
-                    "Validation failed.",
-                    ErrorType.Validation,
-                    new ValidationDetails(
-                        new Dictionary<string, string[]>
-                        {
-                            [nameof(command.Handle)] =
-                            [
-                                "Select email or user name.",
-                            ],
-                        })));
-        }
-
         var result = await application.LoginAsync(
             new HelloLoginCommand(
-                handle,
                 command.Login,
                 command.Password,
                 requestContext.CreateClientKey(httpContext),
@@ -90,9 +77,11 @@ internal sealed class HelloUiApplication<TProfile>(
 
     public Task<OperationResult> RequestPasswordResetAsync(
         string email,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
         => application.RequestPasswordResetAsync(
             email,
+            requestContext.CreateClientKey(httpContext),
             cancellationToken);
 
     public Task<OperationResult> ResetPasswordAsync(
@@ -111,9 +100,11 @@ internal sealed class HelloUiApplication<TProfile>(
 
     public Task<OperationResult> RequestEmailConfirmationAsync(
         string email,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
         => application.RequestEmailConfirmationAsync(
             email,
+            requestContext.CreateClientKey(httpContext),
             cancellationToken);
 
     public async Task<OperationResult> ConfirmEmailAsync(
@@ -126,6 +117,32 @@ internal sealed class HelloUiApplication<TProfile>(
             new HelloConfirmEmailCommand(
                 command.UserId,
                 command.Email,
+                command.Token),
+            cancellationToken);
+        return result.IsSuccess
+            ? OperationResultFactory.Success()
+            : OperationResultFactory.Fail(result.Errors);
+    }
+
+    public Task<OperationResult> RequestPhoneConfirmationAsync(
+        string phone,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => application.RequestPhoneConfirmationAsync(
+            phone,
+            requestContext.CreateClientKey(httpContext),
+            cancellationToken);
+
+    public async Task<OperationResult> ConfirmPhoneAsync(
+        HelloUiConfirmPhoneCommand command,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        var result = await application.ConfirmPhoneAsync(
+            new HelloConfirmPhoneCommand(
+                command.UserId,
+                command.Phone,
                 command.Token),
             cancellationToken);
         return result.IsSuccess
@@ -233,33 +250,4 @@ internal sealed class HelloUiApplication<TProfile>(
                 "The session is invalid or expired.",
                 ErrorType.Unauthorized));
 
-    private static bool TryParseHandle(
-        string? value,
-        out PasswordLoginHandle handle)
-    {
-        if (string.Equals(
-                value,
-                "email",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            handle = PasswordLoginHandle.Email;
-            return true;
-        }
-
-        if (string.Equals(
-                value,
-                "username",
-                StringComparison.OrdinalIgnoreCase)
-            || string.Equals(
-                value,
-                "userName",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            handle = PasswordLoginHandle.UserName;
-            return true;
-        }
-
-        handle = default;
-        return false;
-    }
 }

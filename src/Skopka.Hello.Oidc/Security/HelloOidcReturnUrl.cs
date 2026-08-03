@@ -8,7 +8,8 @@ internal static class HelloOidcReturnUrl
 
     public static string Normalize(
         string? returnUrl,
-        string fallback)
+        string fallback,
+        string completionPath)
     {
         if (string.IsNullOrWhiteSpace(returnUrl)
             || returnUrl.Length > MaximumLength
@@ -18,7 +19,7 @@ internal static class HelloOidcReturnUrl
                 HelloOidcDefaults.CallbackPathPrefix,
                 StringComparison.OrdinalIgnoreCase)
             || returnUrl.StartsWith(
-                HelloOidcDefaults.CompletionPath,
+                completionPath,
                 StringComparison.OrdinalIgnoreCase))
         {
             return fallback;

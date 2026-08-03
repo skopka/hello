@@ -25,9 +25,16 @@ plain HTTP profile must not weaken Secure OIDC correlation or nonce cookies.
 
 Action-token links require configured `SkopkaHello:PublicOrigin`. SMTP remains
 optional and credentials come from secrets/environment configuration; omitting
-the SMTP host keeps the null delivery adapter.
+the SMTP host leaves the built-in provider unregistered. Empty channel provider
+ids keep delivery disabled without installing a null sender.
 
 The Server contains host configuration, not reusable identity or endpoint
 business logic. OpenAPI generation and Swagger UI stay Development-only by
 default; do not expose the API contract in production through a checked-in
 configuration switch.
+
+Read `SkopkaHello:SelfRegistration:Enabled` and
+`SkopkaHello:Ui:PathPrefix` before `AddSkopkaHello<TProfile>` and pass both to
+that single DI options callback. The UI prefix moves only Hello Razor routes;
+never implement it with `UsePathBase`, which would also move APIs, health and
+the provider callback.

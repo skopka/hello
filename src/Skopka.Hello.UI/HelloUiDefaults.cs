@@ -2,6 +2,8 @@ namespace Skopka.Hello.UI;
 
 public static class HelloUiDefaults
 {
+    // Compatibility constants for the default prefix. Runtime links and
+    // redirects use HelloUiRoutePaths from dependency injection.
     public const string AuthenticationScheme =
         "Skopka.Hello.UI";
 
@@ -10,37 +12,45 @@ public static class HelloUiDefaults
 
     public const string AccessTokenName = "access_token";
 
-    public const string RootPath = "/hello";
+    public const string RootPath =
+        Skopka.Hello.HelloUiRoutePaths.DefaultPathPrefix;
 
-    public const string LoginPath = "/hello/login";
+    public const string LoginPath = RootPath + "/login";
 
-    public const string RegisterPath = "/hello/register";
+    public const string RegisterPath = RootPath + "/register";
 
     public const string ForgotPasswordPath =
-        "/hello/forgot-password";
+        RootPath + "/forgot-password";
 
     public const string ResetPasswordPath =
-        "/hello/reset-password";
+        RootPath + "/reset-password";
 
     public const string ResendConfirmationPath =
-        "/hello/resend-confirmation";
+        RootPath + "/resend-confirmation";
+
+    public const string ResendPhoneConfirmationPath =
+        RootPath + "/resend-phone-confirmation";
 
     public const string ConfirmEmailPath =
-        "/hello/confirm-email";
+        RootPath + "/confirm-email";
 
-    public const string AccountPath = "/hello/account";
+    public const string ConfirmPhonePath =
+        RootPath + "/confirm-phone";
 
-    public const string SessionsPath = "/hello/account/sessions";
+    public const string AccountPath = RootPath + "/account";
+
+    public const string SessionsPath =
+        RootPath + "/account/sessions";
 
     public const string ChangePasswordPath =
-        "/hello/account/change-password";
+        RootPath + "/account/change-password";
 
     public const string ExternalCompletionPath =
-        "/hello/external/complete";
+        RootPath + "/external/complete";
 
     public const string ExternalRegistrationPath =
-        "/hello/external/register";
+        RootPath + "/external/register";
 
     public const string ExternalLoginsPath =
-        "/hello/account/external-logins";
+        RootPath + "/account/external-logins";
 }

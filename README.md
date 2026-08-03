@@ -10,23 +10,31 @@ provider integration, host composition and a package boundary for
 administration. Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
-The current `0.2.0` vertical slice contains:
+The current `0.3.0` vertical slice contains:
 
 - atomic password registration;
-- password login without user enumeration;
+- automatic email, phone or user-name password login without user
+  enumeration;
 - authorization-code OIDC sign-in with PKCE through configured external providers;
 - atomic external registration without email-based account auto-linking;
-- confirmed-email OTP step-up for external login link and unlink;
-- enumeration-safe email confirmation and password-reset requests;
-- purpose-bound email confirmation and password-reset action tokens;
-- confirmed-email password changes protected by a one-time step-up code;
-- optional bounded background SMTP delivery;
+- configurable confirmed-email or confirmed-phone OTP step-up for external
+  login link and unlink;
+- enumeration-safe email/phone confirmation and password-reset requests;
+- bounded pre-lookup queuing with persistent client/target admission limits
+  for anonymous account messages;
+- purpose-bound email confirmation, phone confirmation and password-reset
+  action tokens;
+- password changes protected by a one-time code sent through the configured
+  confirmed-contact channel;
+- channel-aware account-message provider routing and optional bounded
+  background SMTP email delivery;
 - short-lived JWT access tokens in JSON;
 - rotating refresh tokens in `Secure`, `HttpOnly` cookies;
 - antiforgery protection for refresh and cookie logout;
 - account and active-session endpoints protected by bearer authentication;
 - Razor registration, login, account and active-session pages;
 - Razor external registration and sign-in-method management pages;
+- startup-configurable self-registration and Razor UI route prefix;
 - online validation and transparent rotation for the protected UI session;
 - PostgreSQL persistence and packaged Skopka.Identity migrations;
 - persistent versioned account/client rate limiting with bounded pruning;
@@ -53,7 +61,7 @@ An OAuth/OIDC authorization server and administration surfaces remain deferred.
 
 | Method | Path | Authentication |
 | --- | --- | --- |
-| `POST` | `/auth/register` | Anonymous |
+| `POST` | `/auth/register` | Anonymous, when self-registration is enabled |
 | `POST` | `/auth/login` | Anonymous |
 | `GET` | `/auth/external/providers` | Anonymous |
 | `POST` | `/auth/refresh` | Refresh cookie + CSRF header |
@@ -63,6 +71,8 @@ An OAuth/OIDC authorization server and administration surfaces remain deferred.
 | `POST` | `/auth/password-reset/confirm` | Anonymous action token |
 | `POST` | `/auth/email-confirmation/request` | Anonymous |
 | `POST` | `/auth/email-confirmation/confirm` | Anonymous action token |
+| `POST` | `/auth/phone-confirmation/request` | Anonymous |
+| `POST` | `/auth/phone-confirmation/confirm` | Anonymous action token |
 | `GET` | `/account/me` | Bearer |
 | `GET` | `/account/sessions` | Bearer |
 | `GET` | `/account/external-logins` | Bearer |
@@ -70,7 +80,11 @@ An OAuth/OIDC authorization server and administration surfaces remain deferred.
 | `POST` | `/account/password/change/challenge` | Bearer |
 | `POST` | `/account/password/change` | Bearer + one-time code |
 
-Registration calls
+When `SkopkaHelloOptions.SelfRegistrationEnabled` is false, password and
+external self-registration operations return the shared
+`hello.registration.disabled` result and the built-in registration API and UI
+routes are not mapped. Existing password and external sign-in, recovery and
+account linking remain available. Registration calls
 `IIdentityRegistrationService<TProfile>.RegisterPasswordAsync`; it is never
 implemented as separate user creation and password mutation. Login calls
 `IPasswordAuthenticationService<TProfile>`, then creates a session through
@@ -78,7 +92,14 @@ implemented as separate user creation and password mutation. Login calls
 
 ## Browser UI
 
-The ready server exposes:
+The ready server uses `/hello` as its default UI route prefix. Hosts can set
+`SkopkaHelloOptions.UiPathPrefix` while calling `AddSkopkaHello<TProfile>`;
+every Razor route, internal OIDC redirect and account-message action link is
+then derived from that value. API routes and the provider callback
+`/signin-skopka-oidc/{provider}` remain root-relative. The prefix must be a
+non-empty absolute path other than `/`.
+
+With the default prefix, the ready server exposes:
 
 | Path | Purpose |
 | --- | --- |
@@ -89,11 +110,13 @@ The ready server exposes:
 | `/hello/forgot-password` | Request a password-reset link |
 | `/hello/reset-password` | Apply a password-reset token |
 | `/hello/resend-confirmation` | Request an email-confirmation link |
-| `/hello/confirm-email` | Confirm an email after an explicit POST |
+| `/hello/confirm-email` | Confirm email through an automatic antiforgery POST with a manual fallback |
+| `/hello/resend-phone-confirmation` | Request a phone-confirmation SMS |
+| `/hello/confirm-phone` | Confirm a phone after an explicit POST |
 | `/hello/account` | Current account summary |
 | `/hello/account/sessions` | List and revoke active sessions |
-| `/hello/account/change-password` | Change password after email OTP step-up |
-| `/hello/account/external-logins` | Link and unlink external providers after email OTP step-up |
+| `/hello/account/change-password` | Change password after configured-channel OTP step-up |
+| `/hello/account/external-logins` | Link and unlink external providers after configured-channel OTP step-up |
 
 Password API and Razor handlers share `IHelloIdentityApplication<TProfile>`;
 external flows use the parallel `IHelloExternalIdentityApplication<TProfile>`

@@ -110,6 +110,13 @@ internal sealed class HelloUiExternalApplication<TProfile>(
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(httpContext);
+        if (!helloOptions.SelfRegistrationEnabled)
+        {
+            return OperationResultFactory.Fail<
+                HelloUiExternalRegistration>(
+                    HelloRegistrationErrors.Disabled());
+        }
+
         if (oidc is null)
         {
             return Unavailable<HelloUiExternalRegistration>();

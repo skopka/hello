@@ -24,6 +24,12 @@ var publicOrigin = new Uri(
     configuration["SkopkaHello:PublicOrigin"]
         ?? "https://localhost:8443",
     UriKind.Absolute);
+var selfRegistrationEnabled = configuration.GetValue(
+    "SkopkaHello:SelfRegistration:Enabled",
+    true);
+var uiPathPrefix = configuration[
+        "SkopkaHello:Ui:PathPrefix"]
+    ?? HelloUiRoutePaths.DefaultPathPrefix;
 
 var identity = builder.Services
     .AddSkopkaHello<SampleProfile>(options =>
@@ -31,6 +37,8 @@ var identity = builder.Services
         options.ClientName = "Skopka.Hello.Sample";
         options.SecureCookies = secureCookies;
         options.PublicOrigin = publicOrigin;
+        options.SelfRegistrationEnabled = selfRegistrationEnabled;
+        options.UiPathPrefix = uiPathPrefix;
         if (!secureCookies)
         {
             options.RefreshCookieName =

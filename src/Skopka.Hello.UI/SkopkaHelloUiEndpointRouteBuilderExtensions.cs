@@ -24,6 +24,15 @@ public static class SkopkaHelloUiEndpointRouteBuilderExtensions
 
         var options = endpoints.ServiceProvider
             .GetRequiredService<SkopkaHelloUiOptions>();
+        options.ValidateRouteCollisions(
+            endpoints.ServiceProvider.GetService<HelloUiRoutePaths>());
+        if (HasRouteCollision(
+                endpoints,
+                options.CustomCssRequestPath))
+        {
+            throw new InvalidOperationException(
+                "The custom CSS request path collides with an existing endpoint.");
+        }
 
         return endpoints.MapGet(
                 options.CustomCssRequestPath,
@@ -32,6 +41,18 @@ public static class SkopkaHelloUiEndpointRouteBuilderExtensions
             .AllowAnonymous()
             .WithName("SkopkaHelloCustomCss");
     }
+
+    private static bool HasRouteCollision(
+        IEndpointRouteBuilder endpoints,
+        string requestPath)
+        => endpoints.DataSources
+            .SelectMany(source => source.Endpoints)
+            .OfType<RouteEndpoint>()
+            .Any(endpoint => string.Equals(
+                "/" + (endpoint.RoutePattern.RawText ?? string.Empty)
+                    .Trim('/'),
+                requestPath,
+                StringComparison.OrdinalIgnoreCase));
 
     private static IResult ServeCustomCss(
         SkopkaHelloUiOptions options,

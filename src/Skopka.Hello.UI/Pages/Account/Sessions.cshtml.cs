@@ -55,7 +55,7 @@ public sealed class SessionsModel(
         if (sessionId == currentSessionId)
         {
             await ClearLocalSessionAsync();
-            return Redirect(HelloUiDefaults.LoginPath);
+            return RedirectToPage("/SkopkaHello/Login");
         }
 
         return RedirectToPage();
@@ -82,7 +82,7 @@ public sealed class SessionsModel(
         }
 
         await ClearLocalSessionAsync();
-        return Redirect(HelloUiDefaults.LoginPath);
+        return RedirectToPage("/SkopkaHello/Login");
     }
 
     private bool TryGetIdentity(

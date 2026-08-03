@@ -17,8 +17,9 @@ The image declares `/var/lib/skopka-hello/customization` as a volume and reads
 configured file is served; directory browsing and arbitrary request-to-file
 mapping are not enabled.
 
-The account UI is served under `/hello`. The packaged stylesheet is an RCL
-static asset; the mounted custom stylesheet is linked after it.
+The account UI is served under the startup-configured
+`SkopkaHello:Ui:PathPrefix`, `/hello` by default. The packaged stylesheet is an
+RCL static asset; the mounted custom stylesheet is linked after it.
 
 ## Configuration
 
@@ -33,7 +34,26 @@ origin to the OIDC adapter, so provider redirects are not derived from the
 request `Host` header. Configure SMTP credentials from a secret manager. The
 built-in SMTP worker uses an in-memory bounded queue; replace
 `IHelloAccountMessageSender` with a durable broker producer when restart-safe
-delivery is required.
+delivery is required. Configure both
+`SkopkaHello:Delivery:EmailProviderId` and the matching
+`SkopkaHello:Delivery:Smtp:ProviderId`; provider routing is validated at
+startup. The compose file maps the `SKOPKA_HELLO_EMAIL_PROVIDER_ID` and
+`SKOPKA_HELLO_SMTP_*` wrapper variables explicitly. Leave the provider id and
+host empty to disable delivery. The ready image contains no SMS vendor adapter;
+a derived host image can register one through
+`AddSkopkaHelloSmsProvider<TProvider>()` and select its id with
+`SkopkaHello:Delivery:SmsProviderId`.
+`SkopkaHello:Delivery:AnonymousRequestQueueCapacity` bounds requests awaiting
+account lookup and token issuance (the compose wrapper is
+`SKOPKA_HELLO_ANONYMOUS_MESSAGE_QUEUE_CAPACITY`). Size it independently from
+the SMTP provider queue. Anonymous client and normalized-target admission uses
+the persistent Identity rate limiter configured by the ready Server. Denied or
+capacity-exhausted anonymous requests are silently dropped after validation so
+the enumeration-safe `202 Accepted` contract does not change.
+Set `SkopkaHello:Delivery:VerificationChannel` (or the compose wrapper
+`SKOPKA_HELLO_VERIFICATION_CHANNEL`) to `Email` or `Sms` for password and
+external-account step-up codes. The chosen contact must be confirmed; there is
+no cross-channel fallback after challenge creation.
 
 Expose the app through TLS. If TLS terminates at a reverse proxy, configure
 ASP.NET Core forwarded headers with explicit known proxies/networks; otherwise
@@ -48,6 +68,28 @@ SkopkaHello__ForwardedHeaders__KnownProxies__0=10.0.0.10
 
 The server accepts one forwarded hop and refuses to enable this mode without an
 explicit proxy IP.
+
+Configure registration exposure and the UI prefix with:
+
+```text
+SkopkaHello__SelfRegistration__Enabled=true
+SkopkaHello__Ui__PathPrefix=/hello
+```
+
+The compose wrapper exposes the equivalent
+`SKOPKA_HELLO_SELF_REGISTRATION_ENABLED` and
+`SKOPKA_HELLO_UI_PATH_PREFIX` variables. Both values are read while services
+are registered and require a restart to change. Disabling self-registration
+removes the built-in password API route and both password/external registration
+pages while preserving existing sign-in and account linking.
+
+The UI prefix is not a reverse-proxy application `PathBase`: it moves only the
+Razor pages, their internal redirects and account-message action paths. The API,
+health checks, static assets and `/signin-skopka-oidc/{provider}` callback stay
+root-relative. `SkopkaHello:PublicOrigin` remains an origin without a path.
+The prefix must be a non-empty absolute path other than `/`. Root and prefixes
+in those reserved namespaces are rejected during service registration rather
+than producing ambiguous endpoints at request time.
 
 The development compose stack publishes plain HTTP and therefore disables secure
 cookies and uses non-`__Host-` names. Do not copy that override into production.
@@ -116,8 +158,8 @@ https://public.example/signin-skopka-oidc/google
 ```
 
 Replace the origin and final segment with the configured public origin and
-provider id. `/hello/external/complete` is the internal same-origin completion
-page and is not registered with the provider.
+provider id. `{UiPathPrefix}/external/complete` is the internal same-origin
+completion page and is not registered with the provider.
 
 `SkopkaHello:ExternalOidc:PasswordSignInEnabled` tells the external-login
 management policy whether an existing password counts as an alternate method

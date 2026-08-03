@@ -6,7 +6,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Hello;
 using Skopka.Hello.Oidc;
-using Skopka.Identity.Authentication;
 using Skopka.Identity.Errors;
 
 namespace Skopka.Hello.Endpoints;
@@ -18,10 +17,15 @@ public static class HelloEndpointRouteBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 
-        endpoints.MapPost(
-                "/auth/register",
-                RegisterAsync<TProfile>)
-            .WithName("SkopkaHelloRegister");
+        var helloOptions = endpoints.ServiceProvider
+            .GetRequiredService<SkopkaHelloOptions>();
+        if (helloOptions.SelfRegistrationEnabled)
+        {
+            endpoints.MapPost(
+                    "/auth/register",
+                    RegisterAsync<TProfile>)
+                .WithName("SkopkaHelloRegister");
+        }
 
         endpoints.MapPost(
                 "/auth/login",
@@ -74,6 +78,16 @@ public static class HelloEndpointRouteBuilderExtensions
                 "/auth/email-confirmation/confirm",
                 ConfirmEmailAsync<TProfile>)
             .WithName("SkopkaHelloConfirmEmail");
+
+        endpoints.MapPost(
+                "/auth/phone-confirmation/request",
+                RequestPhoneConfirmationAsync<TProfile>)
+            .WithName("SkopkaHelloRequestPhoneConfirmation");
+
+        endpoints.MapPost(
+                "/auth/phone-confirmation/confirm",
+                ConfirmPhoneAsync<TProfile>)
+            .WithName("SkopkaHelloConfirmPhone");
 
         endpoints.MapGet(
                 "/account/me",
@@ -156,31 +170,8 @@ public static class HelloEndpointRouteBuilderExtensions
                 httpContext);
         }
 
-        if (!TryParseHandle(request.Handle, out var handle))
-        {
-            return OperationResultProblemMapper.ToResult(
-                OperationResultFactory.Fail(
-                    new[]
-                    {
-                        new Error(
-                            IdentityErrorCodes.Validation,
-                            "Validation failed.",
-                            ErrorType.Validation,
-                            new ValidationDetails(
-                                new Dictionary<string, string[]>
-                                {
-                                    [nameof(request.Handle)] =
-                                    [
-                                        "Handle must be 'userName' or 'email'.",
-                                    ],
-                                })),
-                    }),
-                httpContext);
-        }
-
         var authenticated = await application.LoginAsync(
             new HelloLoginCommand(
-                handle,
                 request.Login,
                 request.Password,
                 requestContext.CreateClientKey(httpContext),
@@ -324,11 +315,13 @@ public static class HelloEndpointRouteBuilderExtensions
     private static async Task<IResult> RequestPasswordResetAsync<TProfile>(
         RequestAccountMessageRequest request,
         IHelloIdentityApplication<TProfile> application,
+        IHelloRequestContext requestContext,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var result = await application.RequestPasswordResetAsync(
             request.Email,
+            requestContext.CreateClientKey(httpContext),
             cancellationToken);
         return result.IsSuccess
             ? TypedResults.Accepted((string?)null)
@@ -365,11 +358,13 @@ public static class HelloEndpointRouteBuilderExtensions
         RequestEmailConfirmationAsync<TProfile>(
             RequestAccountMessageRequest request,
             IHelloIdentityApplication<TProfile> application,
+            IHelloRequestContext requestContext,
             HttpContext httpContext,
             CancellationToken cancellationToken)
     {
         var result = await application.RequestEmailConfirmationAsync(
             request.Email,
+            requestContext.CreateClientKey(httpContext),
             cancellationToken);
         return result.IsSuccess
             ? TypedResults.Accepted((string?)null)
@@ -388,6 +383,44 @@ public static class HelloEndpointRouteBuilderExtensions
             new HelloConfirmEmailCommand(
                 request.UserId,
                 request.Email,
+                request.Token),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.NoContent()
+            : OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+    }
+
+    private static async Task<IResult>
+        RequestPhoneConfirmationAsync<TProfile>(
+            RequestPhoneConfirmationRequest request,
+            IHelloIdentityApplication<TProfile> application,
+            IHelloRequestContext requestContext,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        var result = await application.RequestPhoneConfirmationAsync(
+            request.Phone,
+            requestContext.CreateClientKey(httpContext),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Accepted((string?)null)
+            : OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+    }
+
+    private static async Task<IResult> ConfirmPhoneAsync<TProfile>(
+        ConfirmPhoneRequest request,
+        IHelloIdentityApplication<TProfile> application,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var result = await application.ConfirmPhoneAsync(
+            new HelloConfirmPhoneCommand(
+                request.UserId,
+                request.Phone,
                 request.Token),
             cancellationToken);
         return result.IsSuccess
@@ -518,7 +551,9 @@ public static class HelloEndpointRouteBuilderExtensions
             ? TypedResults.Ok(
                 new StepUpChallengeResponse(
                     result.Value.ChallengeId,
-                    result.Value.ExpiresAt))
+                    result.Value.ExpiresAt,
+                    result.Value.DeliveryChannel.ToString()
+                        .ToLowerInvariant()))
             : OperationResultProblemMapper.ToResult(
                 result,
                 httpContext);
@@ -569,36 +604,6 @@ public static class HelloEndpointRouteBuilderExtensions
                         ErrorType.Unauthorized),
                 }),
             httpContext);
-
-    private static bool TryParseHandle(
-        string? value,
-        out PasswordLoginHandle handle)
-    {
-        if (string.Equals(
-                value,
-                "email",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            handle = PasswordLoginHandle.Email;
-            return true;
-        }
-
-        if (string.Equals(
-                value,
-                "username",
-                StringComparison.OrdinalIgnoreCase)
-            || string.Equals(
-                value,
-                "userName",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            handle = PasswordLoginHandle.UserName;
-            return true;
-        }
-
-        handle = default;
-        return false;
-    }
 
     private static bool TryReadUserId(
         ClaimsPrincipal principal,

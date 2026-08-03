@@ -1,5 +1,6 @@
-@page "/hello/account/external-logins"
+@page
 @model ExternalLoginsModel
+@inject HelloDeliveryOptions DeliveryOptions
 @{
     ViewData["Title"] = "External sign-in methods";
 }
@@ -23,6 +24,14 @@
         <p class="hello-status hello-status-error" role="alert">
             The external provider request was cancelled or could not be
             validated. No sign-in method was changed.
+        </p>
+    }
+
+    @if (Model.ChallengeRestarted)
+    {
+        <p class="hello-status" role="status">
+            The verification challenge can no longer be used. Start the
+            provider change again to request a new code.
         </p>
     }
 
@@ -122,7 +131,9 @@
                     The identity from
                     <strong>@(Model.PendingProvider?.DisplayName ?? "the provider")</strong>
                     was validated. Send a one-time code to your confirmed
-                    account email before linking it.
+                    @(DeliveryOptions.VerificationChannel == HelloDeliveryChannel.Sms
+                        ? "phone number"
+                        : "email address") before linking it.
                 </p>
                 <form method="post"
                       asp-page-handler="RequestLinkCode"
@@ -135,7 +146,10 @@
             else
             {
                 <p class="hello-status" role="status">
-                    A one-time code was sent to your confirmed account email.
+                    A one-time code was accepted for delivery to your confirmed
+                    @(DeliveryOptions.VerificationChannel == HelloDeliveryChannel.Sms
+                        ? "phone number"
+                        : "email address").
                     @if (Model.CodeExpiresAt is not null)
                     {
                         <span>
@@ -169,6 +183,6 @@
     }
 
     <p class="hello-card-footer">
-        <a href="@HelloUiDefaults.AccountPath">Back to account</a>
+        <a asp-page="/SkopkaHello/Account/Index">Back to account</a>
     </p>
 </section>

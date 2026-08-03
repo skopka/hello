@@ -1,11 +1,11 @@
 using System.Security.Claims;
-using System.Globalization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Hello.Oidc;
+using Skopka.Identity.Errors;
 using Skopka.Identity.ExternalLogins;
 using Skopka.Identity.Sessions;
 using Skopka.Identity.SignInMethods;
@@ -14,6 +14,182 @@ namespace Skopka.Hello.Tests;
 
 public sealed class HelloOidcApplicationSecurityTests
 {
+    [Fact]
+    public async Task DisabledRegistrationRejectsUnknownExternalIdentity()
+    {
+        var authentication = new FakeAuthenticationService();
+        var ticket = CreateTicket(
+            HelloOidcDefaults.ExternalCookieScheme,
+            intent: "sign_in");
+        ticket.Properties.ExpiresUtc =
+            DateTimeOffset.UtcNow.AddMinutes(3);
+        authentication.SetTicket(
+            HelloOidcDefaults.ExternalCookieScheme,
+            ticket);
+        var external = new FakeExternalIdentityApplication
+        {
+            SignInResult = OperationResultFactory.Fail<
+                HelloSignIn<TestProfile>>(
+                    new Error(
+                        IdentityErrorCodes.ExternalLoginNotFound,
+                        "External login not found.",
+                        ErrorType.NotFound)),
+        };
+        using var fixture = new Fixture(
+            authentication,
+            external,
+            selfRegistrationEnabled: false);
+
+        var result = await fixture.Application.CompleteChallengeAsync(
+            fixture.HttpContext,
+            null,
+            new IdentitySessionMetadata("Browser", "Device"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains(
+            result.Errors,
+            error => error.Code
+                == HelloRegistrationErrors.DisabledCode);
+        Assert.Equal(1, external.TotalCalls);
+        Assert.Contains(
+            HelloOidcDefaults.ExternalCookieScheme,
+            authentication.SignOuts);
+        Assert.DoesNotContain(
+            authentication.SignIns,
+            call => call.Scheme
+                == HelloOidcDefaults.PendingCookieScheme);
+    }
+
+    [Fact]
+    public async Task DisabledRegistrationStillAllowsLinkedExternalSignIn()
+    {
+        var authentication = new FakeAuthenticationService();
+        var ticket = CreateTicket(
+            HelloOidcDefaults.ExternalCookieScheme,
+            intent: "sign_in");
+        ticket.Properties.ExpiresUtc =
+            DateTimeOffset.UtcNow.AddMinutes(3);
+        authentication.SetTicket(
+            HelloOidcDefaults.ExternalCookieScheme,
+            ticket);
+        var now = DateTimeOffset.UtcNow;
+        var signIn = new HelloSignIn<TestProfile>(
+            new HelloAccount<TestProfile>(
+                Guid.NewGuid(),
+                Skopka.Identity.Users.UserFlags.None,
+                "alice",
+                "alice@example.test",
+                true,
+                null,
+                false,
+                new TestProfile(),
+                1,
+                now,
+                now),
+            new HelloSession(
+                Guid.NewGuid(),
+                "access-token",
+                now.AddMinutes(5),
+                "refresh-token",
+                now.AddDays(1)));
+        var external = new FakeExternalIdentityApplication
+        {
+            SignInResult = OperationResultFactory.Success(signIn),
+        };
+        using var fixture = new Fixture(
+            authentication,
+            external,
+            selfRegistrationEnabled: false);
+
+        var result = await fixture.Application.CompleteChallengeAsync(
+            fixture.HttpContext,
+            null,
+            new IdentitySessionMetadata("Browser", "Device"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(
+            HelloOidcCompletionKind.SignedIn,
+            result.Value.Kind);
+        Assert.Same(signIn, result.Value.SignIn);
+        Assert.Equal(1, external.TotalCalls);
+        Assert.Contains(
+            HelloOidcDefaults.ExternalCookieScheme,
+            authentication.SignOuts);
+        Assert.DoesNotContain(
+            authentication.SignIns,
+            call => call.Scheme
+                == HelloOidcDefaults.PendingCookieScheme);
+    }
+
+    [Fact]
+    public async Task DisabledRegistrationClearsStalePendingTicket()
+    {
+        var authentication = new FakeAuthenticationService();
+        authentication.SetTicket(
+            HelloOidcDefaults.PendingCookieScheme,
+            CreateTicket(
+                HelloOidcDefaults.PendingCookieScheme,
+                intent: "sign_in"));
+        var external = new FakeExternalIdentityApplication();
+        using var fixture = new Fixture(
+            authentication,
+            external,
+            selfRegistrationEnabled: false);
+
+        var result = await fixture.Application.GetRegistrationHintsAsync(
+            fixture.HttpContext,
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains(
+            result.Errors,
+            error => error.Code
+                == HelloRegistrationErrors.DisabledCode);
+        Assert.Equal(0, external.TotalCalls);
+        Assert.Contains(
+            HelloOidcDefaults.PendingCookieScheme,
+            authentication.SignOuts);
+    }
+
+    [Fact]
+    public async Task DisabledRegistrationClearsPendingTicketOnRegister()
+    {
+        var authentication = new FakeAuthenticationService();
+        authentication.SetTicket(
+            HelloOidcDefaults.PendingCookieScheme,
+            CreateTicket(
+                HelloOidcDefaults.PendingCookieScheme,
+                intent: "sign_in"));
+        var external = new FakeExternalIdentityApplication();
+        using var fixture = new Fixture(
+            authentication,
+            external,
+            selfRegistrationEnabled: false);
+
+        var result = await fixture.Application.RegisterAsync(
+            new HelloOidcRegisterCommand<TestProfile>(
+                "alice",
+                "alice@example.test",
+                null,
+                new TestProfile(),
+                new IdentitySessionMetadata("Browser", "Device")),
+            fixture.HttpContext,
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(
+            HelloRegistrationErrors.DisabledCode,
+            error.Code);
+        Assert.Equal(ErrorType.Forbidden, error.Type);
+        Assert.Equal(0, external.TotalCalls);
+        Assert.Contains(
+            HelloOidcDefaults.PendingCookieScheme,
+            authentication.SignOuts);
+    }
+
     [Theory]
     [InlineData(null, null)]
     [InlineData("false", null)]
@@ -162,7 +338,8 @@ public sealed class HelloOidcApplicationSecurityTests
             BeginUnlinkResult = OperationResultFactory.Success(
                 new HelloStepUpChallenge(
                     challengeId,
-                    DateTimeOffset.UtcNow.AddMinutes(5))),
+                    DateTimeOffset.UtcNow.AddMinutes(5),
+                    HelloDeliveryChannel.Email)),
         };
         using var fixture = new Fixture(
             authentication,
@@ -199,11 +376,9 @@ public sealed class HelloOidcApplicationSecurityTests
         Assert.Equal(
             localSession.SessionId.ToString("D"),
             written.Properties.Items["hello:oidc:session_id"]);
-        Assert.Equal(
-            external.Snapshot!.Version.ToString(
-                CultureInfo.InvariantCulture),
-            written.Properties.Items[
-                "hello:oidc:expected_version"]);
+        Assert.DoesNotContain(
+            "hello:oidc:expected_version",
+            written.Properties.Items.Keys);
         Assert.Equal(
             challengeId.ToString("D"),
             written.Properties.Items["hello:oidc:challenge_id"]);
@@ -225,7 +400,6 @@ public sealed class HelloOidcApplicationSecurityTests
                 intent: "unlink",
                 userId: userId,
                 sessionId: localSession.SessionId,
-                expectedVersion: 7,
                 challengeId: Guid.NewGuid()));
         var external = new FakeExternalIdentityApplication
         {
@@ -255,6 +429,54 @@ public sealed class HelloOidcApplicationSecurityTests
     }
 
     [Fact]
+    public async Task CompletionUsesFreshSignInMethodSnapshotVersion()
+    {
+        var userId = Guid.NewGuid();
+        var localSession = CreateLocalSession(userId);
+        var authentication = new FakeAuthenticationService();
+        var ticket = CreateTicket(
+            HelloOidcDefaults.PendingCookieScheme,
+            intent: "unlink",
+            userId: userId,
+            sessionId: localSession.SessionId,
+            challengeId: Guid.NewGuid());
+        ticket.Properties.Items["hello:oidc:expected_version"] = "7";
+        authentication.SetTicket(
+            HelloOidcDefaults.PendingCookieScheme,
+            ticket);
+        var external = new FakeExternalIdentityApplication
+        {
+            Snapshot = CreateSnapshot(
+                userId,
+                hasPassword: true,
+                "github") with
+            {
+                Version = 8,
+            },
+            CompleteUnlinkResult = OperationResultFactory
+                .Fail<HelloSignIn<TestProfile>>(
+                    new Error(
+                        "test.invalid_verification_code",
+                        "The verification code is invalid.",
+                        ErrorType.Validation)),
+        };
+        using var fixture = new Fixture(authentication, external);
+
+        var result = await fixture.Application.CompleteUnlinkAsync(
+            "wrong-code",
+            fixture.HttpContext,
+            localSession,
+            new IdentitySessionMetadata("Browser", "Device"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(8, external.LastCompleteUnlink?.ExpectedVersion);
+        Assert.Equal(
+            new ExternalLoginKey("github", "subject-github"),
+            external.LastCompleteUnlink?.Login);
+    }
+
+    [Fact]
     public async Task RetryableCompletionRotatesFlowAndRejectsOldReplay()
     {
         var userId = Guid.NewGuid();
@@ -266,7 +488,6 @@ public sealed class HelloOidcApplicationSecurityTests
             intent: "unlink",
             userId: userId,
             sessionId: localSession.SessionId,
-            expectedVersion: 7,
             challengeId: Guid.NewGuid(),
             flowId: flowId);
         authentication.SetTicket(
@@ -323,6 +544,138 @@ public sealed class HelloOidcApplicationSecurityTests
             authentication.SignOuts);
     }
 
+    [Fact]
+    public async Task PreVerificationConcurrencyRotatesFlowAndKeepsChallengeRetryable()
+    {
+        var userId = Guid.NewGuid();
+        var localSession = CreateLocalSession(userId);
+        var flowId = Guid.NewGuid();
+        var challengeId = Guid.NewGuid();
+        var authentication = new FakeAuthenticationService();
+        var pendingTicket = CreateTicket(
+            HelloOidcDefaults.PendingCookieScheme,
+            intent: "unlink",
+            userId: userId,
+            sessionId: localSession.SessionId,
+            challengeId: challengeId,
+            flowId: flowId);
+        authentication.SetTicket(
+            HelloOidcDefaults.PendingCookieScheme,
+            pendingTicket);
+        var external = new FakeExternalIdentityApplication
+        {
+            Snapshot = CreateSnapshot(
+                userId,
+                hasPassword: true,
+                "github"),
+            CompleteUnlinkResult = OperationResultFactory
+                .Fail<HelloSignIn<TestProfile>>(
+                    new Error(
+                        IdentityErrorCodes.ConcurrencyConflict,
+                        "Concurrency conflict.",
+                        ErrorType.Conflict)),
+        };
+        using var fixture = new Fixture(authentication, external);
+
+        var first = await fixture.Application.CompleteUnlinkAsync(
+            "123456",
+            fixture.HttpContext,
+            localSession,
+            new IdentitySessionMetadata("Browser", "Device"),
+            CancellationToken.None);
+
+        Assert.False(first.IsSuccess);
+        Assert.Equal(
+            IdentityErrorCodes.ConcurrencyConflict,
+            Assert.Single(first.Errors).Code);
+        var rotated = Assert.Single(authentication.SignIns);
+        Assert.True(Guid.TryParse(
+            rotated.Properties.Items["hello:oidc:flow_id"],
+            out var rotatedFlowId));
+        Assert.NotEqual(flowId, rotatedFlowId);
+        Assert.Equal(
+            challengeId.ToString("D"),
+            rotated.Properties.Items["hello:oidc:challenge_id"]);
+        Assert.DoesNotContain(
+            HelloOidcDefaults.PendingCookieScheme,
+            authentication.SignOuts);
+
+        authentication.SetTicket(
+            HelloOidcDefaults.PendingCookieScheme,
+            new AuthenticationTicket(
+                rotated.Principal,
+                rotated.Properties,
+                rotated.Scheme));
+        var retry = await fixture.Application.CompleteUnlinkAsync(
+            "123456",
+            fixture.HttpContext,
+            localSession,
+            new IdentitySessionMetadata("Browser", "Device"),
+            CancellationToken.None);
+
+        Assert.False(retry.IsSuccess);
+        Assert.Equal(2, external.CompleteUnlinkCalls);
+        Assert.Equal(challengeId, external.LastCompleteUnlink?.ChallengeId);
+        Assert.Equal(2, authentication.SignIns.Count);
+        Assert.DoesNotContain(
+            HelloOidcDefaults.PendingCookieScheme,
+            authentication.SignOuts);
+    }
+
+    [Theory]
+    [InlineData(
+        HelloExternalIdentityErrorCodes.ChallengeRestartRequired)]
+    [InlineData(HelloExternalIdentityErrorCodes.RestartRequired)]
+    public async Task TerminalCompletionFailureDeletesPendingFlow(
+        string terminalErrorCode)
+    {
+        var userId = Guid.NewGuid();
+        var localSession = CreateLocalSession(userId);
+        var authentication = new FakeAuthenticationService();
+        authentication.SetTicket(
+            HelloOidcDefaults.PendingCookieScheme,
+            CreateTicket(
+                HelloOidcDefaults.PendingCookieScheme,
+                intent: "unlink",
+                userId: userId,
+                sessionId: localSession.SessionId,
+                challengeId: Guid.NewGuid()));
+        var external = new FakeExternalIdentityApplication
+        {
+            Snapshot = CreateSnapshot(
+                userId,
+                hasPassword: true,
+                "github"),
+            CompleteUnlinkResult = OperationResultFactory
+                .Fail<HelloSignIn<TestProfile>>(
+                    [
+                        new Error(
+                            terminalErrorCode,
+                            "Restart required.",
+                            ErrorType.Conflict),
+                        new Error(
+                            IdentityErrorCodes
+                                .VerificationChallengeInvalid,
+                            "Challenge invalid.",
+                            ErrorType.Validation),
+                    ]),
+        };
+        using var fixture = new Fixture(authentication, external);
+
+        var result = await fixture.Application.CompleteUnlinkAsync(
+            "123456",
+            fixture.HttpContext,
+            localSession,
+            new IdentitySessionMetadata("Browser", "Device"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(authentication.SignIns);
+        Assert.Contains(
+            HelloOidcDefaults.PendingCookieScheme,
+            authentication.SignOuts);
+    }
+
     private static HelloOidcLocalSession CreateLocalSession(Guid userId)
         => new(userId, Guid.NewGuid(), "old-access-token");
 
@@ -350,7 +703,6 @@ public sealed class HelloOidcApplicationSecurityTests
         string? emailVerified = null,
         Guid? userId = null,
         Guid? sessionId = null,
-        long? expectedVersion = null,
         Guid? challengeId = null,
         Guid? flowId = null)
     {
@@ -393,13 +745,6 @@ public sealed class HelloOidcApplicationSecurityTests
         {
             properties.Items["hello:oidc:session_id"] =
                 sessionId.Value.ToString("D");
-        }
-
-        if (expectedVersion is not null)
-        {
-            properties.Items["hello:oidc:expected_version"] =
-                expectedVersion.Value.ToString(
-                    CultureInfo.InvariantCulture);
         }
 
         if (challengeId is not null)
@@ -460,11 +805,17 @@ public sealed class HelloOidcApplicationSecurityTests
             FakeAuthenticationService authentication,
             FakeExternalIdentityApplication external,
             bool includeContoso = false,
-            bool passwordSignInEnabled = true)
+            bool passwordSignInEnabled = true,
+            bool selfRegistrationEnabled = true)
         {
             var services = new ServiceCollection();
             services.AddLogging();
             services.AddDataProtection();
+            services.AddSkopkaHello<TestProfile>(options =>
+                options.SelfRegistrationEnabled =
+                    selfRegistrationEnabled);
+            services.AddSingleton<IHelloOidcFlowStore,
+                AllowingFlowStore>();
             services.AddSingleton<
                 IHelloExternalIdentityApplication<TestProfile>>(external);
             services.AddSkopkaHelloOidc<TestProfile>(options =>
@@ -576,6 +927,23 @@ public sealed class HelloOidcApplicationSecurityTests
         }
     }
 
+    private sealed class AllowingFlowStore : IHelloOidcFlowStore
+    {
+        private readonly HashSet<Guid> consumed = [];
+
+        public Task<bool> TryConsumeAsync(
+            Guid flowId,
+            DateTimeOffset expiresAt,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(
+                flowId != Guid.Empty
+                && expiresAt > DateTimeOffset.UtcNow
+                && consumed.Add(flowId));
+        }
+    }
+
     private sealed record SignInCall(
         string Scheme,
         ClaimsPrincipal Principal,
@@ -584,6 +952,12 @@ public sealed class HelloOidcApplicationSecurityTests
     private sealed class FakeExternalIdentityApplication
         : IHelloExternalIdentityApplication<TestProfile>
     {
+        public OperationResult<HelloSignIn<TestProfile>>? SignInResult
+        {
+            get;
+            init;
+        }
+
         public SignInMethodSnapshot? Snapshot { get; init; }
 
         public OperationResult<HelloStepUpChallenge>? BeginUnlinkResult
@@ -611,10 +985,23 @@ public sealed class HelloOidcApplicationSecurityTests
             private set;
         }
 
+        public HelloCompleteExternalLoginMutationCommand?
+            LastCompleteUnlink
+        {
+            get;
+            private set;
+        }
+
         public Task<OperationResult<HelloSignIn<TestProfile>>> SignInAsync(
             HelloExternalSignInCommand command,
             CancellationToken cancellationToken)
-            => Unexpected<HelloSignIn<TestProfile>>();
+        {
+            TotalCalls++;
+            return Task.FromResult(
+                SignInResult
+                ?? throw new InvalidOperationException(
+                    "SignInAsync was not expected."));
+        }
 
         public Task<OperationResult<HelloSignIn<TestProfile>>> RegisterAsync(
             HelloExternalRegistrationCommand<TestProfile> command,
@@ -665,6 +1052,7 @@ public sealed class HelloOidcApplicationSecurityTests
         {
             TotalCalls++;
             CompleteUnlinkCalls++;
+            LastCompleteUnlink = command;
             return Task.FromResult(
                 CompleteUnlinkResult
                 ?? throw new InvalidOperationException(

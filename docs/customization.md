@@ -19,8 +19,18 @@ services.AddSkopkaHello<MyProfile>(options =>
 {
     options.ClientName = "my-web-client";
     options.CookieSameSite = SameSiteMode.Strict;
+    options.SelfRegistrationEnabled = false;
+    options.UiPathPrefix = "/accounts";
 });
 ```
+
+Both settings are fixed when `AddSkopkaHello<TProfile>` runs. The registration
+flag covers built-in password and external self-registration, but does not
+prevent trusted host code or a future admin workflow from calling
+Skopka.Identity registration services directly. `UiPathPrefix` moves only the
+Hello Razor routes; it is not a global ASP.NET Core `PathBase`. It must be a
+non-empty absolute prefix other than `/` so UI routes cannot collide with the
+root-relative APIs.
 
 The default `__Host-` cookie names require secure cookies. For an explicit
 plain-HTTP local test only, change all three cookie names to non-`__Host-` names
@@ -64,7 +74,8 @@ app.MapSkopkaHelloUi();
 returns `OperationResult<TProfile>`. Profile construction therefore stays
 outside Razor page models.
 
-The built-in pages are:
+The built-in pages are derived from `SkopkaHelloOptions.UiPathPrefix`. With the
+default `/hello` prefix they are:
 
 ```text
 /hello/register
@@ -136,7 +147,10 @@ server also accepts
 
 The public custom CSS request URL can be changed with
 `SkopkaHello:Customization:CssRequestPath`. It must be an absolute path without
-a query string or fragment.
+a query string, fragment, escaping or route-template syntax. Startup fails when
+the path collides with a configured Hello UI route, a reserved API namespace or
+an endpoint already mapped by the host. Map the Hello UI after host GET routes
+so those collisions can also be detected.
 
 External-provider UI uses the same color, radius, typography and button
 variables. Stable selectors and customization hooks include:

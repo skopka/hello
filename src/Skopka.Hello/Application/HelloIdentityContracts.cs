@@ -1,9 +1,17 @@
 using Skopka.Abstraction.OperationResult;
-using Skopka.Identity.Authentication;
 using Skopka.Identity.Sessions;
 using Skopka.Identity.Users;
 
 namespace Skopka.Hello;
+
+public static class HelloPasswordChangeErrorCodes
+{
+    public const string RestartRequired =
+        "hello.account.password_change_restart_required";
+
+    public const string SessionCleanupRequired =
+        "hello.account.password_change_session_cleanup_required";
+}
 
 public sealed record HelloRegisterCommand<TProfile>(
     string? UserName,
@@ -13,7 +21,6 @@ public sealed record HelloRegisterCommand<TProfile>(
     string Password);
 
 public sealed record HelloLoginCommand(
-    PasswordLoginHandle Handle,
     string Login,
     string Password,
     string? ClientKey,
@@ -29,6 +36,11 @@ public sealed record HelloConfirmEmailCommand(
     string Email,
     string Token);
 
+public sealed record HelloConfirmPhoneCommand(
+    Guid UserId,
+    string Phone,
+    string Token);
+
 public sealed record HelloBeginPasswordChangeCommand(
     string AccessToken,
     string? ClientKey);
@@ -42,7 +54,8 @@ public sealed record HelloCompletePasswordChangeCommand(
 
 public sealed record HelloStepUpChallenge(
     Guid ChallengeId,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    HelloDeliveryChannel DeliveryChannel);
 
 public sealed record HelloAccount<TProfile>(
     Guid Id,
@@ -113,6 +126,7 @@ public interface IHelloIdentityApplication<TProfile>
 
     Task<OperationResult> RequestPasswordResetAsync(
         string email,
+        string? clientKey,
         CancellationToken cancellationToken);
 
     Task<OperationResult> ResetPasswordAsync(
@@ -121,10 +135,20 @@ public interface IHelloIdentityApplication<TProfile>
 
     Task<OperationResult> RequestEmailConfirmationAsync(
         string email,
+        string? clientKey,
         CancellationToken cancellationToken);
 
     Task<OperationResult<HelloAccount<TProfile>>> ConfirmEmailAsync(
         HelloConfirmEmailCommand command,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult> RequestPhoneConfirmationAsync(
+        string phone,
+        string? clientKey,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloAccount<TProfile>>> ConfirmPhoneAsync(
+        HelloConfirmPhoneCommand command,
         CancellationToken cancellationToken);
 
     Task<OperationResult<HelloStepUpChallenge>>

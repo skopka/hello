@@ -10,9 +10,9 @@ public sealed class IndexModel : PageModel
     {
         var authentication = await HttpContext.AuthenticateAsync(
             HelloUiDefaults.AuthenticationScheme);
-        return Redirect(
+        return RedirectToPage(
             authentication.Succeeded
-                ? HelloUiDefaults.AccountPath
-                : HelloUiDefaults.LoginPath);
+                ? "/SkopkaHello/Account/Index"
+                : "/SkopkaHello/Login");
     }
 }

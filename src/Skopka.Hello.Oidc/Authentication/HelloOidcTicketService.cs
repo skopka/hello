@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
@@ -17,12 +16,12 @@ internal sealed record HelloOidcTicket(
     string? Locale,
     Guid? UserId,
     Guid? SessionId,
-    long? ExpectedVersion,
     Guid? ChallengeId,
     DateTimeOffset ExpiresAt);
 
 internal sealed class HelloOidcTicketService(
-    HelloOidcOptions options)
+    HelloOidcOptions options,
+    HelloUiRoutePaths uiRoutes)
 {
     public Task<OperationResult<HelloOidcTicket>> ReadExternalAsync(
         HttpContext httpContext)
@@ -124,12 +123,6 @@ internal sealed class HelloOidcTicketService(
                 sessionId.ToString("D");
         }
 
-        if (ticket.ExpectedVersion is { } version)
-        {
-            properties.Items[HelloOidcProperties.ExpectedVersion] =
-                version.ToString(CultureInfo.InvariantCulture);
-        }
-
         if (ticket.ChallengeId is { } challengeId)
         {
             properties.Items[HelloOidcProperties.ChallengeId] =
@@ -158,7 +151,7 @@ internal sealed class HelloOidcTicketService(
         => httpContext.SignOutAsync(
             HelloOidcDefaults.PendingCookieScheme);
 
-    private static async Task<OperationResult<HelloOidcTicket>> ReadAsync(
+    private async Task<OperationResult<HelloOidcTicket>> ReadAsync(
         HttpContext httpContext,
         string authenticationScheme,
         TimeSpan maximumLifetime)
@@ -221,8 +214,9 @@ internal sealed class HelloOidcTicketService(
             out var configuredReturnUrl)
             ? HelloOidcReturnUrl.Normalize(
                 configuredReturnUrl,
-                "/hello/account")
-            : "/hello/account";
+                uiRoutes.AccountPath,
+                uiRoutes.ExternalCompletionPath)
+            : uiRoutes.AccountPath;
         var emailVerified = bool.TryParse(
             authenticated.Principal.FindFirstValue(
                 HelloOidcClaims.EmailVerified),
@@ -251,9 +245,6 @@ internal sealed class HelloOidcTicketService(
                 32),
             ParseGuid(properties, HelloOidcProperties.UserId),
             ParseGuid(properties, HelloOidcProperties.SessionId),
-            ParseLong(
-                properties,
-                HelloOidcProperties.ExpectedVersion),
             ParseGuid(properties, HelloOidcProperties.ChallengeId),
             expiresUtc);
 
@@ -283,19 +274,6 @@ internal sealed class HelloOidcTicketService(
         => properties.TryGetValue(key, out var value)
             && Guid.TryParse(value, out var parsed)
             && parsed != Guid.Empty
-                ? parsed
-                : null;
-
-    private static long? ParseLong(
-        IDictionary<string, string?> properties,
-        string key)
-        => properties.TryGetValue(key, out var value)
-            && long.TryParse(
-                value,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
-                out var parsed)
-            && parsed >= 0
                 ? parsed
                 : null;
 

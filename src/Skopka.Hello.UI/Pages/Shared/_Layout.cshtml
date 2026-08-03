@@ -19,20 +19,20 @@
 </head>
 <body>
     <header class="hello-header">
-        <a class="hello-brand" href="@HelloUiDefaults.RootPath">
+        <a class="hello-brand" asp-page="/SkopkaHello/Index">
             Skopka.Hello
         </a>
         <nav aria-label="Account navigation">
             @if (User.Identity?.IsAuthenticated == true)
             {
-                <a href="@HelloUiDefaults.AccountPath">Account</a>
-                <a href="@HelloUiDefaults.SessionsPath">Sessions</a>
+                <a asp-page="/SkopkaHello/Account/Index">Account</a>
+                <a asp-page="/SkopkaHello/Account/Sessions">Sessions</a>
                 @if (ExternalIdentity.IsConfigured)
                 {
-                    <a href="@HelloUiDefaults.ExternalLoginsPath">Sign-in methods</a>
+                    <a asp-page="/SkopkaHello/Account/ExternalLogins">Sign-in methods</a>
                 }
                 <form method="post"
-                      asp-page="/Account/Index"
+                      asp-page="/SkopkaHello/Account/Index"
                       asp-page-handler="Logout">
                     <button class="hello-link-button" type="submit">
                         Sign out
@@ -41,8 +41,11 @@
             }
             else
             {
-                <a href="@HelloUiDefaults.LoginPath">Sign in</a>
-                <a href="@HelloUiDefaults.RegisterPath">Register</a>
+                <a asp-page="/SkopkaHello/Login">Sign in</a>
+                @if (HelloOptions.SelfRegistrationEnabled)
+                {
+                    <a asp-page="/SkopkaHello/Register">Register</a>
+                }
             }
         </nav>
     </header>

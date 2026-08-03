@@ -7,7 +7,6 @@ internal static class HelloOidcProperties
     public const string ReturnUrl = "hello:oidc:return_url";
     public const string UserId = "hello:oidc:user_id";
     public const string SessionId = "hello:oidc:session_id";
-    public const string ExpectedVersion = "hello:oidc:expected_version";
     public const string ChallengeId = "hello:oidc:challenge_id";
     public const string FlowId = "hello:oidc:flow_id";
 

@@ -2,7 +2,7 @@ using System.Threading.Channels;
 
 namespace Skopka.Hello;
 
-internal sealed class HelloAccountMessageQueue(
+internal sealed class SmtpHelloAccountMessageQueue(
     HelloSmtpOptions options)
 {
     private readonly Channel<HelloAccountMessage> channel =

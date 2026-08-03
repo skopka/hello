@@ -64,6 +64,36 @@ public sealed class HelloOidcChallengeServiceTests
             second.Value.Properties.Items["hello:oidc:flow_id"]);
     }
 
+    [Fact]
+    public void CustomUiPrefixControlsOidcBrowserRoutes()
+    {
+        using var services = CreateServices("/identity");
+        var challenges = services.GetRequiredService<
+            IHelloOidcChallengeService>();
+
+        var signIn = challenges.CreateSignIn(
+            "github",
+            "/identity/external/complete?unsafe=true");
+        var link = challenges.CreateLink(
+            "github",
+            Guid.NewGuid(),
+            Guid.NewGuid());
+
+        Assert.True(signIn.IsSuccess);
+        Assert.True(link.IsSuccess);
+        Assert.Equal(
+            "/identity/external/complete",
+            signIn.Value.Properties.RedirectUri);
+        Assert.Equal(
+            "/identity/account",
+            signIn.Value.Properties.Items[
+                "hello:oidc:return_url"]);
+        Assert.Equal(
+            "/identity/account/external-logins",
+            link.Value.Properties.Items[
+                "hello:oidc:return_url"]);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -175,9 +205,12 @@ public sealed class HelloOidcChallengeServiceTests
                 == "hello.oidc.provider_unavailable");
     }
 
-    private static ServiceProvider CreateServices()
+    private static ServiceProvider CreateServices(
+        string uiPathPrefix = "/hello")
     {
         var services = new ServiceCollection();
+        services.AddSkopkaHello<object>(options =>
+            options.UiPathPrefix = uiPathPrefix);
         services.AddSkopkaHelloOidc<object>(options =>
         {
             options.PublicOrigin = new Uri(

@@ -24,10 +24,25 @@ services:
       SkopkaHello__RateLimiting__Keys__v1: ${SKOPKA_HELLO_RATE_LIMIT_KEY_V1:?Set SKOPKA_HELLO_RATE_LIMIT_KEY_V1 in .env}
       SkopkaHello__Verification__Keys__v1: ${SKOPKA_HELLO_OTP_KEY_V1:?Set SKOPKA_HELLO_OTP_KEY_V1 in .env}
       SkopkaHello__PublicOrigin: ${SKOPKA_HELLO_PUBLIC_ORIGIN:-http://localhost:8080}
+      SkopkaHello__SelfRegistration__Enabled: "${SKOPKA_HELLO_SELF_REGISTRATION_ENABLED:-true}"
+      SkopkaHello__Ui__PathPrefix: "${SKOPKA_HELLO_UI_PATH_PREFIX:-/hello}"
       SkopkaHello__Database__ApplyMigrations: "true"
       SkopkaHello__DataProtection__KeyPath: /var/lib/skopka-hello/keys
       SkopkaHello__Customization__CssFilePath: /var/lib/skopka-hello/customization/custom.css
       SkopkaHello__Cookies__Secure: "false"
+      SkopkaHello__Delivery__EmailProviderId: "${SKOPKA_HELLO_EMAIL_PROVIDER_ID:-}"
+      SkopkaHello__Delivery__SmsProviderId: "${SKOPKA_HELLO_SMS_PROVIDER_ID:-}"
+      SkopkaHello__Delivery__VerificationChannel: "${SKOPKA_HELLO_VERIFICATION_CHANNEL:-Email}"
+      SkopkaHello__Delivery__AnonymousRequestQueueCapacity: "${SKOPKA_HELLO_ANONYMOUS_MESSAGE_QUEUE_CAPACITY:-256}"
+      SkopkaHello__Delivery__Smtp__ProviderId: "${SKOPKA_HELLO_SMTP_PROVIDER_ID:-smtp}"
+      SkopkaHello__Delivery__Smtp__Host: "${SKOPKA_HELLO_SMTP_HOST:-}"
+      SkopkaHello__Delivery__Smtp__Port: "${SKOPKA_HELLO_SMTP_PORT:-587}"
+      SkopkaHello__Delivery__Smtp__EnableSsl: "${SKOPKA_HELLO_SMTP_ENABLE_SSL:-true}"
+      SkopkaHello__Delivery__Smtp__UserName: "${SKOPKA_HELLO_SMTP_USERNAME:-}"
+      SkopkaHello__Delivery__Smtp__Password: "${SKOPKA_HELLO_SMTP_PASSWORD:-}"
+      SkopkaHello__Delivery__Smtp__FromAddress: "${SKOPKA_HELLO_SMTP_FROM_ADDRESS:-}"
+      SkopkaHello__Delivery__Smtp__FromName: "${SKOPKA_HELLO_SMTP_FROM_NAME:-Skopka.Hello}"
+      SkopkaHello__Delivery__Smtp__QueueCapacity: "${SKOPKA_HELLO_SMTP_QUEUE_CAPACITY:-256}"
     depends_on:
       postgres:
         condition: service_healthy

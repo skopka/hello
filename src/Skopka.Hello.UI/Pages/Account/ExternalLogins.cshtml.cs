@@ -35,9 +35,12 @@ public sealed class ExternalLoginsModel(
 
     public bool ExternalError { get; private set; }
 
+    public bool ChallengeRestarted { get; private set; }
+
     public async Task<IActionResult> OnGetAsync(
         bool pending,
         bool externalError,
+        bool challengeRestarted,
         string? changed,
         CancellationToken cancellationToken)
     {
@@ -46,6 +49,7 @@ public sealed class ExternalLoginsModel(
             ? changed
             : null;
         ExternalError = externalError;
+        ChallengeRestarted = challengeRestarted;
         await LoadAsync(cancellationToken);
         if (pending)
         {
@@ -228,7 +232,8 @@ public sealed class ExternalLoginsModel(
         await application.ClearBrowserFlowAsync(
             HttpContext,
             cancellationToken);
-        return Redirect(HelloUiDefaults.ExternalLoginsPath);
+        return RedirectToPage(
+            "/SkopkaHello/Account/ExternalLogins");
     }
 
     public bool IsLinked(string providerId)
@@ -247,6 +252,20 @@ public sealed class ExternalLoginsModel(
         {
             if (result.Errors.Any(error => string.Equals(
                     error.Code,
+                    HelloExternalIdentityErrorCodes
+                        .ChallengeRestartRequired,
+                    StringComparison.Ordinal)))
+            {
+                await application.ClearBrowserFlowAsync(
+                    HttpContext,
+                    cancellationToken);
+                return RedirectToPage(
+                    "/SkopkaHello/Account/ExternalLogins",
+                    new { challengeRestarted = true });
+            }
+
+            if (result.Errors.Any(error => string.Equals(
+                    error.Code,
                     HelloExternalIdentityErrorCodes.RestartRequired,
                     StringComparison.Ordinal)))
             {
@@ -256,8 +275,9 @@ public sealed class ExternalLoginsModel(
                 sessionCookies.DeleteSessionCookies(HttpContext);
                 await HttpContext.SignOutAsync(
                     HelloUiDefaults.AuthenticationScheme);
-                return Redirect(
-                    $"{HelloUiDefaults.LoginPath}?accountChangeRestarted=true");
+                return RedirectToPage(
+                    "/SkopkaHello/Login",
+                    new { accountChangeRestarted = true });
             }
 
             HelloUiModelState.AddErrors(ModelState, result.Errors);
@@ -275,8 +295,9 @@ public sealed class ExternalLoginsModel(
             HttpContext,
             sessionCookies,
             result.Value);
-        return Redirect(
-            $"{HelloUiDefaults.ExternalLoginsPath}?changed={changed}");
+        return RedirectToPage(
+            "/SkopkaHello/Account/ExternalLogins",
+            new { changed });
     }
 
     private void PrepareMutation(

@@ -1,45 +1,45 @@
-@page "/hello/confirm-email"
-@model ConfirmEmailModel
+@page
+@model ConfirmPhoneModel
 @{
-    ViewData["Title"] = "Confirm email";
+    ViewData["Title"] = "Confirm phone";
 }
 
 <section class="hello-card hello-auth-card">
-    <p class="hello-eyebrow">Email confirmation</p>
-    <h1>Confirm your email</h1>
+    <p class="hello-eyebrow">Phone confirmation</p>
+    <h1>Confirm your phone</h1>
 
     @if (Model.Confirmed)
     {
         <p class="hello-status" role="status">
-            Your email address is confirmed.
+            Your phone number is confirmed.
         </p>
         <p class="hello-card-footer">
-            <a href="@HelloUiDefaults.AccountPath">Continue to account</a>
+            <a asp-page="/SkopkaHello/Account/Index">Continue to account</a>
         </p>
     }
     else if (!Model.LinkValid)
     {
         <p class="hello-validation" role="alert">
-            This email confirmation link is incomplete or invalid.
+            This phone confirmation link is incomplete or invalid.
         </p>
     }
     else
     {
         <p class="hello-muted">
             For safety, opening the link does not change your account.
-            Use the button below to confirm the address.
+            Use the button below to confirm the phone number.
         </p>
 
         <form method="post" class="hello-form">
             <input asp-for="UserId" type="hidden" />
-            <input asp-for="Email" type="hidden" />
+            <input asp-for="Phone" type="hidden" />
             <input asp-for="Token" type="hidden" />
             <div asp-validation-summary="ModelOnly"
                  class="hello-validation"
                  role="alert"></div>
 
             <button class="hello-button" type="submit">
-                Confirm email
+                Confirm phone
             </button>
         </form>
     }

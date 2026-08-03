@@ -15,8 +15,10 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.UI;
+using Skopka.Identity;
 using Skopka.Identity.Ef.PostgreSql;
 using Skopka.Identity.Errors;
+using Skopka.Identity.Users.Commands;
 using Skopka.Identity.Verification;
 using Testcontainers.PostgreSql;
 
@@ -167,6 +169,9 @@ public sealed class AuthenticationFlowTests
                 password = currentPassword,
             });
         Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+        var registered = await registration.Content.ReadFromJsonAsync<
+            AccountResponse<IntegrationProfile>>();
+        Assert.NotNull(registered);
 
         var unconfirmedLogin = await LoginAsync(
             client,
@@ -190,11 +195,9 @@ public sealed class AuthenticationFlowTests
         Assert.Equal(
             HttpStatusCode.Accepted,
             confirmationRequest.StatusCode);
-        var confirmationMessage = Assert.Single(
-            app.Messages,
-            message =>
-                message.Kind
-                == HelloAccountMessageKind.EmailConfirmation);
+        var confirmationMessage =
+            await app.WaitForMessageAsync(
+                HelloAccountMessageKind.EmailConfirmation);
         var confirmationActionUrl = Assert.IsType<Uri>(
             confirmationMessage.ActionUrl);
         var confirmationQuery = QueryHelpers.ParseQuery(
@@ -235,12 +238,17 @@ public sealed class AuthenticationFlowTests
         var challengeId = challengeDocument.RootElement
             .GetProperty("challengeId")
             .GetGuid();
+        Assert.Equal(
+            "email",
+            challengeDocument.RootElement
+                .GetProperty("deliveryChannel")
+                .GetString());
 
         var verificationMessage = Assert.Single(
             app.Messages,
             message =>
                 message.Kind
-                == HelloAccountMessageKind.StepUpVerification);
+                == HelloAccountMessageKind.PasswordChangeVerification);
         Assert.Equal(email, verificationMessage.RecipientAddress);
         Assert.Null(verificationMessage.ActionUrl);
         var verificationCode = Assert.IsType<string>(
@@ -254,6 +262,9 @@ public sealed class AuthenticationFlowTests
             email,
             challengeJson,
             StringComparison.OrdinalIgnoreCase);
+        await app.UpdateProfileAsync(
+            registered.Id,
+            new IntegrationProfile("Step-up Alice Updated", "en"));
         Assert.Contains(
             "$kid=v2$",
             await app.GetVerificationVerifierAsync(challengeId),
@@ -325,7 +336,6 @@ public sealed class AuthenticationFlowTests
             "/auth/login",
             new
             {
-                handle = "email",
                 login = email,
                 password = currentPassword,
             });
@@ -357,7 +367,7 @@ public sealed class AuthenticationFlowTests
                 newLogin.AccessToken);
         using var replayed = await client.SendAsync(replay);
         Assert.Equal(
-            HttpStatusCode.BadRequest,
+            HttpStatusCode.Conflict,
             replayed.StatusCode);
     }
 
@@ -424,11 +434,9 @@ public sealed class AuthenticationFlowTests
         Assert.Equal(
             HttpStatusCode.Accepted,
             confirmationRequest.StatusCode);
-        var confirmationMessage = Assert.Single(
-            app.Messages,
-            message =>
-                message.Kind
-                == HelloAccountMessageKind.EmailConfirmation);
+        var confirmationMessage =
+            await app.WaitForMessageAsync(
+                HelloAccountMessageKind.EmailConfirmation);
         var confirmationActionUrl = Assert.IsType<Uri>(
             confirmationMessage.ActionUrl);
         var confirmationQuery = QueryHelpers.ParseQuery(
@@ -454,6 +462,14 @@ public sealed class AuthenticationFlowTests
         Assert.Equal(HttpStatusCode.OK, loginPage.StatusCode);
         MergeCookies(cookies, loginPage);
         var loginHtml = await loginPage.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(
+            "Input.Handle",
+            loginHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Email, phone, or user name",
+            loginHtml,
+            StringComparison.Ordinal);
         var loginToken = ReadInputValue(
             loginHtml,
             "__RequestVerificationToken");
@@ -464,7 +480,6 @@ public sealed class AuthenticationFlowTests
             cookies,
             new Dictionary<string, string>
             {
-                ["Input.Handle"] = "email",
                 ["Input.Login"] =
                     "browser-alice@example.test",
                 ["Input.Password"] =
@@ -565,7 +580,7 @@ public sealed class AuthenticationFlowTests
             app.Messages,
             message =>
                 message.Kind
-                == HelloAccountMessageKind.StepUpVerification);
+                == HelloAccountMessageKind.PasswordChangeVerification);
         var verificationCode = Assert.IsType<string>(
             verificationMessage.VerificationCode);
 
@@ -597,6 +612,159 @@ public sealed class AuthenticationFlowTests
             client,
             "browser-alice@example.test",
             "new correct horse battery staple");
+    }
+
+    [Fact]
+    public async Task UiPrefixAndSelfRegistrationPolicyApplyTogether()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+        var connectionString = postgres.GetConnectionString();
+        const string email = "policy-alice@example.test";
+        const string password = "correct horse battery staple";
+
+        await using (var enabled = await TestApplication.CreateAsync(
+            connectionString,
+            uiPathPrefix: "/identity",
+            selfRegistrationEnabled: true))
+        {
+            using var client = enabled.CreateClient(
+                allowAutoRedirect: false);
+
+            using var oldLogin = await client.GetAsync("/hello/login");
+            Assert.Equal(HttpStatusCode.NotFound, oldLogin.StatusCode);
+
+            using var loginPage = await client.GetAsync(
+                "/identity/login");
+            Assert.Equal(HttpStatusCode.OK, loginPage.StatusCode);
+            var loginHtml = await loginPage.Content.ReadAsStringAsync();
+            Assert.Contains(
+                "href=\"/identity/register\"",
+                loginHtml,
+                StringComparison.Ordinal);
+
+            using var registration = await client.PostAsJsonAsync(
+                "/auth/register",
+                new
+                {
+                    userName = "policy-alice",
+                    email,
+                    phone = (string?)null,
+                    profile = new
+                    {
+                        displayName = "Policy Alice",
+                        locale = "en",
+                    },
+                    password,
+                });
+            Assert.Equal(
+                HttpStatusCode.Created,
+                registration.StatusCode);
+
+            using var confirmationRequest =
+                await client.PostAsJsonAsync(
+                    "/auth/email-confirmation/request",
+                    new { email });
+            Assert.Equal(
+                HttpStatusCode.Accepted,
+                confirmationRequest.StatusCode);
+            var confirmationMessage =
+                await enabled.WaitForMessageAsync(
+                    HelloAccountMessageKind.EmailConfirmation);
+            Assert.Equal(
+                "/identity/confirm-email",
+                confirmationMessage.ActionUrl?.AbsolutePath);
+        }
+
+        await using (var disabled = await TestApplication.CreateAsync(
+            connectionString,
+            uiPathPrefix: "/identity",
+            selfRegistrationEnabled: false))
+        {
+            using var client = disabled.CreateClient(
+                allowAutoRedirect: false);
+
+            using var apiRegistration = await client.PostAsJsonAsync(
+                "/auth/register",
+                new { email = "new@example.test" });
+            Assert.Equal(
+                HttpStatusCode.NotFound,
+                apiRegistration.StatusCode);
+
+            using var passwordRegistration = await client.GetAsync(
+                "/identity/register");
+            Assert.Equal(
+                HttpStatusCode.NotFound,
+                passwordRegistration.StatusCode);
+
+            using var externalRegistration = await client.GetAsync(
+                "/identity/external/register");
+            Assert.Equal(
+                HttpStatusCode.NotFound,
+                externalRegistration.StatusCode);
+
+            Dictionary<string, string> cookies =
+                new(StringComparer.Ordinal);
+            using var loginPage = await SendAsync(
+                client,
+                HttpMethod.Get,
+                "/identity/login",
+                cookies);
+            Assert.Equal(HttpStatusCode.OK, loginPage.StatusCode);
+            MergeCookies(cookies, loginPage);
+            var loginHtml = await loginPage.Content.ReadAsStringAsync();
+            Assert.DoesNotContain(
+                "href=\"/identity/register\"",
+                loginHtml,
+                StringComparison.Ordinal);
+            var token = ReadInputValue(
+                loginHtml,
+                "__RequestVerificationToken");
+
+            using var login = await SendFormAsync(
+                client,
+                "/identity/login",
+                cookies,
+                new Dictionary<string, string>
+                {
+                    ["Input.Login"] = email,
+                    ["Input.Password"] = password,
+                    ["__RequestVerificationToken"] = token,
+                });
+            Assert.Equal(HttpStatusCode.Redirect, login.StatusCode);
+            Assert.Equal(
+                "/identity/account",
+                login.Headers.Location?.OriginalString);
+        }
+    }
+
+    [Fact]
+    public async Task AnonymousMessageCooldownSilentlyDropsBeforeLookup()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString());
+        using var client = app.CreateClient(
+            allowAutoRedirect: false);
+
+        using var first = await client.PostAsJsonAsync(
+            "/auth/email-confirmation/request",
+            new { email = "missing@example.test" });
+        Assert.Equal(HttpStatusCode.Accepted, first.StatusCode);
+
+        using var repeated = await client.PostAsJsonAsync(
+            "/auth/email-confirmation/request",
+            new { email = "MISSING@EXAMPLE.TEST" });
+        Assert.Equal(
+            HttpStatusCode.Accepted,
+            repeated.StatusCode);
+        Assert.Empty(app.Messages);
     }
 
     [Fact]
@@ -651,11 +819,9 @@ public sealed class AuthenticationFlowTests
         Assert.Equal(
             HttpStatusCode.Accepted,
             confirmationRequest.StatusCode);
-        var confirmationMessage = Assert.Single(
-            app.Messages,
-            message =>
-                message.Kind
-                == HelloAccountMessageKind.EmailConfirmation);
+        var confirmationMessage =
+            await app.WaitForMessageAsync(
+                HelloAccountMessageKind.EmailConfirmation);
         var confirmationActionUrl = Assert.IsType<Uri>(
             confirmationMessage.ActionUrl);
 
@@ -680,6 +846,24 @@ public sealed class AuthenticationFlowTests
             confirmationPage.Headers
                 .GetValues("Referrer-Policy")
                 .Single());
+        var confirmationHtml =
+            await confirmationPage.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "data-hello-auto-submit=\"true\"",
+            confirmationHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "name=\"__RequestVerificationToken\"",
+            confirmationHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "/_content/Skopka.Hello.UI/js/confirm-email.js",
+            confirmationHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "<noscript>",
+            confirmationHtml,
+            StringComparison.Ordinal);
 
         using var stillUnconfirmed = await GetMeAsync(
             client,
@@ -731,11 +915,8 @@ public sealed class AuthenticationFlowTests
             "/auth/password-reset/request",
             new { email = "recovery-alice@example.test" });
         Assert.Equal(HttpStatusCode.Accepted, resetRequest.StatusCode);
-        var resetMessage = Assert.Single(
-            app.Messages,
-            message =>
-                message.Kind
-                == HelloAccountMessageKind.PasswordReset);
+        var resetMessage = await app.WaitForMessageAsync(
+            HelloAccountMessageKind.PasswordReset);
         var resetActionUrl = Assert.IsType<Uri>(
             resetMessage.ActionUrl);
 
@@ -765,7 +946,6 @@ public sealed class AuthenticationFlowTests
             "/auth/login",
             new
             {
-                handle = "email",
                 login = "recovery-alice@example.test",
                 password = "correct horse battery staple",
             });
@@ -778,6 +958,164 @@ public sealed class AuthenticationFlowTests
         Assert.NotEqual(
             loginAfterGet.AccessToken,
             newPassword.AccessToken);
+    }
+
+    [Fact]
+    public async Task AutomaticPhoneLoginAndPhoneConfirmationFlow()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            verificationChannel: HelloDeliveryChannel.Sms);
+        using var client = app.CreateClient(
+            allowAutoRedirect: false);
+        const string phone = "+1 (202) 555-0123";
+
+        using var registration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "phone-alice",
+                email = (string?)null,
+                phone,
+                profile = new
+                {
+                    displayName = "Phone Alice",
+                    locale = "en",
+                },
+                password = "correct horse battery staple",
+            });
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+
+        var phoneLogin = await LoginAsync(
+            client,
+            "+1 202 555 0123",
+            "correct horse battery staple");
+        using var beforeConfirmation = await GetMeAsync(
+            client,
+            phoneLogin.AccessToken);
+        Assert.False(ReadPhoneConfirmed(beforeConfirmation));
+
+        using var collidingRegistration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "12025550123",
+                email = "phone-collision@example.test",
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Collision",
+                    locale = "en",
+                },
+                password = "correct horse battery staple",
+            });
+        Assert.Equal(
+            HttpStatusCode.Conflict,
+            collidingRegistration.StatusCode);
+
+        using var unknownRequest = await client.PostAsJsonAsync(
+            "/auth/phone-confirmation/request",
+            new { phone = "+1 202 555 9999" });
+        Assert.Equal(
+            HttpStatusCode.Accepted,
+            unknownRequest.StatusCode);
+        Assert.Empty(app.Messages);
+
+        using var confirmationRequest = await client.PostAsJsonAsync(
+            "/auth/phone-confirmation/request",
+            new { phone = "+1 202 555 0123" });
+        Assert.Equal(
+            HttpStatusCode.Accepted,
+            confirmationRequest.StatusCode);
+        var confirmationMessage =
+            await app.WaitForMessageAsync(
+                HelloAccountMessageKind.PhoneConfirmation);
+        Assert.Equal(
+            HelloDeliveryChannel.Sms,
+            confirmationMessage.Channel);
+        Assert.Equal(phone, confirmationMessage.RecipientAddress);
+        var confirmationActionUrl = Assert.IsType<Uri>(
+            confirmationMessage.ActionUrl);
+
+        using var confirmationPage = await client.GetAsync(
+            confirmationActionUrl.PathAndQuery);
+        Assert.Equal(HttpStatusCode.OK, confirmationPage.StatusCode);
+        Assert.Contains(
+            "no-store",
+            confirmationPage.Headers.CacheControl?.ToString(),
+            StringComparison.OrdinalIgnoreCase);
+
+        using var stillUnconfirmed = await GetMeAsync(
+            client,
+            phoneLogin.AccessToken);
+        Assert.False(ReadPhoneConfirmed(stillUnconfirmed));
+
+        var confirmationQuery = QueryHelpers.ParseQuery(
+            confirmationActionUrl.Query);
+        using var confirmed = await client.PostAsJsonAsync(
+            "/auth/phone-confirmation/confirm",
+            new
+            {
+                userId = Guid.Parse(
+                    confirmationQuery["userId"].Single()!),
+                phone = confirmationQuery["phone"].Single(),
+                token = confirmationQuery["token"].Single(),
+            });
+        Assert.Equal(HttpStatusCode.NoContent, confirmed.StatusCode);
+
+        using var afterConfirmation = await GetMeAsync(
+            client,
+            phoneLogin.AccessToken);
+        Assert.True(ReadPhoneConfirmed(afterConfirmation));
+
+        using var repeatedRequest = await client.PostAsJsonAsync(
+            "/auth/phone-confirmation/request",
+            new { phone });
+        Assert.Equal(
+            HttpStatusCode.Accepted,
+            repeatedRequest.StatusCode);
+        Assert.Single(
+            app.Messages,
+            message =>
+                message.Kind
+                == HelloAccountMessageKind.PhoneConfirmation);
+
+        using var challengeRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/account/password/change/challenge");
+        challengeRequest.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                phoneLogin.AccessToken);
+        using var challengeResponse = await client.SendAsync(
+            challengeRequest);
+        Assert.Equal(HttpStatusCode.OK, challengeResponse.StatusCode);
+        using var challengeDocument = JsonDocument.Parse(
+            await challengeResponse.Content.ReadAsStringAsync());
+        Assert.Equal(
+            "sms",
+            challengeDocument.RootElement
+                .GetProperty("deliveryChannel")
+                .GetString());
+        var verificationMessage = Assert.Single(
+            app.Messages,
+            message =>
+                message.Kind
+                == HelloAccountMessageKind.PasswordChangeVerification);
+        Assert.Equal(
+            HelloDeliveryChannel.Sms,
+            verificationMessage.Channel);
+        Assert.Equal(phone, verificationMessage.RecipientAddress);
+
+        _ = await LoginAsync(
+            client,
+            "phone-alice",
+            "correct horse battery staple");
     }
 
     [Fact]
@@ -813,7 +1151,6 @@ public sealed class AuthenticationFlowTests
                 "/auth/login",
                 new
                 {
-                    handle = "email",
                     login = "limited-alice@example.test",
                     password =
                         "incorrect horse battery staple",
@@ -827,7 +1164,6 @@ public sealed class AuthenticationFlowTests
             "/auth/login",
             new
             {
-                handle = "email",
                 login = "limited-alice@example.test",
                 password = "correct horse battery staple",
             });
@@ -940,7 +1276,6 @@ public sealed class AuthenticationFlowTests
             "/auth/login",
             new
             {
-                handle = "email",
                 login,
                 password,
             });
@@ -990,6 +1325,11 @@ public sealed class AuthenticationFlowTests
     private static bool ReadEmailConfirmed(JsonDocument account)
         => account.RootElement
             .GetProperty("emailConfirmed")
+            .GetBoolean();
+
+    private static bool ReadPhoneConfirmed(JsonDocument account)
+        => account.RootElement
+            .GetProperty("phoneConfirmed")
             .GetBoolean();
 
     private static async Task<LoginResult> RefreshAsync(
@@ -1169,8 +1509,44 @@ public sealed class AuthenticationFlowTests
         public IReadOnlyList<HelloAccountMessage> Messages =>
             messageSender.Messages;
 
+        public async Task<HelloAccountMessage> WaitForMessageAsync(
+            HelloAccountMessageKind kind)
+        {
+            using var timeout = new CancellationTokenSource(
+                TimeSpan.FromSeconds(10));
+            while (!timeout.IsCancellationRequested)
+            {
+                var matches = Messages
+                    .Where(message => message.Kind == kind)
+                    .ToArray();
+                if (matches.Length > 0)
+                {
+                    return Assert.Single(matches);
+                }
+
+                try
+                {
+                    await Task.Delay(
+                        TimeSpan.FromMilliseconds(10),
+                        timeout.Token);
+                }
+                catch (OperationCanceledException)
+                    when (timeout.IsCancellationRequested)
+                {
+                    break;
+                }
+            }
+
+            throw new TimeoutException(
+                $"No '{kind}' account message was recorded.");
+        }
+
         public static async Task<TestApplication> CreateAsync(
-            string connectionString)
+            string connectionString,
+            string uiPathPrefix = "/hello",
+            bool selfRegistrationEnabled = true,
+            HelloDeliveryChannel verificationChannel =
+                HelloDeliveryChannel.Email)
         {
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions
@@ -1191,6 +1567,9 @@ public sealed class AuthenticationFlowTests
                 {
                     options.PublicOrigin = new Uri(
                         "https://integration.skopka.test");
+                    options.UiPathPrefix = uiPathPrefix;
+                    options.SelfRegistrationEnabled =
+                        selfRegistrationEnabled;
                 })
                 .ConfigurePasswordPolicy(options =>
                 {
@@ -1213,6 +1592,8 @@ public sealed class AuthenticationFlowTests
                         options.Audience =
                             "skopka-hello-integration";
                     });
+            builder.Services.AddSkopkaHelloDelivery(options =>
+                options.VerificationChannel = verificationChannel);
             var rateLimitKeys = new Dictionary<string, byte[]>
             {
                 ["v1"] = RandomNumberGenerator.GetBytes(32),
@@ -1337,6 +1718,37 @@ public sealed class AuthenticationFlowTests
                 .Distinct()
                 .OrderBy(version => version)
                 .ToArrayAsync();
+        }
+
+        public async Task UpdateProfileAsync(
+            Guid userId,
+            IntegrationProfile profile)
+        {
+            await using var serviceScope =
+                application.Services.CreateAsyncScope();
+            var store = serviceScope.ServiceProvider
+                .GetRequiredService<
+                    IIdentityUserStore<IntegrationProfile>>();
+            var users = serviceScope.ServiceProvider
+                .GetRequiredService<
+                    IIdentityUserService<IntegrationProfile>>();
+            var current = await store.FindByIdAsync(
+                userId,
+                CancellationToken.None);
+            Assert.NotNull(current);
+
+            var updated = await users.PatchProfileAsync(
+                new PatchProfileCommand<IntegrationProfile>(
+                    userId,
+                    current.Version,
+                    profile),
+                CancellationToken.None);
+
+            Assert.True(updated.IsSuccess);
+            Assert.Equal(current.Version + 1, updated.Value.Version);
+            Assert.Equal(
+                current.SecurityStamp,
+                updated.Value.SecurityStamp);
         }
 
         public async Task<string> GetVerificationVerifierAsync(

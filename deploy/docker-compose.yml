@@ -38,7 +38,7 @@ services:
     <<: *hello-image
     environment:
       ConnectionStrings__Identity: Host=postgres;Port=5432;Database=${POSTGRES_DB:-skopka_hello};Username=${POSTGRES_USER:-skopka};Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable
-      SkopkaHello__Jwt__SigningKey: ${SKOPKA_HELLO_JWT_SIGNING_KEY:?Set SKOPKA_HELLO_JWT_SIGNING_KEY in .env}
+      SkopkaHello__Jwt__Keys__v1: ${SKOPKA_HELLO_JWT_KEY_V1:?Set SKOPKA_HELLO_JWT_KEY_V1 in .env}
       SkopkaHello__RateLimiting__Keys__v1: ${SKOPKA_HELLO_RATE_LIMIT_KEY_V1:?Set SKOPKA_HELLO_RATE_LIMIT_KEY_V1 in .env}
       SkopkaHello__Verification__Keys__v1: ${SKOPKA_HELLO_OTP_KEY_V1:?Set SKOPKA_HELLO_OTP_KEY_V1 in .env}
       SkopkaHello__PublicOrigin: ${SKOPKA_HELLO_PUBLIC_ORIGIN:-http://localhost:8080}

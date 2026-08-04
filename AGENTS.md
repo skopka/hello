@@ -20,7 +20,7 @@ responses.
 The implemented surfaces are registration, password and external OIDC login,
 sessions, account, password-reset, email/phone-confirmation, external-login
 management and step-up password-change Minimal APIs plus their Razor UI, and
-the bounded role-authorized user-administration API/UI.
+the bounded role-authorized user/role administration API/UI.
 Registration must remain atomic through
 `IIdentityRegistrationService<TProfile>` for both password and external
 registration. HTTP handlers call
@@ -86,8 +86,9 @@ hosts without one use the bounded process-local fallback or replace
 - `src/Skopka.Hello.Oidc` - maintained external OIDC client adapter and
   validated pending browser flow, never a home-grown protocol or authorization
   server.
-- `src/Skopka.Hello.Admin` - bounded user queries, safe profile projection,
-  live role-policy authorization and step-up-protected user administration.
+- `src/Skopka.Hello.Admin` - bounded user and role queries, safe profile
+  projection, live role-policy authorization and step-up-protected user and
+  role administration.
 - `src/Skopka.Hello.Server` - executable composition and Docker image.
 
 Read the local `AGENTS.md` before editing any module.

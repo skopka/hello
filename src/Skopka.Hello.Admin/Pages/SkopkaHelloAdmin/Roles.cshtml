@@ -1,0 +1,201 @@
+@page
+@model RolesModel
+@{
+    ViewData["Title"] = "Role administration";
+}
+
+<section class="hello-page-heading">
+    <p class="hello-eyebrow">Administration</p>
+    <h1>Roles</h1>
+    <p class="hello-muted">
+        Browse the bounded role catalog and manage roles. Every mutation
+        requires a fresh verification code sent to your confirmed contact.
+    </p>
+    <p><a asp-page="/SkopkaHelloAdmin/Users">Manage users</a></p>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <section class="hello-card" role="status">
+        <p>@Model.StatusMessage</p>
+    </section>
+}
+
+<div asp-validation-summary="All"
+     class="hello-validation"
+     role="alert"></div>
+
+<section class="hello-card">
+    <form method="get" class="hello-form">
+        <label for="admin-role-search">Search</label>
+        <input id="admin-role-search"
+               asp-for="Search"
+               autocomplete="off"
+               placeholder="Role name" />
+        <button class="hello-button" type="submit">Apply filter</button>
+    </form>
+</section>
+
+<section class="hello-card">
+    <p class="hello-eyebrow">New role</p>
+    <form method="post" asp-page-handler="BeginAction" class="hello-form">
+        <input type="hidden" name="action" value="create" />
+        <input type="hidden" asp-for="Search" />
+        <label>
+            Name
+            <input name="name" maxlength="256" required />
+        </label>
+        <label>
+            Description
+            <textarea name="description" maxlength="1024"></textarea>
+        </label>
+        <label>
+            Parent role id (optional)
+            <input name="parentId" inputmode="text" />
+        </label>
+        <button class="hello-button" type="submit">Create role</button>
+    </form>
+</section>
+
+@if (Model.PendingAction is { } pending)
+{
+    <section class="hello-card" aria-labelledby="admin-role-verification-title">
+        <p class="hello-eyebrow">Step-up verification</p>
+        <h2 id="admin-role-verification-title">
+            @RolesModel.GetActionLabel(pending.Action)
+        </h2>
+        <p>
+            Enter the one-time code sent to your confirmed
+            @(pending.DeliveryChannel?.ToString().ToLowerInvariant()
+              ?? "contact").
+            @if (pending.ExpiresAt is { } expiresAt)
+            {
+                <span>It expires at @expiresAt.ToLocalTime().</span>
+            }
+        </p>
+
+        <form method="post"
+              asp-page-handler="CompleteAction"
+              class="hello-form">
+            <input type="hidden"
+                   name="action"
+                   value="@RolesModel.GetActionSlug(pending.Action)" />
+            <input type="hidden" name="roleId" value="@pending.RoleId" />
+            <input type="hidden"
+                   name="targetUserId"
+                   value="@pending.TargetUserId" />
+            <input type="hidden"
+                   name="challengeId"
+                   value="@pending.ChallengeId" />
+            <input type="hidden"
+                   name="expectedVersion"
+                   value="@pending.Parameters.ExpectedVersion" />
+            <input type="hidden" name="name" value="@pending.Parameters.Name" />
+            <input type="hidden"
+                   name="description"
+                   value="@pending.Parameters.Description" />
+            <input type="hidden"
+                   name="parentId"
+                   value="@pending.Parameters.ParentId" />
+            <input type="hidden" asp-for="Search" />
+
+            <label for="admin-role-verification-code">Verification code</label>
+            <input id="admin-role-verification-code"
+                   name="verificationCode"
+                   inputmode="numeric"
+                   autocomplete="one-time-code"
+                   required />
+            <button class="hello-button hello-button-danger" type="submit">
+                Confirm @RolesModel.GetActionLabel(pending.Action).ToLowerInvariant()
+            </button>
+        </form>
+    </section>
+}
+
+@if (Model.Roles.Count == 0)
+{
+    <section class="hello-card">
+        <p>No roles matched the current filter.</p>
+    </section>
+}
+else
+{
+    <div class="hello-session-list">
+        @foreach (var role in Model.Roles)
+        {
+            <article class="hello-card">
+                <div>
+                    <p class="hello-eyebrow">Version @role.Version</p>
+                    <h2>@role.Name</h2>
+                    <dl class="hello-session-meta">
+                        <div>
+                            <dt>Role id</dt>
+                            <dd>@role.Id</dd>
+                        </div>
+                        <div>
+                            <dt>Description</dt>
+                            <dd>@(role.Description ?? "—")</dd>
+                        </div>
+                        <div>
+                            <dt>Parent role id</dt>
+                            <dd>@(role.ParentId?.ToString("D") ?? "—")</dd>
+                        </div>
+                    </dl>
+                </div>
+
+                <form method="post"
+                      asp-page-handler="BeginAction"
+                      class="hello-form">
+                    <input type="hidden" name="action" value="update" />
+                    <input type="hidden" name="roleId" value="@role.Id" />
+                    <input type="hidden"
+                           name="expectedVersion"
+                           value="@role.Version" />
+                    <input type="hidden" asp-for="Search" />
+                    <label>
+                        Name
+                        <input name="name"
+                               value="@role.Name"
+                               maxlength="256"
+                               required />
+                    </label>
+                    <label>
+                        Description
+                        <textarea name="description"
+                                  maxlength="1024">@role.Description</textarea>
+                    </label>
+                    <label>
+                        Parent role id (optional)
+                        <input name="parentId" value="@role.ParentId" />
+                    </label>
+                    <button class="hello-button" type="submit">Update</button>
+                </form>
+
+                <form method="post" asp-page-handler="BeginAction">
+                    <input type="hidden" name="action" value="delete" />
+                    <input type="hidden" name="roleId" value="@role.Id" />
+                    <input type="hidden"
+                           name="expectedVersion"
+                           value="@role.Version" />
+                    <input type="hidden" asp-for="Search" />
+                    <button class="hello-button hello-button-danger"
+                            type="submit">
+                        Delete
+                    </button>
+                </form>
+            </article>
+        }
+    </div>
+}
+
+@if (Model.NextCursor is { } next)
+{
+    <p>
+        <a asp-page="/SkopkaHelloAdmin/Roles"
+           asp-route-search="@Model.Search"
+           asp-route-cursorCreatedAt="@next.CreatedAt.ToString("O")"
+           asp-route-cursorId="@next.Id">
+            Next page
+        </a>
+    </p>
+}

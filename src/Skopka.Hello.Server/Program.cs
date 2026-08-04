@@ -66,8 +66,6 @@ if (migrationCommand)
     return;
 }
 
-var signingKey = ReadSigningKey(
-    configuration["SkopkaHello:Jwt:SigningKey"]);
 var publicOrigin = new Uri(
     configuration["SkopkaHello:PublicOrigin"]
         ?? throw new InvalidOperationException(
@@ -257,14 +255,20 @@ var identity = builder.Services
     })
     .UsePostgreSql(connectionString)
     .UsePbkdf2PasswordHasher()
-    .UseDataProtectionActionTokens()
-    .UseJwtSessions(
-        signingKey,
+    .UseDataProtectionActionTokens();
+
+using (var jwtKeys = VersionedSecretKeySet.Load(
+    configuration.GetSection("SkopkaHello:Jwt")))
+{
+    identity.UseJwtSessions(
+        jwtKeys.CurrentVersion,
+        jwtKeys.Keys,
         options =>
         {
             options.Issuer = issuer;
             options.Audience = audience;
         });
+}
 
 using (var rateLimitKeys = VersionedSecretKeySet.Load(
     configuration.GetSection(
@@ -679,35 +683,6 @@ static async Task BootstrapAdministratorAsync(
 
     Console.WriteLine(
         $"Administrator roles assigned to user {userId:D}. Sign in again.");
-}
-
-static byte[] ReadSigningKey(string? encoded)
-{
-    if (string.IsNullOrWhiteSpace(encoded))
-    {
-        throw new InvalidOperationException(
-            "SkopkaHello:Jwt:SigningKey is required and must be a Base64-encoded key.");
-    }
-
-    byte[] key;
-    try
-    {
-        key = Convert.FromBase64String(encoded);
-    }
-    catch (FormatException exception)
-    {
-        throw new InvalidOperationException(
-            "SkopkaHello:Jwt:SigningKey must be Base64 encoded.",
-            exception);
-    }
-
-    if (key.Length < 32)
-    {
-        throw new InvalidOperationException(
-            "SkopkaHello:Jwt:SigningKey must contain at least 32 bytes.");
-    }
-
-    return key;
 }
 
 public partial class Program;

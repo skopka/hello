@@ -1,4 +1,6 @@
 using Skopka.Abstraction.OperationResult;
+using Skopka.Identity.Roles;
+using Skopka.Identity.Roles.Queries;
 using Skopka.Identity.Users;
 using Skopka.Identity.Users.Queries;
 
@@ -17,6 +19,21 @@ public static class HelloAdminErrorCodes
 
     public const string SessionCleanupRequired =
         "hello.admin.session_cleanup_required";
+
+    public const string ProtectedRoleMutationForbidden =
+        "hello.admin.protected_role_mutation_forbidden";
+
+    public const string SelfRoleRemovalForbidden =
+        "hello.admin.self_role_removal_forbidden";
+}
+
+public static class HelloAdminSecurityEventTypes
+{
+    public const string RoleCreated = "hello.admin.role.created";
+
+    public const string RoleUpdated = "hello.admin.role.updated";
+
+    public const string RoleDeleted = "hello.admin.role.deleted";
 }
 
 public enum HelloAdminUserAction
@@ -112,5 +129,72 @@ public interface IHelloAdminApplication
     Task<OperationResult<HelloAdminUserActionResult>>
         CompleteUserActionAsync(
             HelloAdminCompleteUserActionCommand command,
+            CancellationToken cancellationToken);
+}
+
+public enum HelloAdminRoleAction
+{
+    Create = 0,
+    Update = 1,
+    Delete = 2,
+    Assign = 3,
+    Remove = 4,
+}
+
+public sealed record HelloAdminQueryRolesCommand(
+    string AccessToken,
+    string? Search = null,
+    int PageSize = IdentityRoleQueryLimits.DefaultPageSize,
+    IdentityRoleCursor? Cursor = null);
+
+public sealed record HelloAdminGetUserRolesCommand(
+    string AccessToken,
+    Guid TargetUserId);
+
+public sealed record HelloAdminRoleActionParameters(
+    long? ExpectedVersion = null,
+    string? Name = null,
+    string? Description = null,
+    Guid? ParentId = null);
+
+public sealed record HelloAdminBeginRoleActionCommand(
+    string AccessToken,
+    HelloAdminRoleAction Action,
+    Guid? RoleId,
+    Guid? TargetUserId,
+    HelloAdminRoleActionParameters Parameters,
+    string? ClientKey);
+
+public sealed record HelloAdminCompleteRoleActionCommand(
+    string AccessToken,
+    HelloAdminRoleAction Action,
+    Guid? RoleId,
+    Guid? TargetUserId,
+    HelloAdminRoleActionParameters Parameters,
+    Guid ChallengeId,
+    string VerificationCode);
+
+public sealed record HelloAdminRoleActionResult(
+    IdentityRole? Role,
+    Guid? TargetUserId,
+    bool SessionsRevoked);
+
+public interface IHelloAdminRoleApplication
+{
+    Task<OperationResult<IdentityRolePage>> QueryRolesAsync(
+        HelloAdminQueryRolesCommand command,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult<IReadOnlyList<IdentityRole>>> GetUserRolesAsync(
+        HelloAdminGetUserRolesCommand command,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloStepUpChallenge>> BeginRoleActionAsync(
+        HelloAdminBeginRoleActionCommand command,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloAdminRoleActionResult>>
+        CompleteRoleActionAsync(
+            HelloAdminCompleteRoleActionCommand command,
             CancellationToken cancellationToken);
 }

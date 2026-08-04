@@ -12,6 +12,7 @@
         mutation requires a fresh verification code sent to your confirmed
         contact.
     </p>
+    <p><a asp-page="/SkopkaHelloAdmin/Roles">Manage roles</a></p>
 </section>
 
 @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
@@ -97,6 +98,54 @@
     </section>
 }
 
+@if (Model.PendingRoleAction is { } pendingRole)
+{
+    <section class="hello-card" aria-labelledby="admin-role-verification-title">
+        <p class="hello-eyebrow">Step-up verification</p>
+        <h2 id="admin-role-verification-title">
+            @UsersModel.GetRoleActionLabel(pendingRole.Action)
+        </h2>
+        <p>
+            Enter the one-time code sent to your confirmed
+            @(pendingRole.DeliveryChannel?.ToString().ToLowerInvariant()
+              ?? "contact").
+            @if (pendingRole.ExpiresAt is { } expiresAt)
+            {
+                <span>It expires at @expiresAt.ToLocalTime().</span>
+            }
+        </p>
+
+        <form method="post"
+              asp-page-handler="CompleteRoleAction"
+              class="hello-form">
+            <input type="hidden"
+                   name="userId"
+                   value="@pendingRole.TargetUserId" />
+            <input type="hidden"
+                   name="roleId"
+                   value="@pendingRole.RoleId" />
+            <input type="hidden"
+                   name="action"
+                   value="@HelloAdminSecurity.GetActionSlug(pendingRole.Action)" />
+            <input type="hidden"
+                   name="challengeId"
+                   value="@pendingRole.ChallengeId" />
+            <input type="hidden" asp-for="Search" />
+            <input type="hidden" asp-for="Status" />
+
+            <label for="admin-role-verification-code">Verification code</label>
+            <input id="admin-role-verification-code"
+                   name="verificationCode"
+                   inputmode="numeric"
+                   autocomplete="one-time-code"
+                   required />
+            <button class="hello-button hello-button-danger" type="submit">
+                Confirm @UsersModel.GetRoleActionLabel(pendingRole.Action).ToLowerInvariant()
+            </button>
+        </form>
+    </section>
+}
+
 @if (Model.Users.Count == 0)
 {
     <section class="hello-card">
@@ -175,6 +224,64 @@ else
                             <dd>@user.CreatedAt.ToLocalTime()</dd>
                         </div>
                     </dl>
+
+                    <section>
+                        <h3>Roles</h3>
+                        @if (Model.UserRoles.TryGetValue(
+                                user.Id,
+                                out var assignedRoles)
+                            && assignedRoles.Count > 0)
+                        {
+                            <ul>
+                                @foreach (var role in assignedRoles)
+                                {
+                                    <li>
+                                        <span>@role.Name (@role.Id)</span>
+                                        <form method="post"
+                                              asp-page-handler="BeginRoleAction">
+                                            <input type="hidden"
+                                                   name="userId"
+                                                   value="@user.Id" />
+                                            <input type="hidden"
+                                                   name="roleId"
+                                                   value="@role.Id" />
+                                            <input type="hidden"
+                                                   name="action"
+                                                   value="remove" />
+                                            <input type="hidden" asp-for="Search" />
+                                            <input type="hidden" asp-for="Status" />
+                                            <button class="hello-button hello-button-danger"
+                                                    type="submit">
+                                                Remove
+                                            </button>
+                                        </form>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                        else
+                        {
+                            <p class="hello-muted">No roles assigned.</p>
+                        }
+
+                        <form method="post"
+                              asp-page-handler="BeginRoleAction"
+                              class="hello-form">
+                            <input type="hidden"
+                                   name="userId"
+                                   value="@user.Id" />
+                            <input type="hidden" name="action" value="assign" />
+                            <input type="hidden" asp-for="Search" />
+                            <input type="hidden" asp-for="Status" />
+                            <label>
+                                Role id
+                                <input name="roleId" required />
+                            </label>
+                            <button class="hello-button" type="submit">
+                                Assign role
+                            </button>
+                        </form>
+                    </section>
                 </div>
 
                 <div class="hello-danger-zone">

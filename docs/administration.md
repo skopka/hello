@@ -1,9 +1,11 @@
 # Administration
 
-`Skopka.Hello.Admin` supplies a bounded user-administration API and Razor page.
+`Skopka.Hello.Admin` supplies bounded user- and role-administration APIs and
+Razor pages.
 Identity still owns users, roles, optimistic concurrency, verification and
 session persistence. The module calls `IIdentityUserQueryService<TProfile>`,
-`IIdentityUserService<TProfile>` and `IIdentitySessionService<TProfile>`; it
+`IIdentityUserService<TProfile>`, `IIdentityRoleQueryService<TProfile>`,
+`IIdentityRoleService<TProfile>` and `IIdentitySessionService<TProfile>`; it
 does not inject a store, `DbContext` or `IQueryable`.
 
 ## Host composition
@@ -67,7 +69,8 @@ Authentication, authorization and step-up are three separate gates:
    claim.
 3. Every mutation requires an Identity-owned one-time-code step-up. The proof
    is bound to the actor, target user, action, optimistic version, block expiry,
-   reason fingerprint, delivery channel and confirmed-destination fingerprint.
+   reason or role-parameter fingerprints, delivery channel and
+   confirmed-destination fingerprint.
 
 The administrator must have a confirmed contact for the configured
 `SkopkaHello:Delivery:VerificationChannel`. The code is delivered out of band
@@ -96,7 +99,10 @@ The ready Server uses these independent policies and role settings:
 Use different role names when read, state-management and deletion privileges
 must be separated. Policy names must be distinct. The Razor route is composed
 from the Hello UI prefix plus the admin API prefix, so the defaults expose API
-under `/admin` and UI under `/hello/admin/users`.
+under `/admin` and UI under `/hello/admin/users` and `/hello/admin/roles`.
+Every role mutation, including membership assignment and removal, requires the
+highest `DeletePolicyName`. This prevents an administrator limited to ordinary
+user management from granting themselves a higher authorization role.
 
 Call `AddSkopkaHelloUi<TProfile, TProfileFactory>` before the admin registration
 when `RazorUiEnabled` is true. API-only hosts can set it to false; no admin
@@ -161,7 +167,35 @@ Block and delete revoke every target refresh session after the user-state
 mutation. Delete is the Skopka.Identity soft-delete operation. An
 administrator cannot block or delete their own account through this surface.
 
-Role CRUD exists in Skopka.Identity, but version `0.7.0` has no bounded public
-role-list query. Hello therefore does not bypass the public API to build a role
-listing page; role administration remains deferred until that query contract
-exists.
+`GET /admin/roles` accepts `search`, `pageSize`, `cursorCreatedAt` and
+`cursorId`. Identity caps the page at 100 and orders its continuation by
+`(CreatedAt, Id)`. `GET /admin/users/{userId}/roles` returns the target's
+current memberships.
+
+Role mutations use `POST /admin/roles/actions/{action}/challenge` followed by
+`POST /admin/roles/actions/{action}` with the exact same parameters plus the
+challenge id and delivered code. Supported slugs are `create`, `update`,
+`delete`, `assign` and `remove`. Create accepts `name`, optional `description`
+and optional `parentId`; update additionally requires `roleId` and
+`expectedVersion`; delete requires `roleId` and `expectedVersion`; membership
+actions require `roleId` and `targetUserId`.
+
+Roles named by `ReadRoleName`, `ManageRoleName` or `DeleteRoleName` cannot be
+renamed or deleted through this surface. An administrator also cannot remove
+their own protected role. Removing another administrator's last membership is
+an explicit high-privilege operation; if operators lock out every
+administrator, recover with the bootstrap command.
+
+Assign and remove revoke all target refresh sessions after the membership
+change. The Admin policies themselves always query current membership, so the
+change affects this module immediately. A host policy based only on JWT role
+claims can continue accepting an already-issued stateless access token until
+expiry; enable online session validation where immediate revocation is
+required.
+
+Identity emits the assign/remove security events. Hello emits post-commit
+`hello.admin.role.created`, `.updated` and `.deleted` events for role CRUD
+through `IHelloSecurityEventSink`, including actor and role ids but no role
+description or other free-form input. The ready Server copies them to its
+durable audit outbox. An audit sink failure is logged and cannot roll back or
+misreport an already committed Identity mutation.

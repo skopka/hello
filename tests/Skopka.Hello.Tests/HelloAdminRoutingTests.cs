@@ -35,6 +35,11 @@ public sealed class HelloAdminRoutingTests
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.Contains("/management/users", routes);
+        Assert.Contains("/management/roles", routes);
+        Assert.Contains("/management/users/{userId:guid}/roles", routes);
+        Assert.Contains(
+            "/management/roles/actions/{action}/challenge",
+            routes);
         Assert.Contains(
             "/management/users/{userId:guid}/actions/{action}/challenge",
             routes);
@@ -45,6 +50,7 @@ public sealed class HelloAdminRoutingTests
             .GetRequiredService<HelloAdminRoutePaths>();
         Assert.Equal("/identity/management", paths.RootPath);
         Assert.Equal("/identity/management/users", paths.UsersPath);
+        Assert.Equal("/identity/management/roles", paths.RolesPath);
     }
 
     [Fact]
@@ -140,9 +146,12 @@ public sealed class HelloAdminRoutingTests
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         Assert.DoesNotContain("/hello/admin/users", routes);
+        Assert.DoesNotContain("/hello/admin/roles", routes);
         Assert.DoesNotContain("/SkopkaHelloAdmin/Users", routes);
+        Assert.DoesNotContain("/SkopkaHelloAdmin/Roles", routes);
         Assert.DoesNotContain("/Users", routes);
         Assert.Contains("/admin/users", routes);
+        Assert.Contains("/admin/roles", routes);
     }
 
     [Fact]

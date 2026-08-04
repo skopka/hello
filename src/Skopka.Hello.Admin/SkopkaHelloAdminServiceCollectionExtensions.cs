@@ -29,6 +29,9 @@ public static class SkopkaHelloAdminServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.Admin.IHelloAdminApplication,
             Skopka.Hello.Admin.HelloAdminApplication<TProfile>>();
+        services.TryAddScoped<
+            Skopka.Hello.Admin.IHelloAdminRoleApplication,
+            Skopka.Hello.Admin.HelloAdminRoleApplication<TProfile>>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<
                 Skopka.Hello.IHelloStepUpRequirementProvider<TProfile>,

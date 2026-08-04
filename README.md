@@ -28,7 +28,7 @@ The current `0.5.0` vertical slice contains:
   confirmed-contact channel;
 - channel-aware account-message provider routing and optional bounded
   background SMTP email delivery;
-- short-lived JWT access tokens in JSON;
+- short-lived JWT access tokens in JSON with versioned signing-key overlap;
 - rotating refresh tokens in `Secure`, `HttpOnly` cookies;
 - antiforgery protection for refresh and cookie logout;
 - account and active-session endpoints protected by bearer authentication;
@@ -43,7 +43,10 @@ The current `0.5.0` vertical slice contains:
 - bounded administrative user search with host-controlled profile projection;
 - live role-backed read/manage/delete policies and OTP-protected block,
   unblock, soft-delete, restore and session-revocation actions;
-- a Razor user-administration page and explicit first-administrator bootstrap;
+- bounded role search plus OTP-protected role CRUD and user membership
+  administration;
+- Razor user/role administration pages and explicit first-administrator
+  bootstrap;
 - PostgreSQL persistence and packaged Skopka.Identity migrations;
 - persistent versioned account/client rate limiting with bounded pruning;
 - PostgreSQL-backed restart-safe account-message delivery and audit outbox in
@@ -54,7 +57,7 @@ The current `0.5.0` vertical slice contains:
 - a read-only Docker volume hook for host-provided custom CSS;
 - a ready-to-run server, sample host, Docker image and Testcontainers coverage.
 
-An OAuth/OIDC authorization server and role-list administration remain deferred.
+An OAuth/OIDC authorization server remains deferred.
 
 ## Packages
 
@@ -64,7 +67,7 @@ An OAuth/OIDC authorization server and role-list administration remain deferred.
 | `Skopka.Hello.Endpoints` | Minimal API routes, HTTP DTOs and ProblemDetails |
 | `Skopka.Hello.UI` | Razor registration/login/account/session pages and theming |
 | `Skopka.Hello.Oidc` | Maintained external OIDC provider adapter and validated browser flow |
-| `Skopka.Hello.Admin` | Policy-authorized user administration API/UI and safe profile projection |
+| `Skopka.Hello.Admin` | Policy-authorized user/role administration API/UI and safe profile projection |
 | `Skopka.Hello.Server` | Executable PostgreSQL host and Docker image |
 
 ## API
@@ -102,6 +105,10 @@ An OAuth/OIDC authorization server and role-list administration remain deferred.
 | `GET` | `/admin/users` | Bearer + current read-role membership |
 | `POST` | `/admin/users/{userId}/actions/{action}/challenge` | Bearer + current manage/delete-role membership |
 | `POST` | `/admin/users/{userId}/actions/{action}` | Bearer + current manage/delete-role membership + one-time code |
+| `GET` | `/admin/roles` | Bearer + current read-role membership |
+| `GET` | `/admin/users/{userId}/roles` | Bearer + current read-role membership |
+| `POST` | `/admin/roles/actions/{action}/challenge` | Bearer + current delete-role membership |
+| `POST` | `/admin/roles/actions/{action}` | Bearer + current delete-role membership + one-time code |
 
 When `SkopkaHelloOptions.SelfRegistrationEnabled` is false, password and
 external self-registration operations return the shared
@@ -142,6 +149,7 @@ With the default prefix, the ready server exposes:
 | `/hello/account/security` | Set/remove a password or delete the account after OTP step-up |
 | `/hello/account/external-logins` | Link and unlink external providers after configured-channel OTP step-up |
 | `/hello/admin/users` | Search and administer users after current role-policy authorization |
+| `/hello/admin/roles` | Search and administer roles after current role-policy authorization |
 
 Account and credential API and Razor handlers share
 `IHelloIdentityApplication<TProfile>`;

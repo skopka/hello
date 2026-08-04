@@ -18,11 +18,14 @@ public sealed class HelloAdminRoutePaths
         RootPath = helloRoutes.RootPath.TrimEnd('/')
             + options.ApiPathPrefix;
         UsersPath = RootPath + "/users";
+        RolesPath = RootPath + "/roles";
     }
 
     public string RootPath { get; }
 
     public string UsersPath { get; }
+
+    public string RolesPath { get; }
 
     private static bool Overlaps(string left, string right)
         => string.Equals(left, right, StringComparison.OrdinalIgnoreCase)

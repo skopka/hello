@@ -41,7 +41,7 @@ var identity = services
     .UsePostgreSql(connectionString)
     .UsePbkdf2PasswordHasher()
     .UseDataProtectionActionTokens()
-    .UseJwtSessions(signingKey, jwt =>
+    .UseJwtSessions(currentJwtKeyId, versionedJwtKeys, jwt =>
     {
         jwt.Issuer = issuer;
         jwt.Audience = audience;
@@ -289,7 +289,7 @@ operations that require atomic domain mutation plus audit still need to call
 ## Deferred modules
 
 The external-provider client is implemented with the maintained ASP.NET Core
-OpenID Connect handler. An OAuth/OIDC authorization server and role-list
-administration remain deferred. The project does not implement a home-grown
-authorization protocol or bypass Identity stores to compensate for a missing
-bounded role-query contract.
+OpenID Connect handler. An OAuth/OIDC authorization server remains deferred.
+The project does not implement a home-grown authorization protocol. Role
+administration uses Identity's bounded query and application services rather
+than bypassing them with direct store access.

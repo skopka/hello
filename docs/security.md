@@ -34,6 +34,9 @@ The default bearer mode is stateless until JWT expiry. Set
 `SkopkaHello:Jwt:ValidateSessionOnEveryRequest=true` when every request must
 check the current persisted session and security stamp. This adds a database
 lookup. Role and user changes otherwise affect newly issued access tokens only.
+JWTs carry the configured signing-key id in `kid`; validators accept the
+current and explicitly retained overlapping keys. Keep an old key until no
+unexpired token can reference it.
 
 The Razor UI uses a separate cookie authentication scheme. Its encrypted,
 `HttpOnly` authentication ticket stores the short-lived access token, while the
@@ -277,6 +280,14 @@ the target's refresh sessions; deployments requiring already-issued access
 tokens to stop immediately must retain online session validation on protected
 resources.
 
+Role listing uses Identity's bounded query contract. Role CRUD and membership
+changes require the highest configured admin policy and a separate bound OTP.
+Configured policy roles cannot be renamed or deleted, and an actor cannot
+remove their own protected membership. Assign/remove revoke the target's
+sessions; the Admin policy handler also reads membership live instead of
+trusting a stale role claim. Role CRUD produces Hello post-commit security
+events with actor and resource ids for the configured audit sink.
+
 The explicit `--bootstrap-admin <user-id>` operator command assigns only the
 configured roles to an existing user and revokes that user's sessions. Do not
 replace it with an automatic email lookup, checked-in seed user or startup
@@ -286,7 +297,8 @@ assignment from untrusted configuration.
 
 Keep these values outside source control:
 
-- JWT signing key, at least 32 random bytes and Base64 encoded for configuration;
+- JWT signing keys, at least 32 random bytes each, versioned and Base64 encoded
+  for configuration;
 - rate-limit HMAC keys, at least 32 random bytes per version;
 - verification-code HMAC keys, at least 32 random bytes per version;
 - PostgreSQL credentials;
@@ -295,9 +307,9 @@ Keep these values outside source control:
 - external OIDC client secrets;
 - any future password pepper.
 
-Do not reuse keys between purposes. Multiple replicas must share the JWT key and
-Data Protection key ring, and must overlap rate-limit and verification key
-versions during rotation. Configure
+Do not reuse keys between purposes. Multiple replicas must share the current
+and overlapping JWT, rate-limit and verification key versions plus the Data
+Protection key ring during rotation. Configure
 `SkopkaHello:DataProtection:KeyPath` to a protected persistent location.
 
 ## Logging and responses

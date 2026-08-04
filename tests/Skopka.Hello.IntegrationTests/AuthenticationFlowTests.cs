@@ -186,6 +186,114 @@ public sealed class AuthenticationFlowTests
             });
         Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
 
+        using var beginCreateRole = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/admin/roles/actions/create/challenge",
+            adminLogin.AccessToken,
+            new
+            {
+                name = "Support Operators",
+                description = "Integration role",
+            });
+        Assert.Equal(HttpStatusCode.OK, beginCreateRole.StatusCode);
+        using var beginCreateRoleJson = JsonDocument.Parse(
+            await beginCreateRole.Content.ReadAsStringAsync());
+        var createRoleChallengeId = beginCreateRoleJson.RootElement
+            .GetProperty("challengeId")
+            .GetGuid();
+        var createRoleCode = Assert.IsType<string>(
+            app.Messages.Last(message => message.Kind
+                    == HelloAccountMessageKind.AdminActionVerification)
+                .VerificationCode);
+
+        using var createRole = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/admin/roles/actions/create",
+            adminLogin.AccessToken,
+            new
+            {
+                challengeId = createRoleChallengeId,
+                verificationCode = createRoleCode,
+                name = "Support Operators",
+                description = "Integration role",
+            });
+        Assert.Equal(HttpStatusCode.OK, createRole.StatusCode);
+        using var createRoleJson = JsonDocument.Parse(
+            await createRole.Content.ReadAsStringAsync());
+        var createdRoleId = createRoleJson.RootElement
+            .GetProperty("role")
+            .GetProperty("id")
+            .GetGuid();
+
+        using var roleQuery = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/admin/roles?search=support");
+        roleQuery.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                adminLogin.AccessToken);
+        using var queriedRoles = await client.SendAsync(roleQuery);
+        Assert.Equal(HttpStatusCode.OK, queriedRoles.StatusCode);
+        using var queriedRolesJson = JsonDocument.Parse(
+            await queriedRoles.Content.ReadAsStringAsync());
+        var queriedRole = Assert.Single(
+            queriedRolesJson.RootElement
+                .GetProperty("items")
+                .EnumerateArray());
+        Assert.Equal(createdRoleId, queriedRole.GetProperty("id").GetGuid());
+
+        using var beginAssignRole = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/admin/roles/actions/assign/challenge",
+            adminLogin.AccessToken,
+            new
+            {
+                roleId = createdRoleId,
+                targetUserId = target.Id,
+            });
+        Assert.Equal(HttpStatusCode.OK, beginAssignRole.StatusCode);
+        using var beginAssignRoleJson = JsonDocument.Parse(
+            await beginAssignRole.Content.ReadAsStringAsync());
+        var assignRoleChallengeId = beginAssignRoleJson.RootElement
+            .GetProperty("challengeId")
+            .GetGuid();
+        var assignRoleCode = Assert.IsType<string>(
+            app.Messages.Last(message => message.Kind
+                    == HelloAccountMessageKind.AdminActionVerification)
+                .VerificationCode);
+
+        using var assignRole = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/admin/roles/actions/assign",
+            adminLogin.AccessToken,
+            new
+            {
+                challengeId = assignRoleChallengeId,
+                verificationCode = assignRoleCode,
+                roleId = createdRoleId,
+                targetUserId = target.Id,
+            });
+        Assert.Equal(HttpStatusCode.OK, assignRole.StatusCode);
+
+        using var userRolesRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/admin/users/{target.Id:D}/roles");
+        userRolesRequest.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                adminLogin.AccessToken);
+        using var userRoles = await client.SendAsync(userRolesRequest);
+        Assert.Equal(HttpStatusCode.OK, userRoles.StatusCode);
+        using var userRolesJson = JsonDocument.Parse(
+            await userRoles.Content.ReadAsStringAsync());
+        Assert.Contains(
+            userRolesJson.RootElement.EnumerateArray(),
+            role => role.GetProperty("id").GetGuid() == createdRoleId);
+
         using var targetMe = new HttpRequestMessage(
             HttpMethod.Get,
             "/account/me");
@@ -2212,9 +2320,17 @@ public sealed class AuthenticationFlowTests
                     options.Iterations = 1_000;
                     options.MaximumAcceptedIterations = 1_000;
                 })
-                .UseDataProtectionActionTokens()
-                .UseJwtSessions(
-                    RandomNumberGenerator.GetBytes(32),
+                .UseDataProtectionActionTokens();
+            var jwtKeys = new Dictionary<string, byte[]>
+            {
+                ["v1"] = RandomNumberGenerator.GetBytes(32),
+                ["v2"] = RandomNumberGenerator.GetBytes(32),
+            };
+            try
+            {
+                identity.UseJwtSessions(
+                    "v2",
+                    jwtKeys,
                     options =>
                     {
                         options.Issuer =
@@ -2222,6 +2338,15 @@ public sealed class AuthenticationFlowTests
                         options.Audience =
                             "skopka-hello-integration";
                     });
+            }
+            finally
+            {
+                foreach (var key in jwtKeys.Values)
+                {
+                    CryptographicOperations.ZeroMemory(key);
+                }
+            }
+
             builder.Services.AddSkopkaHelloDelivery(options =>
                 options.VerificationChannel = verificationChannel);
             var rateLimitKeys = new Dictionary<string, byte[]>

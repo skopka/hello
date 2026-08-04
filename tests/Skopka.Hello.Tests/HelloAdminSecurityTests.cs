@@ -88,6 +88,21 @@ public sealed class HelloAdminSecurityTests
     [InlineData(
         HelloAdminSecurity.RevokeSessionsAction,
         "hello:admin.user.sessions.revoke")]
+    [InlineData(
+        HelloAdminSecurity.CreateRoleAction,
+        "hello:admin.role.create")]
+    [InlineData(
+        HelloAdminSecurity.UpdateRoleAction,
+        "hello:admin.role.update")]
+    [InlineData(
+        HelloAdminSecurity.DeleteRoleAction,
+        "hello:admin.role.delete")]
+    [InlineData(
+        HelloAdminSecurity.AssignRoleAction,
+        "hello:admin.user.role.assign")]
+    [InlineData(
+        HelloAdminSecurity.RemoveRoleAction,
+        "hello:admin.user.role.remove")]
     public async Task AdminActionsRequireOneTimeCode(
         string action,
         string purpose)
@@ -119,5 +134,57 @@ public sealed class HelloAdminSecurityTests
 
         Assert.NotNull(error);
         Assert.Equal("identity.validation.failed", error.Code);
+    }
+
+    [Fact]
+    public void RoleBindingCoversActorTargetsActionAndRoleParameters()
+    {
+        var actorId = Guid.NewGuid();
+        var roleId = Guid.NewGuid();
+        var targetUserId = Guid.NewGuid();
+        var parameters = new HelloAdminRoleActionParameters(
+            ExpectedVersion: 7,
+            Name: "Operators",
+            Description: "Limited support access",
+            ParentId: Guid.NewGuid());
+
+        var binding = HelloAdminSecurity.CreateBinding(
+            actorId,
+            HelloAdminRoleAction.Update,
+            roleId,
+            targetUserId: null,
+            parameters,
+            HelloDeliveryChannel.Email,
+            "admin@example.test");
+
+        Assert.Equal(64, binding.Length);
+        Assert.NotEqual(
+            binding,
+            HelloAdminSecurity.CreateBinding(
+                actorId,
+                HelloAdminRoleAction.Update,
+                roleId,
+                targetUserId: null,
+                parameters with { Name = "Administrators" },
+                HelloDeliveryChannel.Email,
+                "admin@example.test"));
+        Assert.NotEqual(
+            binding,
+            HelloAdminSecurity.CreateBinding(
+                actorId,
+                HelloAdminRoleAction.Assign,
+                roleId,
+                targetUserId,
+                new HelloAdminRoleActionParameters(),
+                HelloDeliveryChannel.Email,
+                "admin@example.test"));
+        Assert.DoesNotContain(
+            "Operators",
+            binding,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "admin@example.test",
+            binding,
+            StringComparison.OrdinalIgnoreCase);
     }
 }

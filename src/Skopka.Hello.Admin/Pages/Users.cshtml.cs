@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Hello.UI;
 using Skopka.Identity.Errors;
+using Skopka.Identity.Roles;
 using Skopka.Identity.Users.Queries;
 
 namespace Skopka.Hello.Admin.Pages;
@@ -12,6 +13,7 @@ namespace Skopka.Hello.Admin.Pages;
 [Authorize(Policy = HelloUiDefaults.AuthorizationPolicy)]
 public sealed class UsersModel(
     IHelloAdminApplication application,
+    IHelloAdminRoleApplication roleApplication,
     IHelloRequestContext requestContext,
     IAuthorizationService authorization,
     SkopkaHelloAdminOptions options)
@@ -20,6 +22,10 @@ public sealed class UsersModel(
     public IReadOnlyList<HelloAdminUser> Users { get; private set; } = [];
 
     public IdentityUserCursor? NextCursor { get; private set; }
+
+    public IReadOnlyDictionary<Guid, IReadOnlyList<IdentityRole>> UserRoles
+    { get; private set; } =
+        new Dictionary<Guid, IReadOnlyList<IdentityRole>>();
 
     [BindProperty(SupportsGet = true)]
     public string? Search { get; set; }
@@ -35,6 +41,8 @@ public sealed class UsersModel(
     public Guid? CursorId { get; set; }
 
     public PendingAdminAction? PendingAction { get; private set; }
+
+    public PendingAdminRoleAction? PendingRoleAction { get; private set; }
 
     [TempData]
     public string? StatusMessage { get; set; }
@@ -183,10 +191,168 @@ public sealed class UsersModel(
                 });
         }
 
+        if (IsCommittedSessionCleanupFailure(result.Errors))
+        {
+            StatusMessage = string.Join(
+                " ",
+                result.Errors.Select(error => error.Message));
+            return RedirectToPage(
+                "/SkopkaHelloAdmin/Users",
+                new
+                {
+                    Search,
+                    Status,
+                });
+        }
+
         AddErrors(result.Errors);
         PendingAction = new PendingAdminAction(
             userId,
             parsedAction,
+            parameters,
+            challengeId,
+            ExpiresAt: null,
+            DeliveryChannel: null);
+        await LoadUsersAsync(accessToken, cancellationToken);
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostBeginRoleActionAsync(
+        Guid userId,
+        Guid roleId,
+        string action,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders();
+        if (!HelloAdminSecurity.TryParseRoleActionSlug(
+                action,
+                out var parsedAction)
+            || parsedAction is not HelloAdminRoleAction.Assign
+                and not HelloAdminRoleAction.Remove)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                "The role membership action is invalid.");
+            return await ReloadPageAsync(cancellationToken);
+        }
+
+        if (!await IsAuthorizedAsync(options.ReadPolicyName)
+            || !await IsAuthorizedAsync(options.DeletePolicyName))
+        {
+            return Forbid();
+        }
+
+        var accessToken = await ReadAccessTokenAsync();
+        if (accessToken is null)
+        {
+            return Challenge(HelloUiDefaults.AuthenticationScheme);
+        }
+
+        var parameters = new HelloAdminRoleActionParameters();
+        var result = await roleApplication.BeginRoleActionAsync(
+            new HelloAdminBeginRoleActionCommand(
+                accessToken,
+                parsedAction,
+                roleId,
+                userId,
+                parameters,
+                requestContext.CreateClientKey(HttpContext)),
+            cancellationToken);
+        if (result.IsSuccess)
+        {
+            PendingRoleAction = new PendingAdminRoleAction(
+                parsedAction,
+                roleId,
+                userId,
+                parameters,
+                result.Value.ChallengeId,
+                result.Value.ExpiresAt,
+                result.Value.DeliveryChannel);
+        }
+        else
+        {
+            AddErrors(result.Errors);
+        }
+
+        await LoadUsersAsync(accessToken, cancellationToken);
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostCompleteRoleActionAsync(
+        Guid userId,
+        Guid roleId,
+        string action,
+        Guid challengeId,
+        string verificationCode,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders();
+        if (!HelloAdminSecurity.TryParseRoleActionSlug(
+                action,
+                out var parsedAction)
+            || parsedAction is not HelloAdminRoleAction.Assign
+                and not HelloAdminRoleAction.Remove)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                "The role membership action is invalid.");
+            return await ReloadPageAsync(cancellationToken);
+        }
+
+        if (!await IsAuthorizedAsync(options.ReadPolicyName)
+            || !await IsAuthorizedAsync(options.DeletePolicyName))
+        {
+            return Forbid();
+        }
+
+        var accessToken = await ReadAccessTokenAsync();
+        if (accessToken is null)
+        {
+            return Challenge(HelloUiDefaults.AuthenticationScheme);
+        }
+
+        var parameters = new HelloAdminRoleActionParameters();
+        var result = await roleApplication.CompleteRoleActionAsync(
+            new HelloAdminCompleteRoleActionCommand(
+                accessToken,
+                parsedAction,
+                roleId,
+                userId,
+                parameters,
+                challengeId,
+                verificationCode),
+            cancellationToken);
+        if (result.IsSuccess)
+        {
+            StatusMessage = $"{GetRoleActionLabel(parsedAction)} completed.";
+            return RedirectToPage(
+                "/SkopkaHelloAdmin/Users",
+                new
+                {
+                    Search,
+                    Status,
+                });
+        }
+
+        if (IsCommittedSessionCleanupFailure(result.Errors))
+        {
+            StatusMessage = string.Join(
+                " ",
+                result.Errors.Select(error => error.Message));
+            return RedirectToPage(
+                "/SkopkaHelloAdmin/Users",
+                new
+                {
+                    Search,
+                    Status,
+                });
+        }
+
+        AddErrors(result.Errors);
+        PendingRoleAction = new PendingAdminRoleAction(
+            parsedAction,
+            roleId,
+            userId,
             parameters,
             challengeId,
             ExpiresAt: null,
@@ -206,6 +372,14 @@ public sealed class UsersModel(
             HelloAdminUserAction.Delete => "Delete user",
             HelloAdminUserAction.Restore => "Restore user",
             HelloAdminUserAction.RevokeSessions => "Revoke sessions",
+            _ => throw new ArgumentOutOfRangeException(nameof(action)),
+        };
+
+    public static string GetRoleActionLabel(HelloAdminRoleAction action)
+        => action switch
+        {
+            HelloAdminRoleAction.Assign => "Assign role",
+            HelloAdminRoleAction.Remove => "Remove role",
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
 
@@ -247,6 +421,32 @@ public sealed class UsersModel(
         {
             Users = result.Value.Items;
             NextCursor = result.Value.NextCursor;
+            var rolesByUser = new Dictionary<
+                Guid,
+                IReadOnlyList<IdentityRole>>();
+            foreach (var user in Users)
+            {
+                if (user.DeletedAt is not null)
+                {
+                    rolesByUser[user.Id] = [];
+                    continue;
+                }
+
+                var assigned = await roleApplication.GetUserRolesAsync(
+                    new HelloAdminGetUserRolesCommand(
+                        accessToken,
+                        user.Id),
+                    cancellationToken);
+                if (!assigned.IsSuccess)
+                {
+                    AddErrors(assigned.Errors);
+                    return;
+                }
+
+                rolesByUser[user.Id] = assigned.Value;
+            }
+
+            UserRoles = rolesByUser;
             return;
         }
 
@@ -294,6 +494,13 @@ public sealed class UsersModel(
             ModelState.AddModelError(string.Empty, error.Message);
         }
     }
+
+    private static bool IsCommittedSessionCleanupFailure(
+        IReadOnlyCollection<Error> errors)
+        => errors.Any(error => string.Equals(
+            error.Code,
+            HelloAdminErrorCodes.SessionCleanupRequired,
+            StringComparison.Ordinal));
 
     private void ApplySensitiveResponseHeaders()
     {

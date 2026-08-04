@@ -23,13 +23,19 @@ internal sealed class HelloAdminPageRouteConvention(
     private const string UsersPage =
         "/Pages/SkopkaHelloAdmin/Users.cshtml";
 
+    private const string RolesPage =
+        "/Pages/SkopkaHelloAdmin/Roles.cshtml";
+
     public void Apply(PageRouteModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
-        if (!string.Equals(
-                model.RelativePath,
-                UsersPage,
-                StringComparison.Ordinal))
+        var route = model.RelativePath switch
+        {
+            UsersPage => routes.UsersPath,
+            RolesPage => routes.RolesPath,
+            _ => null,
+        };
+        if (route is null)
         {
             return;
         }
@@ -40,7 +46,7 @@ internal sealed class HelloAdminPageRouteConvention(
             {
                 AttributeRouteModel = new AttributeRouteModel
                 {
-                    Template = routes.UsersPath.TrimStart('/'),
+                    Template = route.TrimStart('/'),
                 },
             });
     }

@@ -12,11 +12,6 @@ var connectionString = configuration.GetConnectionString(
         "Identity")
     ?? throw new InvalidOperationException(
         "ConnectionStrings:Identity is required.");
-var encodedKey = configuration[
-        "SkopkaHello:Jwt:SigningKey"]
-    ?? throw new InvalidOperationException(
-        "SkopkaHello:Jwt:SigningKey is required.");
-var signingKey = Convert.FromBase64String(encodedKey);
 var secureCookies = configuration.GetValue(
     "SkopkaHello:Cookies:Secure",
     true);
@@ -51,14 +46,20 @@ var identity = builder.Services
     })
     .UsePostgreSql(connectionString)
     .UsePbkdf2PasswordHasher()
-    .UseDataProtectionActionTokens()
-    .UseJwtSessions(
-        signingKey,
+    .UseDataProtectionActionTokens();
+
+using (var jwtKeys = VersionedSecretKeySet.Load(
+    configuration.GetSection("SkopkaHello:Jwt")))
+{
+    identity.UseJwtSessions(
+        jwtKeys.CurrentVersion,
+        jwtKeys.Keys,
         options =>
         {
             options.Issuer = "https://sample.skopka.local";
             options.Audience = "skopka-hello-sample";
         });
+}
 
 using (var rateLimitKeys = VersionedSecretKeySet.Load(
     configuration.GetSection(

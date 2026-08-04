@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Hello.Endpoints;
 using Skopka.Identity.Errors;
+using Skopka.Identity.Roles.Queries;
 using Skopka.Identity.Users;
 using Skopka.Identity.Users.Queries;
 
@@ -22,10 +23,12 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
         var options = endpoints.ServiceProvider
             .GetRequiredService<SkopkaHelloAdminOptions>();
         var userQueryPath = options.ApiPathPrefix + "/users";
-        if (HasRouteCollision(endpoints, userQueryPath))
+        var roleQueryPath = options.ApiPathPrefix + "/roles";
+        if (HasRouteCollision(endpoints, userQueryPath)
+            || HasRouteCollision(endpoints, roleQueryPath))
         {
             throw new InvalidOperationException(
-                "The admin API user-query route collides with an existing endpoint.");
+                "An admin API query route collides with an existing endpoint.");
         }
 
         var group = endpoints
@@ -43,6 +46,20 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
                 "/users/{userId:guid}/actions/{action}",
                 CompleteActionAsync<TProfile>)
             .WithName("SkopkaHelloAdminCompleteUserAction");
+        group.MapGet("/roles", QueryRolesAsync<TProfile>)
+            .WithName("SkopkaHelloAdminQueryRoles");
+        group.MapGet(
+                "/users/{userId:guid}/roles",
+                GetUserRolesAsync<TProfile>)
+            .WithName("SkopkaHelloAdminGetUserRoles");
+        group.MapPost(
+                "/roles/actions/{action}/challenge",
+                BeginRoleActionAsync<TProfile>)
+            .WithName("SkopkaHelloAdminBeginRoleAction");
+        group.MapPost(
+                "/roles/actions/{action}",
+                CompleteRoleActionAsync<TProfile>)
+            .WithName("SkopkaHelloAdminCompleteRoleAction");
 
         return endpoints;
     }
@@ -169,6 +186,205 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
                     result.Value.ChallengeId,
                     result.Value.ExpiresAt,
                     result.Value.DeliveryChannel.ToString()))
+            : OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+    }
+
+    private static async Task<IResult> QueryRolesAsync<TProfile>(
+        [FromQuery] string? search,
+        [FromQuery] int? pageSize,
+        [FromQuery] DateTimeOffset? cursorCreatedAt,
+        [FromQuery] Guid? cursorId,
+        IHelloAdminRoleApplication application,
+        IAuthorizationService authorization,
+        SkopkaHelloAdminOptions options,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        if (!await IsAuthorizedAsync(
+                authorization,
+                httpContext,
+                options.ReadPolicyName))
+        {
+            return TypedResults.Forbid();
+        }
+
+        if ((cursorCreatedAt is null) != (cursorId is null))
+        {
+            return Invalid(
+                httpContext,
+                "cursor",
+                "CursorCreatedAt and CursorId must be supplied together.");
+        }
+
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.QueryRolesAsync(
+            new HelloAdminQueryRolesCommand(
+                accessToken,
+                search,
+                pageSize ?? IdentityRoleQueryLimits.DefaultPageSize,
+                cursorCreatedAt is not null
+                    ? new IdentityRoleCursor(
+                        cursorCreatedAt.Value,
+                        cursorId!.Value)
+                    : null),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Ok(result.Value)
+            : OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+    }
+
+    private static async Task<IResult> GetUserRolesAsync<TProfile>(
+        Guid userId,
+        IHelloAdminRoleApplication application,
+        IAuthorizationService authorization,
+        SkopkaHelloAdminOptions options,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        if (!await IsAuthorizedAsync(
+                authorization,
+                httpContext,
+                options.ReadPolicyName))
+        {
+            return TypedResults.Forbid();
+        }
+
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.GetUserRolesAsync(
+            new HelloAdminGetUserRolesCommand(accessToken, userId),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Ok(result.Value)
+            : OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+    }
+
+    private static async Task<IResult> BeginRoleActionAsync<TProfile>(
+        string action,
+        HelloAdminBeginRoleActionRequest request,
+        IHelloAdminRoleApplication application,
+        IHelloRequestContext requestContext,
+        IAuthorizationService authorization,
+        SkopkaHelloAdminOptions options,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        if (!HelloAdminSecurity.TryParseRoleActionSlug(
+                action,
+                out var parsedAction))
+        {
+            return Invalid(
+                httpContext,
+                "action",
+                "The role action is invalid.");
+        }
+
+        if (!await IsAuthorizedAsync(
+                authorization,
+                httpContext,
+                options.DeletePolicyName))
+        {
+            return TypedResults.Forbid();
+        }
+
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.BeginRoleActionAsync(
+            new HelloAdminBeginRoleActionCommand(
+                accessToken,
+                parsedAction,
+                request.RoleId,
+                request.TargetUserId,
+                new HelloAdminRoleActionParameters(
+                    request.ExpectedVersion,
+                    request.Name,
+                    request.Description,
+                    request.ParentId),
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Ok(
+                new StepUpChallengeResponse(
+                    result.Value.ChallengeId,
+                    result.Value.ExpiresAt,
+                    result.Value.DeliveryChannel.ToString()))
+            : OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+    }
+
+    private static async Task<IResult> CompleteRoleActionAsync<TProfile>(
+        string action,
+        HelloAdminCompleteRoleActionRequest request,
+        IHelloAdminRoleApplication application,
+        IAuthorizationService authorization,
+        SkopkaHelloAdminOptions options,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        if (!HelloAdminSecurity.TryParseRoleActionSlug(
+                action,
+                out var parsedAction))
+        {
+            return Invalid(
+                httpContext,
+                "action",
+                "The role action is invalid.");
+        }
+
+        if (!await IsAuthorizedAsync(
+                authorization,
+                httpContext,
+                options.DeletePolicyName))
+        {
+            return TypedResults.Forbid();
+        }
+
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.CompleteRoleActionAsync(
+            new HelloAdminCompleteRoleActionCommand(
+                accessToken,
+                parsedAction,
+                request.RoleId,
+                request.TargetUserId,
+                new HelloAdminRoleActionParameters(
+                    request.ExpectedVersion,
+                    request.Name,
+                    request.Description,
+                    request.ParentId),
+                request.ChallengeId,
+                request.VerificationCode),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Ok(result.Value)
             : OperationResultProblemMapper.ToResult(
                 result,
                 httpContext);

@@ -28,15 +28,16 @@ RCL static asset; the mounted custom stylesheet is linked after it.
 The admin API prefix is configured by
 `SkopkaHello:Admin:ApiPathPrefix` (`/admin` by default). Its Razor user page is
 served under the configured Hello UI prefix plus that value, for example
-`/hello/admin/users`. Read, manage and delete policy/role names are configured
-under the same section. Provision the first administrator only with the
+`/hello/admin/users`; the role page is `/hello/admin/roles`. Read, manage and
+delete policy/role names are configured under the same section. Provision the
+first administrator only with the
 explicit command documented in [administration](administration.md); the normal
 web-server startup never seeds a privileged user.
 
 ## Configuration
 
-Inject the PostgreSQL connection string, Base64 JWT signing key and independent
-versioned rate-limit and verification-code HMAC keys from a secret manager. Do
+Inject the PostgreSQL connection string plus independent versioned JWT,
+rate-limit and verification-code HMAC keys from a secret manager. Do
 not bake `.env`, database passwords or signing material into the image. Use a
 protected persistent volume for Data Protection keys.
 
@@ -261,6 +262,19 @@ Every replica must share:
 - the same current and overlapping historical rate-limit key versions;
 - the same current and overlapping historical verification key versions;
 - identical enabled OIDC provider ids, authorities, clients and scopes.
+
+To rotate a JWT signing key, deploy the new key as another entry under
+`SkopkaHello:Jwt:Keys`, set `CurrentVersion` to its id and retain every key
+that may have signed an unexpired access token. Identity writes the current id
+to the JWT `kid` header and validates tokens against the matching configured
+key. Remove the previous key only after the longest access-token lifetime plus
+clock skew has elapsed since the last replica using it stopped issuing tokens.
+
+```text
+SkopkaHello__Jwt__CurrentVersion=v2
+SkopkaHello__Jwt__Keys__v1=<previous Base64 key>
+SkopkaHello__Jwt__Keys__v2=<new Base64 key>
+```
 
 The default OIDC replay guard uses the configured Identity rate limiter with a
 fixed 30-minute one-use bucket. The ready Server therefore gets a shared atomic

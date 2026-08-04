@@ -5,7 +5,7 @@
 - .NET SDK 10.0.101 or a compatible patch;
 - PostgreSQL;
 - Docker Engine for integration tests and the provided compose stack;
-- published Skopka.Identity `0.7.0` packages.
+- published Skopka.Identity `0.8.0` packages.
 
 ## Configure the server
 
@@ -48,7 +48,7 @@ function New-DevelopmentKey {
   }
 }
 
-dotnet user-secrets set "SkopkaHello:Jwt:SigningKey" `
+dotnet user-secrets set "SkopkaHello:Jwt:Keys:v1" `
   (New-DevelopmentKey) `
   --project $serverProject
 dotnet user-secrets set "SkopkaHello:RateLimiting:Keys:v1" `
@@ -69,7 +69,7 @@ Equivalent required configuration for another environment is:
 
 ```text
 ConnectionStrings__Identity=Host=localhost;Port=5432;Database=skopka_hello;Username=skopka;Password=...;GSS Encryption Mode=Disable
-SkopkaHello__Jwt__SigningKey=<Base64 encoded 32+ random bytes>
+SkopkaHello__Jwt__Keys__v1=<Base64 encoded 32+ random bytes>
 SkopkaHello__RateLimiting__Keys__v1=<different Base64 encoded 32+ random bytes>
 SkopkaHello__Verification__Keys__v1=<third Base64 encoded 32+ random bytes>
 SkopkaHello__PublicOrigin=https://localhost:8443
@@ -81,6 +81,7 @@ Optional settings:
 SkopkaHello__Jwt__Issuer=https://localhost:8443
 SkopkaHello__Jwt__Audience=skopka-hello-api
 SkopkaHello__Jwt__ValidateSessionOnEveryRequest=false
+SkopkaHello__Jwt__CurrentVersion=v1
 SkopkaHello__SelfRegistration__Enabled=true
 SkopkaHello__Ui__PathPrefix=/hello
 SkopkaHello__Admin__ApiPathPrefix=/admin
@@ -122,10 +123,10 @@ requires an application restart. Prefixes inside the reserved `/auth`,
 `/signin-skopka-oidc` namespaces are rejected at startup to prevent ambiguous
 routes.
 
-The user-administration API uses `Admin:ApiPathPrefix`; its Razor page is
-composed under `{UiPathPrefix}{AdminApiPathPrefix}/users`. Configure current
-read/manage/delete role names and bootstrap the first administrator as
-described in [administration](administration.md).
+The user/role administration API uses `Admin:ApiPathPrefix`; its Razor pages
+are composed under `{UiPathPrefix}{AdminApiPathPrefix}/users` and `/roles`.
+Configure current read/manage/delete role names and bootstrap the first
+administrator as described in [administration](administration.md).
 
 ## Configure an external OIDC provider
 

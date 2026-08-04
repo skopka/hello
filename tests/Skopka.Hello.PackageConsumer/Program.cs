@@ -13,6 +13,15 @@ Type[] packageSurfaces =
     typeof(SkopkaHelloUiOptions),
 ];
 
+if (typeof(IHelloAdminRoleApplication).Assembly
+        != typeof(SkopkaHelloAdminOptions).Assembly
+    || string.IsNullOrWhiteSpace(
+        HelloAdminSecurityEventTypes.RoleCreated))
+{
+    throw new InvalidOperationException(
+        "The role-administration package surface could not be loaded.");
+}
+
 var assemblies = packageSurfaces
     .Select(type => type.Assembly.GetName())
     .Select(name => $"{name.Name} {name.Version}")

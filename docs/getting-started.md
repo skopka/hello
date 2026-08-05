@@ -4,26 +4,26 @@
 
 - .NET SDK 10.0.101 or a compatible patch;
 - PostgreSQL;
-- Docker Engine for integration tests and the provided compose stack;
-- published Skopka.Identity `0.8.0` packages.
+- Docker Engine for integration tests;
+- published Skopka.Identity `0.9.0` packages.
 
 ## Configure the server
 
-The checked-in development configuration connects to the local PostgreSQL
-container at `127.0.0.1:5432` and uses `https://localhost:8443` as both its
-public origin and JWT issuer. Start only the database from the repository root:
+The checked-in development configuration connects to an independently managed
+PostgreSQL instance at `127.0.0.1:5432` and uses
+`https://localhost:8443` as both its public origin and JWT issuer. It expects
+database `skopka_hello`, user `skopka` and the localhost-only development
+password `skopka-local`. Apply migrations from the repository root before the
+first server start:
 
 ```powershell
-docker compose -f .\deploy\docker-compose.postgres.yml up -d --wait
 dotnet run --project .\src\Skopka.Hello.Server -- --migrate
 ```
 
-The database port is bound only to `127.0.0.1`. The known `skopka-local`
-password is strictly a localhost development default. If `POSTGRES_DB`,
-`POSTGRES_USER`, `POSTGRES_PASSWORD` or `POSTGRES_PORT` is overridden, update
-`ConnectionStrings__Identity` to match. PostgreSQL initialization settings are
-applied only when its named volume is first created; changing them later does
-not rewrite the existing database or role password.
+The repository does not create, start or stop the local PostgreSQL instance.
+If its database, user, password, host or port differs, override
+`ConnectionStrings__Identity` to match. The known `skopka-local` password is
+strictly a localhost development default.
 
 The development file also contains three distinct public test-only keys so a
 fresh clone can start without additional secret setup. These values provide no
@@ -57,12 +57,6 @@ dotnet user-secrets set "SkopkaHello:RateLimiting:Keys:v1" `
 dotnet user-secrets set "SkopkaHello:Verification:Keys:v1" `
   (New-DevelopmentKey) `
   --project $serverProject
-```
-
-Stop the database without deleting its named volume:
-
-```powershell
-docker compose -f .\deploy\docker-compose.postgres.yml down
 ```
 
 Equivalent required configuration for another environment is:
@@ -282,28 +276,6 @@ The plain HTTP launch profile explicitly disables secure cookies for local
 testing and can be opened at `http://localhost:8080/hello`. It explicitly keeps
 the example OIDC provider disabled. Never copy this override into production or
 weaken OIDC correlation cookies to make an external provider work over HTTP.
-
-Or create `.env` from `.env.example` and run:
-
-```powershell
-docker compose -f .\deploy\docker-compose.yml up --build
-```
-
-The local compose file first runs the one-shot `migrate` service and starts the
-web service only after migrations succeed. It explicitly uses non-secure,
-non-`__Host-` cookie names because it publishes plain HTTP on localhost. Keep
-the production default (`SkopkaHello:Cookies:Secure=true`) behind TLS.
-
-Compose also mounts [deploy/customization/custom.css](../deploy/customization/custom.css)
-read-only. The server publishes it at
-`/_content/Skopka.Hello.UI/custom.css`; changes to the mounted file are visible
-without rebuilding the image.
-
-The compose UI is available at `http://localhost:8080/hello`.
-The checked-in compose stack is intended for password-flow development;
-external providers remain disabled because the published endpoint is plain
-HTTP. Put the container behind a trusted TLS proxy and configure the HTTPS
-`PublicOrigin` before enabling OIDC.
 
 ## Register and authenticate
 

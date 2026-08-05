@@ -149,7 +149,7 @@ effect on every API request immediately.
 
 OIDC correlation and nonce cookies are always `Secure` and `SameSite=None` as
 required for the cross-site protocol response. Therefore external providers
-are disabled in the plain HTTP launch profile and development compose stack.
+are disabled in the plain HTTP launch profile.
 Do not weaken these cookies for local testing; use the HTTPS launch profile or
 a correctly configured TLS reverse proxy.
 

@@ -74,23 +74,22 @@ before processing them; SMTP runs directly behind the durable outbox worker.
 Configure both
 `SkopkaHello:Delivery:EmailProviderId` and the matching
 `SkopkaHello:Delivery:Smtp:ProviderId`; provider routing is validated at
-startup. The compose file maps the `SKOPKA_HELLO_EMAIL_PROVIDER_ID` and
-`SKOPKA_HELLO_SMTP_*` wrapper variables explicitly. Leave the provider id and
-host empty to disable delivery. The ready image contains no SMS vendor adapter;
+startup. Use the standard double-underscore environment names for container
+configuration. Leave the provider id and host empty to disable delivery. The
+ready image contains no SMS vendor adapter;
 a derived host image can register one through
 `AddSkopkaHelloSmsProvider<TProvider>()` and select its id with
 `SkopkaHello:Delivery:SmsProviderId`.
 `SkopkaHello:Delivery:AnonymousRequestQueueCapacity` bounds the in-memory
-fallback for requests awaiting account lookup and token issuance (the compose wrapper is
-`SKOPKA_HELLO_ANONYMOUS_MESSAGE_QUEUE_CAPACITY`). Size it independently from
-the SMTP provider queue. Anonymous client and normalized-target admission uses
-the persistent Identity rate limiter configured by the ready Server. Denied or
-capacity-exhausted anonymous requests are silently dropped after validation so
-the enumeration-safe `202 Accepted` contract does not change.
-Set `SkopkaHello:Delivery:VerificationChannel` (or the compose wrapper
-`SKOPKA_HELLO_VERIFICATION_CHANNEL`) to `Email` or `Sms` for password and
-external-account step-up codes. The chosen contact must be confirmed; there is
-no cross-channel fallback after challenge creation.
+fallback for requests awaiting account lookup and token issuance. Size it
+independently from the SMTP provider queue. Anonymous client and
+normalized-target admission uses the persistent Identity rate limiter
+configured by the ready Server. Denied or capacity-exhausted anonymous requests
+are silently dropped after validation so the enumeration-safe `202 Accepted`
+contract does not change. Set `SkopkaHello:Delivery:VerificationChannel` to
+`Email` or `Sms` for password and external-account step-up codes. The chosen
+contact must be confirmed; there is no cross-channel fallback after challenge
+creation.
 
 Durable payloads contain protected normalized targets, recipients, action URLs
 or OTPs. All replicas must share the Data Protection key ring, and old keys
@@ -99,9 +98,7 @@ delivery is at-least-once; use the stable `MessageId` as an idempotency key when
 the provider supports deduplication. Configure leases, retries and retention
 under `SkopkaHello:Persistence`; durable delivery and post-commit audit are
 enabled by default. The command timeout bounds synchronous post-commit audit
-writes so a database fault cannot hold an identity request indefinitely. The
-Compose wrapper exposes the enable flags, maximum-attempt value and both
-retention intervals shown in `.env.example`.
+writes so a database fault cannot hold an identity request indefinitely.
 
 ```text
 SkopkaHello__Persistence__DurableDeliveryEnabled=true
@@ -136,10 +133,8 @@ SkopkaHello__SelfRegistration__Enabled=true
 SkopkaHello__Ui__PathPrefix=/hello
 ```
 
-The compose wrapper exposes the equivalent
-`SKOPKA_HELLO_SELF_REGISTRATION_ENABLED` and
-`SKOPKA_HELLO_UI_PATH_PREFIX` variables. Both values are read while services
-are registered and require a restart to change. Disabling self-registration
+Both values are read while services are registered and require a restart to
+change. Disabling self-registration
 removes the built-in password API route and both password/external registration
 pages while preserving existing sign-in and account linking.
 
@@ -151,9 +146,9 @@ The prefix must be a non-empty absolute path other than `/`. Root and prefixes
 in those reserved namespaces are rejected during service registration rather
 than producing ambiguous endpoints at request time.
 
-The development compose stack publishes plain HTTP and therefore disables secure
-cookies and uses non-`__Host-` names. Do not copy that override into production.
-External OIDC providers are also disabled in the checked-in configuration.
+The plain HTTP development launch profile disables secure cookies and uses
+non-`__Host-` names. Do not copy that override into production. External OIDC
+providers are also disabled in the checked-in configuration.
 Correlation and nonce cookies remain `Secure`, so provider login must be tested
 through the HTTPS launch profile or a TLS reverse proxy rather than by weakening
 the protocol cookies.
@@ -245,9 +240,7 @@ SHA-256 checksums are recorded in `skopka_hello.schema_migrations`; editing an
 applied migration fails instead of silently changing history. The command is
 idempotent and takes a PostgreSQL advisory transaction lock, but the deployment
 platform should still run one migration job. The web process never applies
-migrations during startup. The provided Compose stack models the same ordering
-with a one-shot `migrate` service and `service_completed_successfully`
-dependency.
+migrations during startup.
 
 Back up the PostgreSQL database and Data Protection key ring and test restoring
 them together.

@@ -151,20 +151,14 @@ directory. The response uses `text/css`, `X-Content-Type-Options: nosniff` and
 `Cache-Control: no-cache`, so replacing the mounted file does not require an
 application restart.
 
-The compose stack mounts `deploy/customization` read-only:
-
-```yaml
-volumes:
-  - ./customization:/var/lib/skopka-hello/customization:ro
-```
-
-Edit `deploy/customization/custom.css`, or mount another host directory:
+Mount an operator-owned host directory read-only when running the published
+container:
 
 ```shell
 docker run \
   --mount type=bind,source=/host/my-theme,target=/var/lib/skopka-hello/customization,readonly \
   -e SkopkaHello__Customization__CssFilePath=/var/lib/skopka-hello/customization/custom.css \
-  skopka-hello:local
+  ghcr.io/skopka/hello:<version>
 ```
 
 The custom file is linked after the packaged stylesheet, so its declarations

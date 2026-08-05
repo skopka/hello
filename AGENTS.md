@@ -27,6 +27,11 @@ registration. HTTP handlers call
 `IHelloIdentityApplication<TProfile>` or Skopka.Identity application services,
 never EF stores.
 
+Hosts can select Razor page groups through `SkopkaHelloUiOptions.EnabledPages`.
+Disabled pages stay in the UI package but receive no selectors, links or
+reachable handlers. Login-only hosts must provide a safe local authenticated
+redirect; the default remains the complete UI surface.
+
 Self-registration is a startup policy owned by `SkopkaHelloOptions`. When it is
 disabled, password and external application operations fail before calling
 Identity and the built-in registration API/Razor selectors are not mapped.

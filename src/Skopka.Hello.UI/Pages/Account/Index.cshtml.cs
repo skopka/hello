@@ -10,7 +10,8 @@ namespace Skopka.Hello.UI.Pages;
 public sealed class AccountModel(
     IHelloUiApplication application,
     IHelloSessionCookieManager sessionCookies,
-    IHelloAccountMessageSender messageSender)
+    IHelloAccountMessageSender messageSender,
+    SkopkaHelloUiOptions uiOptions)
     : PageModel
 {
     public Guid UserId { get; private set; }
@@ -144,6 +145,11 @@ public sealed class AccountModel(
         OnPostRequestEmailConfirmationAsync(
             CancellationToken cancellationToken)
     {
+        if (!uiOptions.IsEnabled(HelloUiPages.ContactConfirmation))
+        {
+            return NotFound();
+        }
+
         var loaded = await LoadAccountAsync(
             preserveSubmittedValues: false,
             cancellationToken);
@@ -191,6 +197,11 @@ public sealed class AccountModel(
         OnPostRequestPhoneConfirmationAsync(
             CancellationToken cancellationToken)
     {
+        if (!uiOptions.IsEnabled(HelloUiPages.ContactConfirmation))
+        {
+            return NotFound();
+        }
+
         var loaded = await LoadAccountAsync(
             preserveSubmittedValues: false,
             cancellationToken);

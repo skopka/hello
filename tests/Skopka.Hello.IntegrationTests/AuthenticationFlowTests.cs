@@ -1416,6 +1416,146 @@ public sealed class AuthenticationFlowTests
     }
 
     [Fact]
+    public async Task LoginOnlyUiPublishesOnePageAndUsesHostRedirects()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            uiPathPrefix: "/identity",
+            configureUi: options =>
+            {
+                options.EnabledPages = HelloUiPages.Login;
+                options.AuthenticatedRedirectPath = "/admin";
+            });
+        using var client = app.CreateClient(
+            allowAutoRedirect: false);
+
+        string[] disabledPaths =
+        [
+            "/identity",
+            "/identity/register",
+            "/identity/forgot-password",
+            "/identity/reset-password",
+            "/identity/resend-confirmation",
+            "/identity/resend-phone-confirmation",
+            "/identity/confirm-email",
+            "/identity/confirm-phone",
+            "/identity/external/complete",
+            "/identity/external/register",
+            "/identity/account",
+            "/identity/account/sessions",
+            "/identity/account/security",
+            "/identity/account/change-password",
+            "/identity/account/external-logins",
+        ];
+        foreach (var path in disabledPaths)
+        {
+            using var response = await client.GetAsync(path);
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+
+        Dictionary<string, string> handlerCookies =
+            new(StringComparer.Ordinal);
+        using var loginPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/identity/login",
+            handlerCookies);
+        Assert.Equal(HttpStatusCode.OK, loginPage.StatusCode);
+        MergeCookies(handlerCookies, loginPage);
+        var loginHtml = await loginPage.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(
+            "Forgot your password?",
+            loginHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Resend email confirmation",
+            loginHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Resend phone confirmation",
+            loginHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            ">Register</a>",
+            loginHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "data-hello-external-providers",
+            loginHtml,
+            StringComparison.Ordinal);
+
+        var handlerToken = ReadInputValue(
+            loginHtml,
+            "__RequestVerificationToken");
+        using var disabledExternalHandler = await SendFormAsync(
+            client,
+            "/identity/login?handler=External",
+            handlerCookies,
+            new Dictionary<string, string>
+            {
+                ["providerId"] = "disabled-provider",
+                ["__RequestVerificationToken"] = handlerToken,
+            });
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            disabledExternalHandler.StatusCode);
+
+        const string email = "login-only@example.test";
+        const string password = "correct horse battery staple";
+        using var registration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "login-only",
+                email,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Login Only",
+                    locale = "en",
+                },
+                password,
+            });
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+
+        var defaultCookies = await LoginThroughUiAsync(
+            client,
+            email,
+            password,
+            returnUrl: null,
+            expectedLocation: "/admin");
+        using var authenticatedLogin = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/identity/login",
+            defaultCookies);
+        Assert.Equal(
+            HttpStatusCode.Redirect,
+            authenticatedLogin.StatusCode);
+        Assert.Equal(
+            "/admin",
+            authenticatedLogin.Headers.Location?.OriginalString);
+
+        _ = await LoginThroughUiAsync(
+            client,
+            email,
+            password,
+            returnUrl: "/board",
+            expectedLocation: "/board");
+        _ = await LoginThroughUiAsync(
+            client,
+            email,
+            password,
+            returnUrl: "https://example.test/escape",
+            expectedLocation: "/admin");
+    }
+
+    [Fact]
     public async Task AnonymousMessageCooldownSilentlyDropsBeforeLookup()
     {
         await using var postgres = new PostgreSqlBuilder(
@@ -1874,6 +2014,56 @@ public sealed class AuthenticationFlowTests
         return await client.SendAsync(request);
     }
 
+    private static async Task<Dictionary<string, string>>
+        LoginThroughUiAsync(
+            HttpClient client,
+            string login,
+            string password,
+            string? returnUrl,
+            string expectedLocation)
+    {
+        Dictionary<string, string> cookies =
+            new(StringComparer.Ordinal);
+        var pagePath = returnUrl is null
+            ? "/identity/login"
+            : "/identity/login?ReturnUrl="
+                + Uri.EscapeDataString(returnUrl);
+        using var loginPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            pagePath,
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, loginPage.StatusCode);
+        MergeCookies(cookies, loginPage);
+        var html = await loginPage.Content.ReadAsStringAsync();
+        var token = ReadInputValue(
+            html,
+            "__RequestVerificationToken");
+
+        var form = new Dictionary<string, string>
+        {
+            ["Input.Login"] = login,
+            ["Input.Password"] = password,
+            ["__RequestVerificationToken"] = token,
+        };
+        if (returnUrl is not null)
+        {
+            form["ReturnUrl"] = returnUrl;
+        }
+
+        using var response = await SendFormAsync(
+            client,
+            "/identity/login",
+            cookies,
+            form);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal(
+            expectedLocation,
+            response.Headers.Location?.OriginalString);
+        MergeCookies(cookies, response);
+        return cookies;
+    }
+
     private static async Task<HttpResponseMessage> SendAsync(
         HttpClient client,
         HttpMethod method,
@@ -2284,7 +2474,8 @@ public sealed class AuthenticationFlowTests
             string uiPathPrefix = "/hello",
             bool selfRegistrationEnabled = true,
             HelloDeliveryChannel verificationChannel =
-                HelloDeliveryChannel.Email)
+                HelloDeliveryChannel.Email,
+            Action<SkopkaHelloUiOptions>? configureUi = null)
         {
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions
@@ -2401,7 +2592,7 @@ public sealed class AuthenticationFlowTests
             builder.Services.AddProblemDetails();
             builder.Services.AddSkopkaHelloUi<
                 IntegrationProfile,
-                IntegrationProfileUiFactory>();
+                IntegrationProfileUiFactory>(configureUi);
             builder.Services.AddSkopkaHelloAdmin<
                 IntegrationProfile,
                 IntegrationAdminProfileProjector>();

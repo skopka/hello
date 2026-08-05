@@ -1,4 +1,3 @@
-@inject SkopkaHelloUiOptions UiOptions
 @inject IHelloUiExternalApplication ExternalIdentity
 <!doctype html>
 <html lang="en">
@@ -19,30 +18,54 @@
 </head>
 <body>
     <header class="hello-header">
-        <a class="hello-brand" asp-page="/SkopkaHello/Index">
-            Skopka.Hello
-        </a>
+        @if ((UiOptions.EnabledPages & HelloUiPages.Account) != 0)
+        {
+            <a class="hello-brand" asp-page="/SkopkaHello/Index">
+                Skopka.Hello
+            </a>
+        }
+        else if ((UiOptions.EnabledPages & HelloUiPages.Login) != 0)
+        {
+            <a class="hello-brand" asp-page="/SkopkaHello/Login">
+                Skopka.Hello
+            </a>
+        }
+        else
+        {
+            <span class="hello-brand">Skopka.Hello</span>
+        }
         <nav aria-label="Account navigation">
             @if (User.Identity?.IsAuthenticated == true)
             {
-                <a asp-page="/SkopkaHello/Account/Index">Account</a>
-                <a asp-page="/SkopkaHello/Account/Sessions">Sessions</a>
-                @if (ExternalIdentity.IsConfigured)
+                @if ((UiOptions.EnabledPages & HelloUiPages.Account) != 0)
                 {
-                    <a asp-page="/SkopkaHello/Account/ExternalLogins">Sign-in methods</a>
+                    <a asp-page="/SkopkaHello/Account/Index">Account</a>
+                    @if ((UiOptions.EnabledPages & HelloUiPages.Sessions) != 0)
+                    {
+                        <a asp-page="/SkopkaHello/Account/Sessions">Sessions</a>
+                    }
+                    @if ((UiOptions.EnabledPages & HelloUiPages.ExternalIdentity) != 0
+                        && ExternalIdentity.IsConfigured)
+                    {
+                        <a asp-page="/SkopkaHello/Account/ExternalLogins">Sign-in methods</a>
+                    }
+                    <form method="post"
+                          asp-page="/SkopkaHello/Account/Index"
+                          asp-page-handler="Logout">
+                        <button class="hello-link-button" type="submit">
+                            Sign out
+                        </button>
+                    </form>
                 }
-                <form method="post"
-                      asp-page="/SkopkaHello/Account/Index"
-                      asp-page-handler="Logout">
-                    <button class="hello-link-button" type="submit">
-                        Sign out
-                    </button>
-                </form>
             }
             else
             {
-                <a asp-page="/SkopkaHello/Login">Sign in</a>
-                @if (HelloOptions.SelfRegistrationEnabled)
+                @if ((UiOptions.EnabledPages & HelloUiPages.Login) != 0)
+                {
+                    <a asp-page="/SkopkaHello/Login">Sign in</a>
+                }
+                @if (HelloOptions.SelfRegistrationEnabled
+                    && (UiOptions.EnabledPages & HelloUiPages.Registration) != 0)
                 {
                     <a asp-page="/SkopkaHello/Register">Register</a>
                 }

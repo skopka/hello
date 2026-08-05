@@ -140,15 +140,22 @@
     }
 
     <div class="hello-actions">
-        <a class="hello-button"
-           asp-page="/SkopkaHello/Account/Sessions">
-            Manage sessions
-        </a>
-        <a class="hello-button hello-button-secondary"
-           asp-page="/SkopkaHello/Account/Security">
-            Credentials and deletion
-        </a>
-        @if (ExternalIdentity.IsConfigured)
+        @if ((UiOptions.EnabledPages & HelloUiPages.Sessions) != 0)
+        {
+            <a class="hello-button"
+               asp-page="/SkopkaHello/Account/Sessions">
+                Manage sessions
+            </a>
+        }
+        @if ((UiOptions.EnabledPages & HelloUiPages.AccountSecurity) != 0)
+        {
+            <a class="hello-button hello-button-secondary"
+               asp-page="/SkopkaHello/Account/Security">
+                Credentials and deletion
+            </a>
+        }
+        @if ((UiOptions.EnabledPages & HelloUiPages.ExternalIdentity) != 0
+            && ExternalIdentity.IsConfigured)
         {
             <a class="hello-button hello-button-secondary"
                asp-page="/SkopkaHello/Account/ExternalLogins">
@@ -161,7 +168,9 @@
                 Sign out
             </button>
         </form>
-        @if (!Model.EmailConfirmed && Model.Email is not null)
+        @if ((UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0
+            && !Model.EmailConfirmed
+            && Model.Email is not null)
         {
             <form method="post"
                   asp-page-handler="RequestEmailConfirmation">
@@ -171,7 +180,9 @@
                 </button>
             </form>
         }
-        @if (!Model.PhoneConfirmed && Model.Phone is not null)
+        @if ((UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0
+            && !Model.PhoneConfirmed
+            && Model.Phone is not null)
         {
             <form method="post"
                   asp-page-handler="RequestPhoneConfirmation">

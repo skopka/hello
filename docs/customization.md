@@ -74,6 +74,25 @@ app.MapStaticAssets();
 app.MapSkopkaHelloUi();
 ```
 
+Select only the page groups the host needs. For example, a host-owned account
+area can keep only the packaged login page:
+
+```csharp
+services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
+{
+    options.EnabledPages = HelloUiPages.Login;
+    options.AuthenticatedRedirectPath = "/admin";
+});
+```
+
+The default is `HelloUiPages.All`. A disabled Razor page stays in the package,
+but no selector publishes it as an HTTP endpoint, so requests return 404.
+Sessions, AccountSecurity and ExternalIdentity require Account, and all page
+groups require Login. Login without Account requires a local absolute
+`AuthenticatedRedirectPath`. A valid local `ReturnUrl` takes priority after a
+successful login. `SkopkaHelloOptions.SelfRegistrationEnabled = false` still
+removes registration even when its UI flag is selected.
+
 `IHelloUiProfileFactory<TProfile>` maps the registration form profile
 (`DisplayName` and optional `Locale`) to the host's JSON profile type and
 returns `OperationResult<TProfile>`. Profile construction therefore stays
@@ -130,6 +149,8 @@ default `/hello` prefix they are:
 /hello/reset-password
 /hello/resend-confirmation
 /hello/confirm-email
+/hello/resend-phone-confirmation
+/hello/confirm-phone
 /hello/external/complete
 /hello/external/register
 /hello/account

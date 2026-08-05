@@ -4,47 +4,109 @@ namespace Skopka.Hello.UI;
 
 internal sealed class HelloUiPageRouteModelConvention(
     HelloUiRoutePaths routes,
-    bool selfRegistrationEnabled)
+    bool selfRegistrationEnabled,
+    HelloUiPages enabledPages)
     : IPageRouteModelConvention
 {
     private readonly Dictionary<string, string?> pageRoutes =
         new Dictionary<string, string?>(StringComparer.Ordinal)
         {
-            ["/Pages/SkopkaHello/Index.cshtml"] = routes.RootPath,
-            ["/Pages/SkopkaHello/Login.cshtml"] = routes.LoginPath,
+            ["/Pages/SkopkaHello/Index.cshtml"] =
+                IsEnabled(enabledPages, HelloUiPages.Account)
+                    ? routes.RootPath
+                    : null,
+            ["/Pages/SkopkaHello/Login.cshtml"] =
+                IsEnabled(enabledPages, HelloUiPages.Login)
+                    ? routes.LoginPath
+                    : null,
             ["/Pages/SkopkaHello/Register.cshtml"] =
                 selfRegistrationEnabled
+                && IsEnabled(
+                    enabledPages,
+                    HelloUiPages.Registration)
                 ? routes.RegisterPath
                 : null,
             ["/Pages/SkopkaHello/ForgotPassword.cshtml"] =
-                routes.ForgotPasswordPath,
+                IsEnabled(
+                    enabledPages,
+                    HelloUiPages.PasswordRecovery)
+                    ? routes.ForgotPasswordPath
+                    : null,
             ["/Pages/SkopkaHello/ResetPassword.cshtml"] =
-                routes.ResetPasswordPath,
+                IsEnabled(
+                    enabledPages,
+                    HelloUiPages.PasswordRecovery)
+                    ? routes.ResetPasswordPath
+                    : null,
             ["/Pages/SkopkaHello/ResendConfirmation.cshtml"] =
-                routes.ResendConfirmationPath,
+                IsEnabled(
+                    enabledPages,
+                    HelloUiPages.ContactConfirmation)
+                    ? routes.ResendConfirmationPath
+                    : null,
             ["/Pages/SkopkaHello/ResendPhoneConfirmation.cshtml"] =
-                routes.ResendPhoneConfirmationPath,
+                IsEnabled(
+                    enabledPages,
+                    HelloUiPages.ContactConfirmation)
+                    ? routes.ResendPhoneConfirmationPath
+                    : null,
             ["/Pages/SkopkaHello/ConfirmEmail.cshtml"] =
-                routes.ConfirmEmailPath,
+                IsEnabled(
+                    enabledPages,
+                    HelloUiPages.ContactConfirmation)
+                    ? routes.ConfirmEmailPath
+                    : null,
             ["/Pages/SkopkaHello/ConfirmPhone.cshtml"] =
-                routes.ConfirmPhonePath,
+                IsEnabled(
+                    enabledPages,
+                    HelloUiPages.ContactConfirmation)
+                    ? routes.ConfirmPhonePath
+                    : null,
             ["/Pages/SkopkaHello/External/Complete.cshtml"] =
-                routes.ExternalCompletionPath,
+                IsEnabled(
+                    enabledPages,
+                    HelloUiPages.ExternalIdentity)
+                    ? routes.ExternalCompletionPath
+                    : null,
             ["/Pages/SkopkaHello/External/Register.cshtml"] =
                 selfRegistrationEnabled
+                && IsEnabled(
+                    enabledPages,
+                    HelloUiPages.ExternalIdentity)
                 ? routes.ExternalRegistrationPath
                 : null,
             ["/Pages/SkopkaHello/Account/Index.cshtml"] =
-                routes.AccountPath,
+                IsEnabled(enabledPages, HelloUiPages.Account)
+                    ? routes.AccountPath
+                    : null,
             ["/Pages/SkopkaHello/Account/Sessions.cshtml"] =
-                routes.SessionsPath,
+                IsEnabled(enabledPages, HelloUiPages.Sessions)
+                    ? routes.SessionsPath
+                    : null,
             ["/Pages/SkopkaHello/Account/ChangePassword.cshtml"] =
-                routes.ChangePasswordPath,
+                IsEnabled(
+                    enabledPages,
+                    HelloUiPages.AccountSecurity)
+                    ? routes.ChangePasswordPath
+                    : null,
             ["/Pages/SkopkaHello/Account/Security.cshtml"] =
-                routes.AccountSecurityPath,
+                IsEnabled(
+                    enabledPages,
+                    HelloUiPages.AccountSecurity)
+                    ? routes.AccountSecurityPath
+                    : null,
             ["/Pages/SkopkaHello/Account/ExternalLogins.cshtml"] =
-                routes.ExternalLoginsPath,
+                IsEnabled(
+                    enabledPages,
+                    HelloUiPages.ExternalIdentity)
+                    ? routes.ExternalLoginsPath
+                    : null,
         };
+
+    private static bool IsEnabled(
+        HelloUiPages enabledPages,
+        HelloUiPages page)
+        => (enabledPages & page) == page;
 
     public void Apply(PageRouteModel model)
     {

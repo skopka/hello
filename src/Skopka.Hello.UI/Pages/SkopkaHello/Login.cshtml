@@ -68,7 +68,8 @@
         </p>
     }
 
-    @if (Model.ExternalProviders.Count > 0)
+    @if ((UiOptions.EnabledPages & HelloUiPages.ExternalIdentity) != 0
+        && Model.ExternalProviders.Count > 0)
     {
         <div class="hello-external-providers"
              data-hello-external-providers>
@@ -108,29 +109,45 @@
         <span asp-validation-for="Input.Password"
               class="hello-field-error"></span>
 
-        <a class="hello-form-help"
-           asp-page="/SkopkaHello/ForgotPassword">
-            Forgot your password?
-        </a>
+        @if ((UiOptions.EnabledPages & HelloUiPages.PasswordRecovery) != 0)
+        {
+            <a class="hello-form-help"
+               asp-page="/SkopkaHello/ForgotPassword">
+                Forgot your password?
+            </a>
+        }
 
         <button class="hello-button" type="submit">
             Sign in
         </button>
     </form>
 
-    <p class="hello-card-footer">
-        @if (HelloOptions.SelfRegistrationEnabled)
-        {
-            <span>Need an account?</span>
-            <a asp-page="/SkopkaHello/Register">Register</a>
-            <br />
-        }
-        <a asp-page="/SkopkaHello/ResendConfirmation">
-            Resend email confirmation
-        </a>
-        <br />
-        <a asp-page="/SkopkaHello/ResendPhoneConfirmation">
-            Resend phone confirmation
-        </a>
-    </p>
+    @if ((HelloOptions.SelfRegistrationEnabled
+            && (UiOptions.EnabledPages & HelloUiPages.Registration) != 0)
+        || (UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0)
+    {
+        <p class="hello-card-footer">
+            @if (HelloOptions.SelfRegistrationEnabled
+                && (UiOptions.EnabledPages & HelloUiPages.Registration) != 0)
+            {
+                <span>Need an account?</span>
+                <a asp-page="/SkopkaHello/Register">Register</a>
+                @if ((UiOptions.EnabledPages
+                        & HelloUiPages.ContactConfirmation) != 0)
+                {
+                    <br />
+                }
+            }
+            @if ((UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0)
+            {
+                <a asp-page="/SkopkaHello/ResendConfirmation">
+                    Resend email confirmation
+                </a>
+                <br />
+                <a asp-page="/SkopkaHello/ResendPhoneConfirmation">
+                    Resend phone confirmation
+                </a>
+            }
+        </p>
+    }
 </section>

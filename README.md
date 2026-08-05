@@ -10,7 +10,7 @@ provider integration, host composition and policy-separated administration.
 Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
-The current `0.5.1` vertical slice contains:
+The current `0.6.0` vertical slice contains:
 
 - atomic password registration;
 - automatic email, phone or user-name password login without user
@@ -38,6 +38,7 @@ The current `0.5.1` vertical slice contains:
   revocation and last-sign-in-method protection;
 - Razor registration, login, account and active-session pages;
 - Razor external registration and sign-in-method management pages;
+- host-selectable Razor page groups, including a login-only mode;
 - startup-configurable self-registration and Razor UI route prefix;
 - online validation and transparent rotation for the protected UI session;
 - bounded administrative user search with host-controlled profile projection;
@@ -128,6 +129,26 @@ every Razor route, internal OIDC redirect and account-message action link is
 then derived from that value. API routes and the provider callback
 `/signin-skopka-oidc/{provider}` remain root-relative. The prefix must be a
 non-empty absolute path other than `/`.
+
+Hosts that only need the packaged sign-in page can select it when registering
+the UI:
+
+```csharp
+services.AddSkopkaHelloUi<Profile, ProfileFactory>(options =>
+{
+    options.EnabledPages = HelloUiPages.Login;
+    options.AuthenticatedRedirectPath = "/admin";
+});
+```
+
+`EnabledPages` defaults to `HelloUiPages.All`. Disabled Razor pages remain in
+the package assembly, but receive no HTTP route and return 404. Sessions and
+account-security groups require Account; ExternalIdentity also requires
+Account. Every enabled group requires Login. When self-registration is
+disabled through `SkopkaHelloOptions`, registration routes remain absent even
+if `HelloUiPages.Registration` is selected. A login-only configuration must set
+`AuthenticatedRedirectPath` to a local absolute path; a valid local
+`ReturnUrl` still takes priority after sign-in.
 
 With the default prefix, the ready server exposes:
 

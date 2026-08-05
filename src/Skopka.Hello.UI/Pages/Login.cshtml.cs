@@ -9,7 +9,9 @@ namespace Skopka.Hello.UI.Pages;
 public sealed class LoginModel(
     IHelloUiApplication application,
     IHelloUiExternalApplication externalApplication,
-    IHelloSessionCookieManager sessionCookies)
+    IHelloSessionCookieManager sessionCookies,
+    SkopkaHelloUiOptions uiOptions,
+    HelloUiRoutePaths routes)
     : PageModel
 {
     [BindProperty]
@@ -37,7 +39,10 @@ public sealed class LoginModel(
     public bool AccountSecurityChangedSessionCleanup { get; set; }
 
     public IReadOnlyList<Skopka.Hello.Oidc.HelloOidcProvider>
-        ExternalProviders => externalApplication.Providers;
+        ExternalProviders => uiOptions.IsEnabled(
+            HelloUiPages.ExternalIdentity)
+                ? externalApplication.Providers
+                : [];
 
     public bool Registered { get; private set; }
 
@@ -51,7 +56,8 @@ public sealed class LoginModel(
             HelloUiDefaults.AuthenticationScheme);
         if (authentication.Succeeded)
         {
-            return RedirectToPage("/SkopkaHello/Account/Index");
+            return LocalRedirect(
+                uiOptions.GetAuthenticatedRedirectPath(routes));
         }
 
         Registered = registered;
@@ -96,7 +102,8 @@ public sealed class LoginModel(
 
         return Url.IsLocalUrl(ReturnUrl)
             ? LocalRedirect(ReturnUrl)
-            : RedirectToPage("/SkopkaHello/Account/Index");
+            : LocalRedirect(
+                uiOptions.GetAuthenticatedRedirectPath(routes));
     }
 
     public async Task<IActionResult> OnPostExternalAsync(
@@ -104,6 +111,11 @@ public sealed class LoginModel(
         CancellationToken cancellationToken)
     {
         ModelState.Clear();
+        if (!uiOptions.IsEnabled(HelloUiPages.ExternalIdentity))
+        {
+            return NotFound();
+        }
+
         var authentication = await HttpContext.AuthenticateAsync(
             HelloUiDefaults.AuthenticationScheme);
         if (authentication.Succeeded)

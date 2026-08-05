@@ -14,7 +14,14 @@
             Your phone number is confirmed.
         </p>
         <p class="hello-card-footer">
-            <a asp-page="/SkopkaHello/Account/Index">Continue to account</a>
+            @if ((UiOptions.EnabledPages & HelloUiPages.Account) != 0)
+            {
+                <a asp-page="/SkopkaHello/Account/Index">Continue to account</a>
+            }
+            else
+            {
+                <a asp-page="/SkopkaHello/Login">Continue to sign in</a>
+            }
         </p>
     }
     else if (!Model.LinkValid)

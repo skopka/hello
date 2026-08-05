@@ -16,7 +16,9 @@ Type[] packageSurfaces =
 if (typeof(IHelloAdminRoleApplication).Assembly
         != typeof(SkopkaHelloAdminOptions).Assembly
     || string.IsNullOrWhiteSpace(
-        HelloAdminSecurityEventTypes.RoleCreated))
+        HelloAdminSecurityEventTypes.RoleCreated)
+    || (HelloUiPages.All & HelloUiPages.Login)
+        != HelloUiPages.Login)
 {
     throw new InvalidOperationException(
         "The role-administration package surface could not be loaded.");

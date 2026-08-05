@@ -26,19 +26,46 @@ public sealed class HelloUiRoutingTests
         Assert.Contains("/identity/hello/login", routes);
         Assert.Contains("/identity/hello/register", routes);
         Assert.Contains(
+            "/identity/hello/forgot-password",
+            routes);
+        Assert.Contains(
+            "/identity/hello/reset-password",
+            routes);
+        Assert.Contains(
+            "/identity/hello/resend-confirmation",
+            routes);
+        Assert.Contains(
             "/identity/hello/resend-phone-confirmation",
+            routes);
+        Assert.Contains(
+            "/identity/hello/confirm-email",
             routes);
         Assert.Contains(
             "/identity/hello/confirm-phone",
             routes);
         Assert.Contains(
+            "/identity/hello/account",
+            routes);
+        Assert.Contains(
+            "/identity/hello/account/sessions",
+            routes);
+        Assert.Contains(
+            "/identity/hello/account/change-password",
+            routes);
+        Assert.Contains(
             "/identity/hello/account/security",
+            routes);
+        Assert.Contains(
+            "/identity/hello/account/external-logins",
             routes);
         Assert.Contains(
             "/auth/phone-confirmation/request",
             routes);
         Assert.Contains(
             "/auth/phone-confirmation/confirm",
+            routes);
+        Assert.Contains(
+            "/identity/hello/external/complete",
             routes);
         Assert.Contains(
             "/identity/hello/external/register",
@@ -93,6 +120,29 @@ public sealed class HelloUiRoutingTests
         Assert.Contains("/identity/external/complete", routes);
     }
 
+    [Fact]
+    public async Task LoginOnlyPublishesOnlyLoginHelloPageRoute()
+    {
+        await using var application = CreateApplication(
+            "/identity",
+            selfRegistrationEnabled: true,
+            ui =>
+            {
+                ui.EnabledPages = HelloUiPages.Login;
+                ui.AuthenticatedRedirectPath = "/admin";
+            });
+
+        var routes = GetRoutes(application)
+            .Where(route =>
+                route == "/identity"
+                || route.StartsWith(
+                    "/identity/",
+                    StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.Equal(["/identity/login"], routes);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("/")]
@@ -109,7 +159,8 @@ public sealed class HelloUiRoutingTests
     {
         var convention = new HelloUiPageRouteModelConvention(
             new HelloUiRoutePaths("/identity"),
-            selfRegistrationEnabled: true);
+            selfRegistrationEnabled: true,
+            enabledPages: HelloUiPages.All);
         var hostPage = CreatePageRouteModel(
             "/Pages/Index.cshtml",
             "/Index",
@@ -134,7 +185,8 @@ public sealed class HelloUiRoutingTests
 
     private static WebApplication CreateApplication(
         string pathPrefix,
-        bool selfRegistrationEnabled)
+        bool selfRegistrationEnabled,
+        Action<SkopkaHelloUiOptions>? configureUi = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Services.AddSkopkaHello<TestProfile>(options =>
@@ -145,7 +197,7 @@ public sealed class HelloUiRoutingTests
         });
         builder.Services.AddSkopkaHelloUi<
             TestProfile,
-            TestProfileFactory>();
+            TestProfileFactory>(configureUi);
 
         var application = builder.Build();
         application.MapSkopkaHello<TestProfile>();

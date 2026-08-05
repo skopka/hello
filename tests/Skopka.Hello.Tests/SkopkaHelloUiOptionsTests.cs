@@ -10,6 +10,131 @@ namespace Skopka.Hello.Tests;
 public sealed class SkopkaHelloUiOptionsTests
 {
     [Fact]
+    public void DefaultsKeepEveryUiPageEnabled()
+    {
+        var options = new SkopkaHelloUiOptions();
+
+        options.Validate();
+
+        Assert.Equal(HelloUiPages.All, options.EnabledPages);
+        Assert.Null(options.AuthenticatedRedirectPath);
+    }
+
+    [Fact]
+    public void LoginOnlyRequiresAuthenticatedRedirectPath()
+    {
+        var options = new SkopkaHelloUiOptions
+        {
+            EnabledPages = HelloUiPages.Login,
+        };
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            options.Validate);
+
+        Assert.Contains(
+            nameof(SkopkaHelloUiOptions.AuthenticatedRedirectPath),
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(HelloUiPages.Registration)]
+    [InlineData(HelloUiPages.PasswordRecovery)]
+    [InlineData(HelloUiPages.ContactConfirmation)]
+    [InlineData(HelloUiPages.Account)]
+    public void UiFeaturesRequireLoginPage(HelloUiPages feature)
+    {
+        var options = new SkopkaHelloUiOptions
+        {
+            EnabledPages = feature,
+        };
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            options.Validate);
+
+        Assert.Contains(
+            nameof(HelloUiPages.Login),
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(HelloUiPages.Sessions)]
+    [InlineData(HelloUiPages.AccountSecurity)]
+    [InlineData(HelloUiPages.ExternalIdentity)]
+    public void AccountFeaturesRequireAccountPage(
+        HelloUiPages accountFeature)
+    {
+        var options = new SkopkaHelloUiOptions
+        {
+            EnabledPages = HelloUiPages.Login | accountFeature,
+            AuthenticatedRedirectPath = "/admin",
+        };
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            options.Validate);
+
+        Assert.Contains(
+            nameof(HelloUiPages.Account),
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("admin")]
+    [InlineData("https://example.test/admin")]
+    [InlineData("//example.test/admin")]
+    [InlineData("/\\example.test/admin")]
+    [InlineData("/admin?return=1")]
+    [InlineData("/admin#fragment")]
+    [InlineData("/admin/../login")]
+    [InlineData("/admin%2flogin")]
+    public void ValidateRejectsUnsafeAuthenticatedRedirectPath(
+        string redirectPath)
+    {
+        var options = new SkopkaHelloUiOptions
+        {
+            EnabledPages = HelloUiPages.Login,
+            AuthenticatedRedirectPath = redirectPath,
+        };
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Fact]
+    public void ServiceRegistrationRejectsUnsafeAuthenticatedRedirectPath()
+    {
+        var services = new ServiceCollection();
+
+        Assert.Throws<InvalidOperationException>(
+            () => services.AddSkopkaHelloUi(options =>
+            {
+                options.EnabledPages = HelloUiPages.Login;
+                options.AuthenticatedRedirectPath =
+                    "https://example.test/admin";
+            }));
+    }
+
+    [Fact]
+    public void ValidateRejectsAuthenticatedRedirectToLoginPage()
+    {
+        var options = new SkopkaHelloUiOptions
+        {
+            EnabledPages = HelloUiPages.Login,
+            AuthenticatedRedirectPath = "/identity/login",
+        };
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => options.ValidateRoutes(
+                new HelloUiRoutePaths("/identity")));
+
+        Assert.Contains(
+            nameof(HelloUiPages.Login),
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ValidateRejectsRequestPathWithQuery()
     {
         var options = new SkopkaHelloUiOptions

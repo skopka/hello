@@ -34,3 +34,8 @@ the exact RCL page-route convention. Do not reintroduce absolute `@page
 "/hello"` templates or raw route constants in links/redirects; use `asp-page`
 and `RedirectToPage`. Password and external registration selectors and links
 must be absent when the shared self-registration policy is disabled.
+`SkopkaHelloUiOptions.EnabledPages` additionally controls which page groups
+receive selectors. Disabled pages remain packaged but must have no HTTP route,
+link or reachable handler through an enabled page. Preserve the declared Login
+and Account dependencies and use the configured local authenticated redirect
+when Account is not available.

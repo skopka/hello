@@ -22,8 +22,53 @@ public sealed class SkopkaHelloUiOptions
 
     public bool BuiltInStylesEnabled { get; set; } = true;
 
+    public HelloUiPages EnabledPages { get; set; } =
+        HelloUiPages.All;
+
+    public string? AuthenticatedRedirectPath { get; set; }
+
     public void Validate()
     {
+        if ((EnabledPages & ~HelloUiPages.All) != 0)
+        {
+            throw new InvalidOperationException(
+                "EnabledPages contains an unsupported page flag.");
+        }
+
+        var pagesRequiringLogin = EnabledPages & ~HelloUiPages.Login;
+        if (pagesRequiringLogin != HelloUiPages.None
+            && !IsEnabled(HelloUiPages.Login))
+        {
+            throw new InvalidOperationException(
+                "Registration, recovery, confirmation and account pages require the Login page.");
+        }
+
+        var pagesRequiringAccount = EnabledPages
+            & (HelloUiPages.Sessions
+                | HelloUiPages.AccountSecurity
+                | HelloUiPages.ExternalIdentity);
+        if (pagesRequiringAccount != HelloUiPages.None
+            && !IsEnabled(HelloUiPages.Account))
+        {
+            throw new InvalidOperationException(
+                "Sessions, AccountSecurity and ExternalIdentity pages require the Account page.");
+        }
+
+        if (IsEnabled(HelloUiPages.Login)
+            && !IsEnabled(HelloUiPages.Account)
+            && AuthenticatedRedirectPath is null)
+        {
+            throw new InvalidOperationException(
+                "AuthenticatedRedirectPath is required when Login is enabled and Account is disabled.");
+        }
+
+        if (AuthenticatedRedirectPath is not null
+            && !IsLocalAbsolutePath(AuthenticatedRedirectPath))
+        {
+            throw new InvalidOperationException(
+                "AuthenticatedRedirectPath must be a local absolute path without an authority, query, fragment, escaping, whitespace or dot segments.");
+        }
+
         ArgumentException.ThrowIfNullOrWhiteSpace(
             CustomCssRequestPath);
 
@@ -84,6 +129,33 @@ public sealed class SkopkaHelloUiOptions
         }
     }
 
+    internal void ValidateRoutes(
+        Skopka.Hello.HelloUiRoutePaths routes)
+    {
+        ArgumentNullException.ThrowIfNull(routes);
+        Validate();
+
+        if (AuthenticatedRedirectPath is not null
+            && String.Equals(
+                AuthenticatedRedirectPath,
+                routes.LoginPath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "AuthenticatedRedirectPath cannot point to the Login page.");
+        }
+    }
+
+    internal bool IsEnabled(HelloUiPages pages)
+        => (EnabledPages & pages) == pages;
+
+    internal string GetAuthenticatedRedirectPath(
+        Skopka.Hello.HelloUiRoutePaths routes)
+    {
+        ArgumentNullException.ThrowIfNull(routes);
+        return AuthenticatedRedirectPath ?? routes.AccountPath;
+    }
+
     private static bool UsesReservedNamespace(string path)
     {
         var separator = path.IndexOf('/', 1);
@@ -99,6 +171,22 @@ public sealed class SkopkaHelloUiOptions
                 "/signin-skopka-oidc",
                 StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool IsLocalAbsolutePath(string path)
+        => !String.IsNullOrWhiteSpace(path)
+            && path.Length <= 2048
+            && path.StartsWith('/')
+            && !path.StartsWith("//", StringComparison.Ordinal)
+            && !path.StartsWith("/\\", StringComparison.Ordinal)
+            && !path.Contains("//", StringComparison.Ordinal)
+            && !path.Contains("/./", StringComparison.Ordinal)
+            && !path.Contains("/../", StringComparison.Ordinal)
+            && !path.EndsWith("/.", StringComparison.Ordinal)
+            && !path.EndsWith("/..", StringComparison.Ordinal)
+            && path.IndexOfAny(['?', '#', '\\', '%']) < 0
+            && !path.Any(character =>
+                Char.IsWhiteSpace(character)
+                || Char.IsControl(character));
 
     private static string[] GetUiRoutes(
         Skopka.Hello.HelloUiRoutePaths routes)

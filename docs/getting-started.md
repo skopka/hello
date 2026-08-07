@@ -426,6 +426,15 @@ flow with the antiforgery-protected `DELETE /auth/external/flow`. These routes
 are intended for a browser on the same origin as Hello; a native application
 requires a separate public-client/BFF design.
 
+The repository's
+[`Skopka.Hello.Sample`](../samples/Skopka.Hello.Sample/README.md) includes a
+framework-free reference SPA at `/app`. It keeps the access token only in the
+main tab's memory. OIDC navigation opens with `noopener`; the callback sends a
+completion signal over a randomly named same-origin `BroadcastChannel`, so the
+provider never receives a bearer token and no token is written to browser
+storage. The sample also demonstrates external registration and the full
+OTP-protected link/unlink sequence.
+
 ### Link and unlink from a browser/SPA
 
 Antiforgery tokens are bound to the current ASP.NET Core principal. Before an

@@ -60,6 +60,12 @@ The current `0.7.0` vertical slice contains:
 - a read-only Docker volume hook for host-provided custom CSS;
 - a ready-to-run server, sample host, Docker image and Testcontainers coverage.
 
+The sample host includes a small framework-free
+[same-origin SPA reference client](samples/Skopka.Hello.Sample/README.md). It
+keeps the bearer token in memory, completes OIDC navigation through an isolated
+popup and demonstrates external registration plus OTP-protected link/unlink.
+The same client is covered by real Chromium tests.
+
 An OAuth/OIDC authorization server remains deferred.
 
 ## Packages

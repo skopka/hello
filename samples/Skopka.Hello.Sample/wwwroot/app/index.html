@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Skopka.Hello headless OIDC sample</title>
+  <link rel="stylesheet" href="/app/app.css">
+  <script type="module" src="/app/app.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <p class="eyebrow">Reference client</p>
+      <h1>Skopka.Hello headless OIDC SPA</h1>
+      <p>
+        The access token stays in this tab's memory. Provider navigation runs
+        in an isolated popup and returns only a same-origin completion signal.
+      </p>
+    </header>
+
+    <p id="status" class="status" role="status" aria-live="polite">
+      Loading providers…
+    </p>
+
+    <section id="sign-in-panel" class="panel">
+      <h2>Sign in</h2>
+      <div id="provider-buttons" class="actions"></div>
+
+      <details>
+        <summary>Use a password account</summary>
+        <form id="password-login-form" class="form-grid">
+          <label>
+            Login
+            <input name="login" autocomplete="username" required>
+          </label>
+          <label>
+            Password
+            <input
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required>
+          </label>
+          <button type="submit">Sign in with password</button>
+        </form>
+      </details>
+    </section>
+
+    <section id="registration-panel" class="panel" hidden>
+      <h2>Complete external registration</h2>
+      <p id="registration-provider"></p>
+      <form id="registration-form" class="form-grid">
+        <label>
+          User name
+          <input name="userName" autocomplete="username" required>
+        </label>
+        <label>
+          Email
+          <input name="email" type="email" autocomplete="email">
+        </label>
+        <label>
+          Phone
+          <input name="phone" type="tel" autocomplete="tel">
+        </label>
+        <label>
+          Display name
+          <input name="displayName" autocomplete="name" required>
+        </label>
+        <label>
+          Locale
+          <input name="locale" autocomplete="language">
+        </label>
+        <div class="actions">
+          <button type="submit">Create account</button>
+          <button id="cancel-flow" type="button" class="secondary">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <section id="account-panel" class="panel" hidden>
+      <h2>Current session</h2>
+      <dl class="session-summary">
+        <div>
+          <dt>Session</dt>
+          <dd id="session-id">—</dd>
+        </div>
+        <div>
+          <dt>Access token expires</dt>
+          <dd id="session-expiry">—</dd>
+        </div>
+      </dl>
+
+      <h2>External logins</h2>
+      <div id="external-logins" class="provider-list"></div>
+    </section>
+
+    <section id="verification-panel" class="panel" hidden>
+      <h2 id="verification-title">Verify account action</h2>
+      <p>The verification code is delivered through the configured provider.</p>
+      <form id="verification-form" class="form-grid">
+        <label>
+          Verification code
+          <input
+            name="verificationCode"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            required>
+        </label>
+        <button type="submit">Confirm action</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

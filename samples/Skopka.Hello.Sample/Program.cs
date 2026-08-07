@@ -119,6 +119,18 @@ app.UseStatusCodePages();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapStaticAssets();
+app.MapGet(
+    "/app/config",
+    (SkopkaHelloOptions options) => Results.Ok(new
+    {
+        antiforgeryCookieName =
+            options.AntiforgeryRequestCookieName,
+        antiforgeryHeaderName = options.AntiforgeryHeaderName,
+        oidcReturnPath = "/app/oidc-return",
+    }));
 app.MapSkopkaHello<SampleProfile>();
 app.MapSkopkaHelloUi();
+app.MapFallbackToFile(
+    "/app/{*path:nonfile}",
+    "app/index.html");
 await app.RunAsync();

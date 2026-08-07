@@ -117,14 +117,19 @@ dotnet restore .\Skopka.Hello.slnx --configfile .\NuGet.Config
 dotnet build .\Skopka.Hello.slnx -c Release --no-restore
 dotnet test .\tests\Skopka.Hello.Tests -c Release --no-build
 dotnet test .\tests\Skopka.Hello.IntegrationTests -c Release --no-build
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Skopka.Hello.BrowserTests\bin\Release\net10.0\playwright.ps1 install chromium
+dotnet test .\tests\Skopka.Hello.BrowserTests -c Release --no-build
 docker build -f .\src\Skopka.Hello.Server\Dockerfile .
 ```
 
 Integration tests require Docker because they use a real PostgreSQL
-Testcontainer.
+Testcontainer. Browser tests require the Playwright Chromium version installed
+by the generated script; on PowerShell 7 hosts use `pwsh` instead of
+`powershell.exe`.
 
-CI must restore through the repository `NuGet.Config`, build, run both test
-projects including the real PostgreSQL Testcontainer, audit NuGet dependencies
+CI must restore through the repository `NuGet.Config`, build, run all test
+projects including the real PostgreSQL Testcontainer and Chromium browser
+scenarios, audit NuGet dependencies
 and pack all five source packages without publishing them. Tag pushes matching
 `v*` publish `Skopka.Hello`, `.Admin`, `.Endpoints`, `.Oidc` and `.UI` together
 through `.github/workflows/release.yml`. Keep the tag-derived version, exact

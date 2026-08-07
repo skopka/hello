@@ -94,6 +94,11 @@ jobs:
           --no-restore
           -p:Version="$RELEASE_VERSION"
 
+      - name: Install browser test runtime
+        run: >
+          pwsh tests/Skopka.Hello.BrowserTests/bin/Release/net10.0/playwright.ps1
+          install --with-deps chromium
+
       - name: Test
         run: >
           dotnet test Skopka.Hello.slnx

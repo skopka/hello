@@ -156,6 +156,13 @@ public sealed record HelloCredentialState(
     bool HasPassword,
     bool CanRemovePassword);
 
+public interface IHelloAccessTokenValidator<TProfile>
+{
+    Task<OperationResult<IdentityUser<TProfile>>> ValidateAsync(
+        string accessToken,
+        CancellationToken cancellationToken);
+}
+
 public interface IHelloIdentityApplication<TProfile>
 {
     Task<OperationResult<HelloAccount<TProfile>>> RegisterAsync(

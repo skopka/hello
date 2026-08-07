@@ -369,8 +369,9 @@ the current `canUnlink` decision with `GET /account/external-logins`. Provider
 subjects and protocol tokens are not returned. External sign-in and
 registration support both the built-in Razor UI
 and a same-origin browser/SPA API. Link and unlink use the same two surfaces and
-the same Identity-owned OTP step-up. There is no native-app token-in-query
-callback and Hello is not an OAuth/OIDC authorization server.
+the same Identity-owned OTP step-up. There is no native-app provider-token
+callback. Native/BFF clients instead use the separate first-party authorization
+server described in [authorization server](authorization-server.md).
 
 ### Same-origin browser/SPA flow
 

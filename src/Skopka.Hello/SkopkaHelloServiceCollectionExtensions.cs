@@ -61,6 +61,10 @@ public static class SkopkaHelloServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.IHelloIdentityApplication<TProfile>,
             Skopka.Hello.HelloIdentityApplication<TProfile>>();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Scoped<
+                Skopka.Hello.IHelloAccessTokenValidator<TProfile>,
+                Skopka.Hello.IdentityAccessTokenValidator<TProfile>>());
         services.TryAddScoped<
             Skopka.Hello.IHelloExternalIdentityApplication<TProfile>,
             Skopka.Hello.HelloExternalIdentityApplication<TProfile>>();

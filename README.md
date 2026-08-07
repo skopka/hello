@@ -10,12 +10,14 @@ provider integration, host composition and policy-separated administration.
 Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
-The current `0.7.1` vertical slice contains:
+The current `0.8.0` vertical slice contains:
 
 - atomic password registration;
 - automatic email, phone or user-name password login without user
   enumeration;
 - authorization-code OIDC sign-in with PKCE through configured external providers;
+- optional first-party OAuth/OIDC authorization server for pre-registered
+  native and BFF clients with mandatory PKCE and rotating reference refresh tokens;
 - atomic external registration without email-based account auto-linking;
 - same-origin browser/SPA OIDC APIs for sign-in, registration and one-use
   link/unlink flows without exposing provider tokens or subjects;
@@ -66,8 +68,6 @@ keeps the bearer token in memory, completes OIDC navigation through an isolated
 popup and demonstrates external registration plus OTP-protected link/unlink.
 The same client is covered by real Chromium tests.
 
-An OAuth/OIDC authorization server remains deferred.
-
 ## Packages
 
 | Project | Responsibility |
@@ -76,6 +76,7 @@ An OAuth/OIDC authorization server remains deferred.
 | `Skopka.Hello.Endpoints` | Minimal API routes, HTTP DTOs and ProblemDetails |
 | `Skopka.Hello.UI` | Razor registration/login/account/session pages and theming |
 | `Skopka.Hello.Oidc` | Maintained external OIDC provider adapter and validated browser flow |
+| `Skopka.Hello.AuthorizationServer` | Optional OpenIddict authorization server bound to Identity logical sessions |
 | `Skopka.Hello.Admin` | Policy-authorized user/role administration API/UI and safe profile projection |
 | `Skopka.Hello.Server` | Executable PostgreSQL host and Docker image |
 
@@ -85,6 +86,8 @@ An OAuth/OIDC authorization server remains deferred.
 | --- | --- | --- |
 | `POST` | `/auth/register` | Anonymous, when self-registration is enabled |
 | `POST` | `/auth/login` | Anonymous |
+| `GET` | `/connect/authorize` | Browser SSO; authorization code + PKCE when enabled |
+| `POST` | `/connect/token` | Authorization-code or refresh-token grant when enabled |
 | `GET` | `/auth/antiforgery` | Bearer; issues identity-bound CSRF cookies |
 | `GET` | `/auth/external/providers` | Anonymous |
 | `GET` | `/auth/external/{providerId}/challenge` | Anonymous browser navigation |
@@ -213,6 +216,8 @@ for configuration and requests,
 for policy, projection and bootstrap,
 [architecture](https://github.com/skopka/hello/blob/main/docs/architecture.md)
 for boundaries and
+[authorization server](https://github.com/skopka/hello/blob/main/docs/authorization-server.md)
+for native/BFF OAuth configuration and limits,
 [customization](https://github.com/skopka/hello/blob/main/docs/customization.md)
 for custom CSS volumes, and
 [security](https://github.com/skopka/hello/blob/main/docs/security.md) before

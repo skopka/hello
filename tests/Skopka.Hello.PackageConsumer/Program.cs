@@ -1,5 +1,6 @@
 using Skopka.Hello;
 using Skopka.Hello.Admin;
+using Skopka.Hello.AuthorizationServer;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.Oidc;
 using Skopka.Hello.UI;
@@ -8,6 +9,7 @@ Type[] packageSurfaces =
 [
     typeof(SkopkaHelloOptions),
     typeof(SkopkaHelloAdminOptions),
+    typeof(HelloAuthorizationServerOptions),
     typeof(OperationResultProblemMapper),
     typeof(HelloOidcOptions),
     typeof(SkopkaHelloUiOptions),
@@ -33,7 +35,7 @@ var assemblies = packageSurfaces
     .Select(name => $"{name.Name} {name.Version}")
     .ToArray();
 
-if (assemblies.Length != 5
+if (assemblies.Length != 6
     || assemblies.Any(string.IsNullOrWhiteSpace))
 {
     throw new InvalidOperationException(

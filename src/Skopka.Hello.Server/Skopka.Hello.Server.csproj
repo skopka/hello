@@ -12,14 +12,20 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.OpenApi" />
     <PackageReference Include="Npgsql" />
+    <PackageReference Include="OpenIddict.EntityFrameworkCore" />
     <PackageReference Include="Skopka.Identity" />
     <PackageReference Include="Skopka.Identity.Abstractions" />
     <PackageReference Include="Skopka.Identity.Ef.PostgreSql" />
     <PackageReference Include="Skopka.Identity.Infrastructure" />
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" />
     <ProjectReference Include="..\Skopka.Hello.Admin\Skopka.Hello.Admin.csproj" />
+    <ProjectReference Include="..\Skopka.Hello.AuthorizationServer\Skopka.Hello.AuthorizationServer.csproj" />
     <ProjectReference Include="..\Skopka.Hello\Skopka.Hello.csproj" />
     <ProjectReference Include="..\Skopka.Hello.Endpoints\Skopka.Hello.Endpoints.csproj" />
     <ProjectReference Include="..\Skopka.Hello.Oidc\Skopka.Hello.Oidc.csproj" />

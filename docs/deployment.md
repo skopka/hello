@@ -41,6 +41,13 @@ rate-limit and verification-code HMAC keys from a secret manager. Do
 not bake `.env`, database passwords or signing material into the image. Use a
 protected persistent volume for Data Protection keys.
 
+When the optional authorization server is enabled, mount stable signing and
+encryption PFX files outside the image and supply their passwords plus every
+confidential client secret from the secret manager. These protocol keys are
+independent from JWT, HMAC and Data Protection material. See
+[authorization server](authorization-server.md) for the client schema and MVP
+limits.
+
 The volume prevents key loss but does not encrypt the XML key ring by itself.
 For production, mount a PFX outside the image and set
 `SkopkaHello:DataProtection:CertificatePath` plus the secret
@@ -226,11 +233,26 @@ management policy whether an existing password counts as an alternate method
 when unlinking. Keep it aligned with whether the host actually exposes password
 login.
 
+## First-party OAuth/OIDC clients
+
+The ready Server binds the optional issuer and clients from
+`SkopkaHello:AuthorizationServer`. Production defaults to disabled. Enabling it
+requires stable signing and encryption certificates, exact client redirect
+URIs and a migration run. The checked-in Development configuration uses
+ephemeral protocol keys and public test clients only; that file is excluded
+from publish and the Docker image.
+
+`--migrate` makes the stored OpenIddict application set exactly match the
+configured list. Treat removal or renaming as a security change: existing
+protocol grants for the removed client are deleted. Deploy identical issuer,
+clients, certificates and secrets to every replica.
+
 ## Database migrations
 
 Skopka.Identity PostgreSQL migrations are packaged in
 `Skopka.Identity.Ef.PostgreSql`; the ready Server also owns versioned
-`skopka_hello` delivery/audit migrations. Apply both once as a controlled
+`skopka_hello` delivery/audit migrations and, when enabled, EF migrations for
+the `skopka_hello_oauth` OpenIddict schema. Apply all of them once as a controlled
 deployment step before starting the new web replicas:
 
 ```powershell
@@ -239,8 +261,9 @@ docker run --rm `
   ghcr.io/skopka/hello:<version> --migrate
 ```
 
-The command reads only `ConnectionStrings:Identity`, applies and verifies all
-pending Identity and Hello migrations and then exits. Hello migration ids and
+The command reads the connection string plus authorization-server client
+configuration, applies and verifies all pending Identity, Hello and enabled
+OpenIddict migrations, synchronizes the exact client set and then exits. Hello migration ids and
 SHA-256 checksums are recorded in `skopka_hello.schema_migrations`; editing an
 applied migration fails instead of silently changing history. The command is
 idempotent and takes a PostgreSQL advisory transaction lock, but the deployment
@@ -260,6 +283,8 @@ Every replica must share:
 - the same current and overlapping historical rate-limit key versions;
 - the same current and overlapping historical verification key versions;
 - identical enabled OIDC provider ids, authorities, clients and scopes.
+- when enabled, identical authorization-server issuer, client registrations
+  and signing/encryption certificates.
 
 To rotate a JWT signing key, deploy the new key as another entry under
 `SkopkaHello:Jwt:Keys`, set `CurrentVersion` to its id and retain every key
@@ -318,11 +343,16 @@ access tokens, but an already issued access token remains valid until expiry.
 Enable online validation when immediate revocation is more important than the
 extra database read.
 
+OpenIddict reference access and refresh tokens always validate their Identity
+logical session online. Revoking that session immediately blocks Hello account
+and admin APIs and prevents refresh; do not remove this check from the composed
+OAuth authentication scheme.
+
 ## Operational checks
 
 - poll `/health/live` for process liveness;
-- poll `/health/ready` for PostgreSQL connectivity and current Identity/Hello
-  schemas;
+- poll `/health/ready` for PostgreSQL connectivity and current Identity/Hello/
+  enabled OpenIddict schemas;
 - monitor the hourly bounded refresh-session pruning worker;
 - monitor the hourly bounded rate-limit bucket pruning worker;
 - alert on rate-limit pruning budget exhaustion event `1013`;

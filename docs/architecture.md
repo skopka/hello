@@ -10,12 +10,13 @@ Server / Sample
   -> Skopka.Hello.Endpoints
   -> Skopka.Hello.UI
   -> Skopka.Hello.Oidc
+  -> Skopka.Hello.AuthorizationServer
   -> Skopka.Hello.Admin
 
 Endpoints / UI
   -> Skopka.Hello.Oidc
 
-Endpoints / UI / Oidc
+Endpoints / UI / Oidc / AuthorizationServer
   -> Skopka.Hello
 
 Skopka.Hello
@@ -214,6 +215,31 @@ attempted also clears that session and requires a new login because the account
 state may already have changed. Only a wrong OTP response remains retryable
 with the same challenge.
 
+## OAuth/OIDC authorization server
+
+`Skopka.Hello.AuthorizationServer` uses OpenIddict for discovery, protocol
+validation, authorization codes, PKCE, token protection and reference-token
+storage. It does not parse OAuth messages or redeem codes itself. The package
+supports pre-registered first-party public native and confidential BFF clients;
+the ready Server provides a dedicated PostgreSQL OpenIddict context.
+
+The authorization endpoint authenticates the existing Hello Razor cookie and
+validates its Identity logical session before issuing a code. Code redemption
+validates that source again and creates a distinct transport-neutral Identity
+session for the client. The private source `sid` exists only inside the
+protected authorization code. Issued access and refresh principals carry the
+new logical `sid`; refresh and the composed bearer authentication handler
+validate it online. OpenIddict owns protocol token rotation and storage while
+Identity remains the common revocation boundary for JWT, Razor and OAuth
+sessions.
+
+The facade's `IHelloAccessTokenValidator<TProfile>` chain lets ordinary account
+operations accept either Identity JWTs or OpenIddict reference access tokens
+without moving token-format knowledge into endpoint handlers. A composite
+default bearer scheme selects the correct maintained handler. OAuth session
+validation occurs in authentication itself, so named admin policies get the
+same immediate revocation semantics.
+
 Skopka.Identity owns:
 
 - user/profile, credentials and normalized handles;
@@ -235,6 +261,7 @@ Skopka.Hello owns:
 - account-message link construction and delivery orchestration;
 - password-change action/binding derivation and OTP message delivery;
 - trusted external-provider composition, pending browser tickets and callback routing;
+- OpenIddict protocol composition and client/session binding;
 - external link/unlink step-up binding and session replacement;
 - security-event request enrichment and audit-outbox contracts.
 
@@ -299,10 +326,11 @@ cannot roll back the already committed Identity mutation. Application
 operations that require atomic domain mutation plus audit still need to call
 `IHelloAuditOutbox` inside their own transaction boundary.
 
-## Deferred modules
+## Deliberate protocol limits
 
-The external-provider client is implemented with the maintained ASP.NET Core
-OpenID Connect handler. An OAuth/OIDC authorization server remains deferred.
-The project does not implement a home-grown authorization protocol. Role
-administration uses Identity's bounded query and application services rather
-than bypassing them with direct store access.
+The external-provider client uses the maintained ASP.NET Core OpenID Connect
+handler and the optional authorization server uses OpenIddict. The current
+first-party server does not include third-party consent, dynamic registration,
+device flow, legacy password/client-credentials grants, user-info, logout or
+introspection endpoints. Role administration uses Identity's bounded query and
+application services rather than bypassing them with direct store access.

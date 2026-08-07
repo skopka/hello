@@ -3,13 +3,15 @@
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
-    <HelloPackageVersion Condition="'$(HelloPackageVersion)' == ''">0.7.0</HelloPackageVersion>
+    <HelloPackageVersion Condition="'$(HelloPackageVersion)' == ''">0.8.0</HelloPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Skopka.Hello"
                       Version="$(HelloPackageVersion)" />
     <PackageReference Include="Skopka.Hello.Admin"
+                      Version="$(HelloPackageVersion)" />
+    <PackageReference Include="Skopka.Hello.AuthorizationServer"
                       Version="$(HelloPackageVersion)" />
     <PackageReference Include="Skopka.Hello.Endpoints"
                       Version="$(HelloPackageVersion)" />

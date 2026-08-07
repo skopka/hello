@@ -327,6 +327,8 @@ Keep these values outside source control:
 - persisted ASP.NET Core Data Protection key ring and its protection material;
 - SMTP credentials;
 - external OIDC client secrets;
+- authorization-server confidential client secrets and stable signing/
+  encryption PFX files;
 - any future password pepper.
 
 Do not reuse keys between purposes. Multiple replicas must share the current
@@ -356,6 +358,9 @@ error details.
   publicly.
 - Keep external providers disabled until their HTTPS authority, exact callback
   URL and client credentials are configured.
+- Keep the authorization server disabled until its HTTPS issuer, exact client
+  redirects, confidential secrets and stable protocol certificates are
+  configured; run `--migrate` after changing the client set.
 - Share provider configuration and Data Protection keys across replicas.
 - Exclude OIDC callback query strings and provider tokens from proxy and
   application logs.

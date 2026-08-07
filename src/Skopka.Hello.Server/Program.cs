@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using Skopka.Hello;
 using Skopka.Hello.Admin;
+using Skopka.Hello.AuthorizationServer;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.Server;
 using Skopka.Hello.UI;
@@ -57,20 +58,40 @@ var configuration = builder.Configuration;
 var connectionString = configuration.GetConnectionString("Identity")
     ?? throw new InvalidOperationException(
         "ConnectionStrings:Identity is required.");
-
-if (migrationCommand)
-{
-    await ApplyDatabaseMigrationsAsync(
-        connectionString,
-        CancellationToken.None);
-    return;
-}
-
 var publicOrigin = new Uri(
     configuration["SkopkaHello:PublicOrigin"]
         ?? throw new InvalidOperationException(
             "SkopkaHello:PublicOrigin is required."),
     UriKind.Absolute);
+var authorizationSection = configuration.GetSection(
+    "SkopkaHello:AuthorizationServer");
+var authorizationEnabled = authorizationSection.GetValue(
+    "Enabled",
+    false);
+
+if (migrationCommand)
+{
+    if (authorizationEnabled)
+    {
+        AddAuthorizationStorage(
+            builder.Services,
+            connectionString);
+        builder.Services.AddSkopkaHelloAuthorizationClients(
+            options => BindAuthorizationOptions(
+                authorizationSection,
+                options,
+                publicOrigin));
+    }
+
+    await using var migrationApplication = builder.Build();
+    await ApplyDatabaseMigrationsAsync(
+        connectionString,
+        authorizationEnabled,
+        migrationApplication.Services,
+        CancellationToken.None);
+    return;
+}
+
 var issuer = configuration["SkopkaHello:Jwt:Issuer"]
     ?? publicOrigin.GetLeftPart(UriPartial.Authority);
 var audience = configuration["SkopkaHello:Jwt:Audience"]
@@ -302,6 +323,53 @@ identity.UseJwtBearerAuthentication(options =>
         false);
 });
 
+if (authorizationEnabled)
+{
+    AddAuthorizationStorage(
+        builder.Services,
+        connectionString);
+    builder.Services.AddSkopkaHelloAuthorizationServer<HelloProfile>(
+        options => BindAuthorizationOptions(
+            authorizationSection,
+            options,
+            publicOrigin),
+        server =>
+        {
+            var signingPath = authorizationSection[
+                "SigningCertificatePath"];
+            var encryptionPath = authorizationSection[
+                "EncryptionCertificatePath"];
+            if (builder.Environment.IsDevelopment()
+                && string.IsNullOrWhiteSpace(signingPath)
+                && string.IsNullOrWhiteSpace(encryptionPath))
+            {
+                server.AddEphemeralSigningKey();
+                server.AddEphemeralEncryptionKey();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(signingPath)
+                || string.IsNullOrWhiteSpace(encryptionPath))
+            {
+                throw new InvalidOperationException(
+                    "Authorization Server signing and encryption certificates are required outside Development.");
+            }
+
+            var signingCertificate = LoadAuthorizationCertificate(
+                signingPath,
+                authorizationSection["SigningCertificatePassword"],
+                "signing");
+            var encryptionCertificate = LoadAuthorizationCertificate(
+                encryptionPath,
+                authorizationSection["EncryptionCertificatePassword"],
+                "encryption");
+            builder.Services.AddSingleton(signingCertificate);
+            builder.Services.AddSingleton(encryptionCertificate);
+            server.AddSigningCertificate(signingCertificate);
+            server.AddEncryptionCertificate(encryptionCertificate);
+        });
+}
+
 var externalOidcSection = configuration.GetSection(
     "SkopkaHello:ExternalOidc");
 builder.Services.AddSkopkaHelloOidc<HelloProfile>(options =>
@@ -491,22 +559,55 @@ app.MapGet(
 app.MapGet(
     "/health/live",
     () => TypedResults.Ok(new { status = "healthy" }));
-app.MapGet(
-    "/health/ready",
-    async (
-        PostgreSqlIdentityDbContext<HelloProfile> database,
-        NpgsqlDataSource helloDataSource,
-        CancellationToken cancellationToken) =>
-        await database.Database.CanConnectAsync(cancellationToken)
-            && await HelloServerDatabaseMigrator.IsCurrentAsync(
-                helloDataSource,
-                cancellationToken)
-            ? Results.Ok(new { status = "ready" })
-            : Results.StatusCode(
-                StatusCodes.Status503ServiceUnavailable));
+if (authorizationEnabled)
+{
+    app.MapGet(
+        "/health/ready",
+        async (
+            PostgreSqlIdentityDbContext<HelloProfile> database,
+            HelloAuthorizationDbContext authorizationDatabase,
+            NpgsqlDataSource helloDataSource,
+            CancellationToken cancellationToken) =>
+            await database.Database.CanConnectAsync(cancellationToken)
+                && !((await database.Database.GetPendingMigrationsAsync(
+                        cancellationToken))
+                    .Any())
+                && !((await authorizationDatabase.Database
+                        .GetPendingMigrationsAsync(cancellationToken))
+                    .Any())
+                && await HelloServerDatabaseMigrator.IsCurrentAsync(
+                    helloDataSource,
+                    cancellationToken)
+                ? Results.Ok(new { status = "ready" })
+                : Results.StatusCode(
+                    StatusCodes.Status503ServiceUnavailable));
+}
+else
+{
+    app.MapGet(
+        "/health/ready",
+        async (
+            PostgreSqlIdentityDbContext<HelloProfile> database,
+            NpgsqlDataSource helloDataSource,
+            CancellationToken cancellationToken) =>
+            await database.Database.CanConnectAsync(cancellationToken)
+                && !((await database.Database.GetPendingMigrationsAsync(
+                        cancellationToken))
+                    .Any())
+                && await HelloServerDatabaseMigrator.IsCurrentAsync(
+                    helloDataSource,
+                    cancellationToken)
+                ? Results.Ok(new { status = "ready" })
+                : Results.StatusCode(
+                    StatusCodes.Status503ServiceUnavailable));
+}
 app.MapSkopkaHello<HelloProfile>();
 app.MapSkopkaHelloAdmin<HelloProfile>();
 app.MapSkopkaHelloUi();
+if (authorizationEnabled)
+{
+    app.MapSkopkaHelloAuthorizationServer<HelloProfile>();
+}
 
 if (TryReadBootstrapAdminUserId(args, out var bootstrapAdminUserId))
 {
@@ -521,6 +622,8 @@ await app.RunAsync();
 
 static async Task ApplyDatabaseMigrationsAsync(
     string connectionString,
+    bool authorizationEnabled,
+    IServiceProvider services,
     CancellationToken cancellationToken)
 {
     var options = new DbContextOptionsBuilder<
@@ -548,8 +651,63 @@ static async Task ApplyDatabaseMigrationsAsync(
     var helloApplied = await HelloServerDatabaseMigrator.ApplyAsync(
         connectionString,
         cancellationToken);
+
+    var authorizationApplied = 0;
+    if (authorizationEnabled)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var authorizationDatabase = scope.ServiceProvider
+            .GetRequiredService<HelloAuthorizationDbContext>();
+        var authorizationPending = (await authorizationDatabase.Database
+                .GetPendingMigrationsAsync(cancellationToken))
+            .ToArray();
+        if (authorizationPending.Length > 0)
+        {
+            await authorizationDatabase.Database.MigrateAsync(
+                cancellationToken);
+        }
+
+        if ((await authorizationDatabase.Database
+                .GetPendingMigrationsAsync(cancellationToken))
+            .Any())
+        {
+            throw new InvalidOperationException(
+                "Authorization Server database migrations did not complete.");
+        }
+
+        var clients = scope.ServiceProvider.GetRequiredService<
+            IHelloAuthorizationClientSynchronizer>();
+        await clients.SynchronizeAsync(cancellationToken);
+        authorizationApplied = authorizationPending.Length;
+    }
+
     Console.WriteLine(
-        $"Database is current. Applied {pending.Length} Identity and {helloApplied} Hello migration(s).");
+        $"Database is current. Applied {pending.Length} Identity, {helloApplied} Hello and {authorizationApplied} Authorization Server migration(s). Authorization clients are current.");
+}
+
+static void AddAuthorizationStorage(
+    IServiceCollection services,
+    string connectionString)
+{
+    services.AddDbContext<HelloAuthorizationDbContext>(options =>
+    {
+        options.UseNpgsql(
+            connectionString,
+            HelloAuthorizationDbContext.ConfigureNpgsql);
+        options.UseOpenIddict();
+    });
+    services.AddOpenIddict()
+        .AddCore(options => options.UseEntityFrameworkCore()
+            .UseDbContext<HelloAuthorizationDbContext>());
+}
+
+static void BindAuthorizationOptions(
+    IConfigurationSection section,
+    HelloAuthorizationServerOptions options,
+    Uri defaultIssuer)
+{
+    section.Bind(options);
+    options.Issuer ??= defaultIssuer;
 }
 
 static X509Certificate2 LoadDataProtectionCertificate(
@@ -568,6 +726,25 @@ static X509Certificate2 LoadDataProtectionCertificate(
     certificate.Dispose();
     throw new InvalidOperationException(
         $"The Data Protection certificate '{path}' must contain a private key.");
+}
+
+static X509Certificate2 LoadAuthorizationCertificate(
+    string path,
+    string? password,
+    string purpose)
+{
+    var certificate = X509CertificateLoader.LoadPkcs12FromFile(
+        path,
+        password,
+        X509KeyStorageFlags.EphemeralKeySet);
+    if (certificate.HasPrivateKey)
+    {
+        return certificate;
+    }
+
+    certificate.Dispose();
+    throw new InvalidOperationException(
+        $"The Authorization Server {purpose} certificate '{path}' must contain a private key.");
 }
 
 static bool TryReadBootstrapAdminUserId(

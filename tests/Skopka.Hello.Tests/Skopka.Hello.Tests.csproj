@@ -16,6 +16,7 @@
     </PackageReference>
     <ProjectReference Include="..\..\src\Skopka.Hello\Skopka.Hello.csproj" />
     <ProjectReference Include="..\..\src\Skopka.Hello.Admin\Skopka.Hello.Admin.csproj" />
+    <ProjectReference Include="..\..\src\Skopka.Hello.AuthorizationServer\Skopka.Hello.AuthorizationServer.csproj" />
     <ProjectReference Include="..\..\src\Skopka.Hello.Endpoints\Skopka.Hello.Endpoints.csproj" />
     <ProjectReference Include="..\..\src\Skopka.Hello.Oidc\Skopka.Hello.Oidc.csproj" />
     <ProjectReference Include="..\..\src\Skopka.Hello.UI\Skopka.Hello.UI.csproj" />

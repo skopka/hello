@@ -81,6 +81,12 @@ ready Server backs this replay guard with the persistent HMAC rate limiter;
 hosts without one use the bounded process-local fallback or replace
 `IHelloOidcFlowStore` with a shared atomic implementation.
 
+The optional authorization server uses OpenIddict authorization code with
+mandatory PKCE for pre-registered native and BFF clients. Protocol artifacts
+are reference tokens in an OpenIddict store; code redemption creates a distinct
+Identity logical session, and access/refresh authentication validates its `sid`
+online. Client configuration is synchronized only by the migration command.
+
 ## Modules
 
 - `src/Skopka.Hello` - facade, shared identity application operations, cookie
@@ -91,6 +97,9 @@ hosts without one use the bounded process-local fallback or replace
 - `src/Skopka.Hello.Oidc` - maintained external OIDC client adapter and
   validated pending browser flow, never a home-grown protocol or authorization
   server.
+- `src/Skopka.Hello.AuthorizationServer` - optional OpenIddict-based OAuth 2.0
+  and OpenID Connect authorization server for pre-registered native and BFF
+  clients, bound to Identity logical sessions.
 - `src/Skopka.Hello.Admin` - bounded user and role queries, safe profile
   projection, live role-policy authorization and step-up-protected user and
   role administration.
@@ -130,8 +139,9 @@ by the generated script; on PowerShell 7 hosts use `pwsh` instead of
 CI must restore through the repository `NuGet.Config`, build, run all test
 projects including the real PostgreSQL Testcontainer and Chromium browser
 scenarios, audit NuGet dependencies
-and pack all five source packages without publishing them. Tag pushes matching
-`v*` publish `Skopka.Hello`, `.Admin`, `.Endpoints`, `.Oidc` and `.UI` together
+and pack all six source packages without publishing them. Tag pushes matching
+`v*` publish `Skopka.Hello`, `.Admin`, `.AuthorizationServer`, `.Endpoints`,
+`.Oidc` and `.UI` together
 through `.github/workflows/release.yml`. Keep the tag-derived version, exact
 package-set validation, NuGet.org publication and GitHub Release attachments in
 one coordinated job. The same tag publishes the ready Server image to GHCR

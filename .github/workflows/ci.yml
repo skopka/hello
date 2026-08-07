@@ -96,6 +96,7 @@ jobs:
           EXPECTED_PACKAGES=(
             "Skopka.Hello"
             "Skopka.Hello.Admin"
+            "Skopka.Hello.AuthorizationServer"
             "Skopka.Hello.Endpoints"
             "Skopka.Hello.Oidc"
             "Skopka.Hello.UI"
@@ -113,8 +114,8 @@ jobs:
 
           NUPKG_COUNT=$(find artifacts/packages -maxdepth 1 -type f -name '*.nupkg' | wc -l)
           SNUPKG_COUNT=$(find artifacts/packages -maxdepth 1 -type f -name '*.snupkg' | wc -l)
-          if [[ "$NUPKG_COUNT" -ne 5 || "$SNUPKG_COUNT" -ne 5 ]]; then
-            echo "Expected 5 packages and 5 symbol packages, found $NUPKG_COUNT and $SNUPKG_COUNT." >&2
+          if [[ "$NUPKG_COUNT" -ne 6 || "$SNUPKG_COUNT" -ne 6 ]]; then
+            echo "Expected 6 packages and 6 symbol packages, found $NUPKG_COUNT and $SNUPKG_COUNT." >&2
             exit 1
           fi
 

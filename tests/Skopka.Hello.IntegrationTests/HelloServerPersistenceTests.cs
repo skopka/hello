@@ -1,7 +1,11 @@
 using System.Text;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
+using OpenIddict.Abstractions;
+using Skopka.Hello.AuthorizationServer;
 using Skopka.Hello.Server;
 using Testcontainers.PostgreSql;
 
@@ -9,6 +13,72 @@ namespace Skopka.Hello.IntegrationTests;
 
 public sealed class HelloServerPersistenceTests
 {
+    [Fact]
+    public async Task AuthorizationMigrationAndClientSynchronizationUsePostgres()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+        var connectionString = postgres.GetConnectionString();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddDbContext<HelloAuthorizationDbContext>(options =>
+        {
+            options.UseNpgsql(
+                connectionString,
+                HelloAuthorizationDbContext.ConfigureNpgsql);
+            options.UseOpenIddict();
+        });
+        services.AddOpenIddict()
+            .AddCore(options => options.UseEntityFrameworkCore()
+                .UseDbContext<HelloAuthorizationDbContext>());
+        services.AddSkopkaHelloAuthorizationClients(options =>
+        {
+            options.Issuer = new Uri("https://hello.example.test");
+            options.Clients.Add(new HelloAuthorizationClientOptions
+            {
+                ClientId = "postgres-native",
+                DisplayName = "PostgreSQL native client",
+                Type = HelloAuthorizationClientType.Public,
+                RedirectUris = ["com.example.postgres:/callback"],
+                Scopes = [OpenIddictConstants.Scopes.OpenId],
+            });
+        });
+
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<
+            HelloAuthorizationDbContext>();
+        await database.Database.MigrateAsync();
+        Assert.Empty(await database.Database.GetPendingMigrationsAsync());
+
+        var clients = scope.ServiceProvider.GetRequiredService<
+            IHelloAuthorizationClientSynchronizer>();
+        await clients.SynchronizeAsync(CancellationToken.None);
+        var applications = scope.ServiceProvider.GetRequiredService<
+            IOpenIddictApplicationManager>();
+        var application = await applications.FindByClientIdAsync(
+            "postgres-native");
+        Assert.NotNull(application);
+        Assert.Equal(
+            OpenIddictConstants.ClientTypes.Public,
+            await applications.GetClientTypeAsync(application));
+
+        await using var dataSource = NpgsqlDataSource.Create(
+            connectionString);
+        Assert.Equal(
+            1L,
+            await CountAsync(
+                dataSource,
+                "skopka_hello_oauth.applications"));
+        Assert.Equal(
+            1L,
+            await CountAsync(
+                dataSource,
+                "skopka_hello_oauth.schema_migrations"));
+    }
+
     [Fact]
     public async Task MigrationQueuesAndAuditRoundTripProtectedData()
     {

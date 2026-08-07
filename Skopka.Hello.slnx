@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Skopka.Hello/Skopka.Hello.csproj" />
     <Project Path="src/Skopka.Hello.Admin/Skopka.Hello.Admin.csproj" />
+    <Project Path="src/Skopka.Hello.AuthorizationServer/Skopka.Hello.AuthorizationServer.csproj" />
     <Project Path="src/Skopka.Hello.Endpoints/Skopka.Hello.Endpoints.csproj" />
     <Project Path="src/Skopka.Hello.Oidc/Skopka.Hello.Oidc.csproj" />
     <Project Path="src/Skopka.Hello.Server/Skopka.Hello.Server.csproj" />

@@ -28,7 +28,9 @@ internal sealed class HelloIdentityApplication<TProfile>(
     HelloDeliveryOptions deliveryOptions,
     SkopkaHelloOptions options,
     HelloRegistrationAdmission<TProfile>? registrationAdmission = null,
-    IIdentitySignInMethodQueryService<TProfile>? signInMethods = null)
+    IIdentitySignInMethodQueryService<TProfile>? signInMethods = null,
+    IEnumerable<IHelloAccessTokenValidator<TProfile>>?
+        accessTokenValidators = null)
     : IHelloIdentityApplication<TProfile>
 {
     public async Task<OperationResult<HelloAccount<TProfile>>> RegisterAsync(
@@ -136,7 +138,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
 
-        var result = await sessions.ValidateAccessTokenAsync(
+        var result = await ValidateTokenAsync(
             accessToken,
             cancellationToken);
         return result.IsSuccess
@@ -152,7 +154,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var validated = await sessions.ValidateAccessTokenAsync(
+        var validated = await ValidateTokenAsync(
             command.AccessToken,
             cancellationToken);
         if (!validated.IsSuccess)
@@ -189,7 +191,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var validated = await sessions.ValidateAccessTokenAsync(
+        var validated = await ValidateTokenAsync(
             command.AccessToken,
             cancellationToken);
         if (!validated.IsSuccess)
@@ -226,7 +228,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var validated = await sessions.ValidateAccessTokenAsync(
+        var validated = await ValidateTokenAsync(
             command.AccessToken,
             cancellationToken);
         if (!validated.IsSuccess)
@@ -263,7 +265,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var validated = await sessions.ValidateAccessTokenAsync(
+        var validated = await ValidateTokenAsync(
             command.AccessToken,
             cancellationToken);
         if (!validated.IsSuccess)
@@ -287,7 +289,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
             CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
-        var validated = await sessions.ValidateAccessTokenAsync(
+        var validated = await ValidateTokenAsync(
             accessToken,
             cancellationToken);
         if (!validated.IsSuccess)
@@ -445,7 +447,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var validated = await sessions.ValidateAccessTokenAsync(
+        var validated = await ValidateTokenAsync(
             command.AccessToken,
             cancellationToken);
         if (!validated.IsSuccess)
@@ -525,7 +527,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var validated = await sessions.ValidateAccessTokenAsync(
+        var validated = await ValidateTokenAsync(
             command.AccessToken,
             cancellationToken);
         if (!validated.IsSuccess)
@@ -712,7 +714,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 Task<OperationResult>>? precondition,
             CancellationToken cancellationToken)
     {
-        var validated = await sessions.ValidateAccessTokenAsync(
+        var validated = await ValidateTokenAsync(
             accessToken,
             cancellationToken);
         if (!validated.IsSuccess)
@@ -806,7 +808,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
             Task<OperationResult>> mutation,
         CancellationToken cancellationToken)
     {
-        var validated = await sessions.ValidateAccessTokenAsync(
+        var validated = await ValidateTokenAsync(
             accessToken,
             cancellationToken);
         if (!validated.IsSuccess)
@@ -1030,6 +1032,34 @@ internal sealed class HelloIdentityApplication<TProfile>(
                         "The account security action completed, but session cleanup could not be completed. Sign in again.",
                         ErrorType.Conflict))
                 .ToArray());
+
+    private async Task<OperationResult<IdentityUser<TProfile>>>
+        ValidateTokenAsync(
+            string accessToken,
+            CancellationToken cancellationToken)
+    {
+        OperationResult<IdentityUser<TProfile>>? firstFailure = null;
+        if (accessTokenValidators is not null)
+        {
+            foreach (var validator in accessTokenValidators)
+            {
+                var result = await validator.ValidateAsync(
+                    accessToken,
+                    cancellationToken);
+                if (result.IsSuccess)
+                {
+                    return result;
+                }
+
+                firstFailure ??= result;
+            }
+        }
+
+        return firstFailure
+            ?? await sessions.ValidateAccessTokenAsync(
+                accessToken,
+                cancellationToken);
+    }
 
     private static HelloAccount<TProfile> ToAccount(
         IdentityUser<TProfile> user)

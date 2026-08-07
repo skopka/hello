@@ -5,6 +5,7 @@ WORKDIR /src
 COPY NuGet.Config Directory.Build.props Directory.Packages.props ./
 COPY src/Skopka.Hello/Skopka.Hello.csproj src/Skopka.Hello/
 COPY src/Skopka.Hello.Admin/Skopka.Hello.Admin.csproj src/Skopka.Hello.Admin/
+COPY src/Skopka.Hello.AuthorizationServer/Skopka.Hello.AuthorizationServer.csproj src/Skopka.Hello.AuthorizationServer/
 COPY src/Skopka.Hello.Endpoints/Skopka.Hello.Endpoints.csproj src/Skopka.Hello.Endpoints/
 COPY src/Skopka.Hello.Oidc/Skopka.Hello.Oidc.csproj src/Skopka.Hello.Oidc/
 COPY src/Skopka.Hello.UI/Skopka.Hello.UI.csproj src/Skopka.Hello.UI/
@@ -14,6 +15,7 @@ RUN dotnet restore src/Skopka.Hello.Server/Skopka.Hello.Server.csproj \
 
 COPY src/Skopka.Hello src/Skopka.Hello
 COPY src/Skopka.Hello.Admin src/Skopka.Hello.Admin
+COPY src/Skopka.Hello.AuthorizationServer src/Skopka.Hello.AuthorizationServer
 COPY src/Skopka.Hello.Endpoints src/Skopka.Hello.Endpoints
 COPY src/Skopka.Hello.Oidc src/Skopka.Hello.Oidc
 COPY src/Skopka.Hello.UI src/Skopka.Hello.UI

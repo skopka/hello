@@ -22,7 +22,9 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
     IHelloAccountMessageSender messageSender,
     HelloDeliveryOptions deliveryOptions,
     SkopkaHelloOptions options,
-    HelloRegistrationAdmission<TProfile>? registrationAdmission = null)
+    HelloRegistrationAdmission<TProfile>? registrationAdmission = null,
+    IEnumerable<IHelloAccessTokenValidator<TProfile>>?
+        accessTokenValidators = null)
     : IHelloExternalIdentityApplication<TProfile>
 {
     public async Task<OperationResult<HelloSignIn<TProfile>>> SignInAsync(
@@ -93,7 +95,7 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
 
-        var validated = await sessions.ValidateAccessTokenAsync(
+        var validated = await ValidateTokenAsync(
             accessToken,
             cancellationToken);
         if (!validated.IsSuccess)
@@ -149,7 +151,7 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var validated = await sessions.ValidateAccessTokenAsync(
+        var validated = await ValidateTokenAsync(
             command.AccessToken,
             cancellationToken);
         if (!validated.IsSuccess)
@@ -241,7 +243,7 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var validated = await sessions.ValidateAccessTokenAsync(
+        var validated = await ValidateTokenAsync(
             command.AccessToken,
             cancellationToken);
         if (!validated.IsSuccess)
@@ -353,6 +355,34 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
                     ToSession(issued.Value)))
             : OperationResultFactory.Fail<HelloSignIn<TProfile>>(
                 issued.Errors);
+    }
+
+    private async Task<OperationResult<IdentityUser<TProfile>>>
+        ValidateTokenAsync(
+            string accessToken,
+            CancellationToken cancellationToken)
+    {
+        OperationResult<IdentityUser<TProfile>>? firstFailure = null;
+        if (accessTokenValidators is not null)
+        {
+            foreach (var validator in accessTokenValidators)
+            {
+                var result = await validator.ValidateAsync(
+                    accessToken,
+                    cancellationToken);
+                if (result.IsSuccess)
+                {
+                    return result;
+                }
+
+                firstFailure ??= result;
+            }
+        }
+
+        return firstFailure
+            ?? await sessions.ValidateAccessTokenAsync(
+                accessToken,
+                cancellationToken);
     }
 
     private static HelloAccount<TProfile> ToAccount(

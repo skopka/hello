@@ -13,11 +13,12 @@ named `NUGET_API_KEY`:
 
 - `Skopka.Hello`
 - `Skopka.Hello.Admin`
+- `Skopka.Hello.AuthorizationServer`
 - `Skopka.Hello.Endpoints`
 - `Skopka.Hello.Oidc`
 - `Skopka.Hello.UI`
 
-The same semantic version is assigned to all five packages. Do not publish an
+The same semantic version is assigned to all six packages. Do not publish an
 individual project or create package-specific release jobs.
 
 The workflow publishes the server image to GitHub Container Registry using the
@@ -36,8 +37,8 @@ semantic-version tag:
 ```shell
 git switch main
 git pull --ff-only
-git tag -a v0.7.1 -m "Skopka.Hello 0.7.1"
-git push origin v0.7.1
+git tag -a v0.8.0 -m "Skopka.Hello 0.8.0"
+git push origin v0.8.0
 ```
 
 The workflow removes the leading `v` and uses the remainder as the assembly and
@@ -46,14 +47,14 @@ NuGet package version. The tag's base version must equal `VersionPrefix` in
 without build metadata; stable and prerelease versions are supported. Before
 any publication, one job restores, verifies formatting, builds, runs the unit
 and PostgreSQL Testcontainers integration tests, audits dependencies, packs
-the complete solution, verifies the exact five package and symbol package
+the complete solution, verifies the exact six package and symbol package
 filenames and restores a standalone consumer from those package files. The
 tagged commit must be reachable from `origin/main`.
 Third-party Actions are pinned to reviewed commit SHAs; Dependabot proposes
 updates to those pins. The .NET SDK and runtime images are pinned to manifest
 digests, with Docker Dependabot updates enabled separately.
 
-Before the first immutable write, the NuGet job proves that none of the five
+Before the first immutable write, the NuGet job proves that none of the six
 package IDs already has that version. It then submits the packages in dependency
 order without `--skip-duplicate`. This prevents an unrelated or stale package
 from being silently accepted as part of the coordinated release. NuGet.org does
@@ -61,7 +62,7 @@ not provide a transaction spanning multiple package IDs, so a network failure
 can still leave a partially visible release. Never reuse such a version: fix the
 cause, increment the patch version and create a new tag.
 
-After the push, the workflow waits until the exact version of all five package
+After the push, the workflow waits until the exact version of all six package
 IDs is readable from NuGet.org's public flat-container endpoint. A separate
 dependent job then builds and publishes `ghcr.io/skopka/hello:<version>` and a
 commit-SHA tag from the same source. If that job fails, use GitHub Actions

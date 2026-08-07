@@ -251,6 +251,7 @@ validated exact `sub` form the Identity key; a CSS class, display name or
 matching email cannot affect account linking. External registration and link
 or unlink continue through shared `OperationResult` application operations.
 
-This module is an external OIDC client adapter. It does not implement an
-OAuth/OIDC authorization server, and the project does not promise one through
-the theming surface.
+This module is an external OIDC client adapter. The separate optional
+`Skopka.Hello.AuthorizationServer` package issues tokens to first-party clients;
+the theming surface cannot add clients, change redirect URIs or affect protocol
+decisions.

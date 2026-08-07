@@ -315,6 +315,8 @@ builder.Services.AddSkopkaHelloOidc<HelloProfile>(options =>
             "Skopka.Hello.External";
         options.PendingCookieName =
             "Skopka.Hello.External.Pending";
+        options.LinkRequestCookieName =
+            "Skopka.Hello.External.LinkRequest";
     }
 });
 

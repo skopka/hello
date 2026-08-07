@@ -99,6 +99,8 @@ public sealed class HelloOidcOptionsTests
                     "Skopka.Hello.External";
                 options.PendingCookieName =
                     "Skopka.Hello.External.Pending";
+                options.LinkRequestCookieName =
+                    "Skopka.Hello.External.LinkRequest";
                 options.Providers["github"] = CreateProvider();
             }));
 
@@ -224,6 +226,8 @@ public sealed class HelloOidcOptionsTests
             HelloOidcDefaults.ExternalCookieScheme);
         var pending = cookieOptions.Get(
             HelloOidcDefaults.PendingCookieScheme);
+        var linkRequest = cookieOptions.Get(
+            HelloOidcDefaults.LinkRequestCookieScheme);
         Assert.True(external.Cookie.HttpOnly);
         Assert.Equal(
             CookieSecurePolicy.Always,
@@ -236,6 +240,14 @@ public sealed class HelloOidcOptionsTests
             pending.Cookie.SecurePolicy);
         Assert.Equal(SameSiteMode.Strict, pending.Cookie.SameSite);
         Assert.False(pending.SlidingExpiration);
+        Assert.True(linkRequest.Cookie.HttpOnly);
+        Assert.Equal(
+            CookieSecurePolicy.Always,
+            linkRequest.Cookie.SecurePolicy);
+        Assert.Equal(
+            SameSiteMode.Strict,
+            linkRequest.Cookie.SameSite);
+        Assert.False(linkRequest.SlidingExpiration);
     }
 
     private static void AddOidc(

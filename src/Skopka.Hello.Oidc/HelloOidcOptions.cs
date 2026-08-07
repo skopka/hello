@@ -17,6 +17,9 @@ public sealed class HelloOidcOptions
     public string PendingCookieName { get; set; } =
         HelloOidcDefaults.PendingCookieName;
 
+    public string LinkRequestCookieName { get; set; } =
+        HelloOidcDefaults.LinkRequestCookieName;
+
     public TimeSpan PendingCookieLifetime { get; set; } =
         TimeSpan.FromMinutes(10);
 
@@ -50,17 +53,25 @@ public sealed class HelloOidcOptions
 
         ArgumentException.ThrowIfNullOrWhiteSpace(ExternalCookieName);
         ArgumentException.ThrowIfNullOrWhiteSpace(PendingCookieName);
-        if (string.Equals(
+        ArgumentException.ThrowIfNullOrWhiteSpace(LinkRequestCookieName);
+        if (new[]
+            {
                 ExternalCookieName,
                 PendingCookieName,
-                StringComparison.Ordinal))
+                LinkRequestCookieName,
+            }.Distinct(StringComparer.Ordinal).Count() != 3)
         {
             throw new InvalidOperationException(
-                "External and pending OIDC cookies require different names.");
+                "External, pending and link-request OIDC cookies require different names.");
         }
 
         if (!SecureCookies
-            && new[] { ExternalCookieName, PendingCookieName }.Any(
+            && new[]
+                {
+                    ExternalCookieName,
+                    PendingCookieName,
+                    LinkRequestCookieName,
+                }.Any(
                 name => name.StartsWith(
                     "__Host-",
                     StringComparison.Ordinal)))

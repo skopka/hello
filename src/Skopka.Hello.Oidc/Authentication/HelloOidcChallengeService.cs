@@ -17,6 +17,16 @@ public interface IHelloOidcChallengeService
         string providerId,
         Guid userId,
         Guid sessionId);
+
+    OperationResult<HelloOidcChallenge> CreateHeadlessSignIn(
+        string providerId,
+        string returnUrl);
+
+    OperationResult<HelloOidcChallenge> CreateHeadlessLink(
+        string providerId,
+        string returnUrl,
+        Guid userId,
+        Guid sessionId);
 }
 
 internal sealed class HelloOidcChallengeService(
@@ -35,8 +45,32 @@ internal sealed class HelloOidcChallengeService(
                 returnUrl,
                 uiRoutes.AccountPath,
                 uiRoutes.ExternalCompletionPath),
+            uiRoutes.ExternalCompletionPath,
             userId: null,
-            sessionId: null);
+            sessionId: null,
+            headless: false);
+
+    public OperationResult<HelloOidcChallenge> CreateHeadlessSignIn(
+        string providerId,
+        string returnUrl)
+    {
+        if (!HelloOidcReturnUrl.TryNormalizeHeadless(
+                returnUrl,
+                out var normalizedReturnUrl))
+        {
+            return OperationResultFactory.Fail<HelloOidcChallenge>(
+                HelloOidcErrors.ReturnUrlInvalid());
+        }
+
+        return Create(
+            providerId,
+            HelloOidcProperties.SignInIntent,
+            normalizedReturnUrl,
+            normalizedReturnUrl,
+            userId: null,
+            sessionId: null,
+            headless: true);
+    }
 
     public OperationResult<HelloOidcChallenge> CreateLink(
         string providerId,
@@ -53,16 +87,51 @@ internal sealed class HelloOidcChallengeService(
             providerId,
             HelloOidcProperties.LinkIntent,
             uiRoutes.ExternalLoginsPath,
+            uiRoutes.ExternalCompletionPath,
             userId,
-            sessionId);
+            sessionId,
+            headless: false);
+    }
+
+    public OperationResult<HelloOidcChallenge> CreateHeadlessLink(
+        string providerId,
+        string returnUrl,
+        Guid userId,
+        Guid sessionId)
+    {
+        if (userId == Guid.Empty
+            || sessionId == Guid.Empty)
+        {
+            return OperationResultFactory.Fail<HelloOidcChallenge>(
+                HelloOidcErrors.PendingIdentityInvalid());
+        }
+
+        if (!HelloOidcReturnUrl.TryNormalizeHeadless(
+                returnUrl,
+                out var normalizedReturnUrl))
+        {
+            return OperationResultFactory.Fail<HelloOidcChallenge>(
+                HelloOidcErrors.ReturnUrlInvalid());
+        }
+
+        return Create(
+            providerId,
+            HelloOidcProperties.LinkIntent,
+            normalizedReturnUrl,
+            normalizedReturnUrl,
+            userId,
+            sessionId,
+            headless: true);
     }
 
     private OperationResult<HelloOidcChallenge> Create(
         string providerId,
         string intent,
         string returnUrl,
+        string redirectUri,
         Guid? userId,
-        Guid? sessionId)
+        Guid? sessionId,
+        bool headless)
     {
         if (!providers.TryGet(providerId, out var provider))
         {
@@ -77,13 +146,18 @@ internal sealed class HelloOidcChallengeService(
             IsPersistent = false,
             IssuedUtc = now,
             ExpiresUtc = now.Add(options.ExternalCookieLifetime),
-            RedirectUri = uiRoutes.ExternalCompletionPath,
+            RedirectUri = redirectUri,
         };
         properties.Items[HelloOidcProperties.Intent] = intent;
         properties.Items[HelloOidcProperties.Provider] = provider.Id;
         properties.Items[HelloOidcProperties.ReturnUrl] = returnUrl;
         properties.Items[HelloOidcProperties.FlowId] =
             HelloOidcFlowId.Create().ToString("D");
+        if (headless)
+        {
+            properties.Items[HelloOidcProperties.Headless] =
+                Boolean.TrueString;
+        }
         if (userId is not null && sessionId is not null)
         {
             properties.Items[HelloOidcProperties.UserId] =

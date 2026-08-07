@@ -15,6 +15,10 @@ Type[] packageSurfaces =
 
 if (typeof(IHelloAdminRoleApplication).Assembly
         != typeof(SkopkaHelloAdminOptions).Assembly
+    || typeof(ExternalAuthenticationResponse).Assembly
+        != typeof(OperationResultProblemMapper).Assembly
+    || string.IsNullOrWhiteSpace(
+        HelloOidcDefaults.ApiCompletionPath)
     || string.IsNullOrWhiteSpace(
         HelloAdminSecurityEventTypes.RoleCreated)
     || (HelloUiPages.All & HelloUiPages.Login)

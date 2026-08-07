@@ -20,6 +20,9 @@ internal static class HelloOidcErrors
     public const string AccountRequiresLinkCode =
         "hello.oidc.account_requires_link";
 
+    public const string ReturnUrlInvalidCode =
+        "hello.oidc.return_url_invalid";
+
     public static Error ProviderUnavailable()
         => new(
             ProviderUnavailableCode,
@@ -49,6 +52,12 @@ internal static class HelloOidcErrors
             AccountRequiresLinkCode,
             "Sign in to the existing account and link this provider.",
             ErrorType.Conflict);
+
+    public static Error ReturnUrlInvalid()
+        => new(
+            ReturnUrlInvalidCode,
+            "The external sign-in return URL must be a safe local application path.",
+            ErrorType.Validation);
 
     public static Error AmbiguousProvider()
         => new(

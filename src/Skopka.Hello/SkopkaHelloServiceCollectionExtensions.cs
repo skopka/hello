@@ -72,6 +72,9 @@ public static class SkopkaHelloServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.IHelloSessionCookieManager,
             Skopka.Hello.HelloSessionCookieManager>();
+        services.TryAddScoped<
+            Skopka.Hello.IHelloAntiforgeryTokenIssuer,
+            Skopka.Hello.HelloAntiforgeryTokenIssuer>();
 
         return services
             .AddSkopkaIdentity<TProfile>()

@@ -62,6 +62,15 @@ public static class SkopkaHelloOidcServiceCollectionExtensions
                     options.PendingCookieName,
                     options.PendingCookieLifetime,
                     SameSiteMode.Strict,
+                    options.SecureCookies))
+            .AddCookie(
+                Skopka.Hello.Oidc.HelloOidcDefaults
+                    .LinkRequestCookieScheme,
+                cookie => ConfigureCookie(
+                    cookie,
+                    options.LinkRequestCookieName,
+                    options.ExternalCookieLifetime,
+                    SameSiteMode.Strict,
                     options.SecureCookies));
 
         foreach (var provider in registrations)
@@ -284,6 +293,20 @@ public static class SkopkaHelloOidcServiceCollectionExtensions
         HttpContext httpContext,
         AuthenticationProperties? properties)
     {
+        if (properties?.Items.TryGetValue(
+                Skopka.Hello.Oidc.HelloOidcProperties.Headless,
+                out var headless) == true
+            && Boolean.TryParse(headless, out var isHeadless)
+            && isHeadless
+            && Skopka.Hello.Oidc.HelloOidcReturnUrl
+                .TryNormalizeHeadless(
+                    properties.RedirectUri,
+                    out var returnUrl))
+        {
+            return Skopka.Hello.Oidc.HelloOidcReturnUrl
+                .AppendExternalError(returnUrl);
+        }
+
         var uiRoutes = httpContext.RequestServices
             .GetRequiredService<Skopka.Hello.HelloUiRoutePaths>();
         return properties?.Items.TryGetValue(

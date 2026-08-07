@@ -6,6 +6,7 @@ namespace Skopka.Hello;
 
 internal sealed class HelloSessionCookieManager(
     IAntiforgery antiforgery,
+    IHelloAntiforgeryTokenIssuer antiforgeryTokens,
     SkopkaHelloOptions options)
     : IHelloSessionCookieManager
 {
@@ -68,19 +69,9 @@ internal sealed class HelloSessionCookieManager(
                 httpOnly: true,
                 session.RefreshTokenExpiresAt));
 
-        var tokens = antiforgery.GetAndStoreTokens(httpContext);
-        if (string.IsNullOrWhiteSpace(tokens.RequestToken))
-        {
-            throw new InvalidOperationException(
-                "The antiforgery service did not issue a request token.");
-        }
-
-        httpContext.Response.Cookies.Append(
-            options.AntiforgeryRequestCookieName,
-            tokens.RequestToken,
-            CreateCookieOptions(
-                httpOnly: false,
-                session.RefreshTokenExpiresAt));
+        antiforgeryTokens.Issue(
+            httpContext,
+            session.RefreshTokenExpiresAt);
     }
 
     public void DeleteSessionCookies(HttpContext httpContext)

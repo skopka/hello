@@ -65,6 +65,96 @@ public sealed class HelloOidcChallengeServiceTests
     }
 
     [Fact]
+    public void HeadlessSignInReturnsToLocalApplicationLandingPage()
+    {
+        using var services = CreateServices();
+        var challenges = services.GetRequiredService<
+            IHelloOidcChallengeService>();
+
+        var result = challenges.CreateHeadlessSignIn(
+            "GitHub",
+            "/app/auth/callback?source=login");
+
+        Assert.True(result.IsSuccess);
+        var challenge = result.Value;
+        Assert.Equal(
+            HelloOidcDefaults.ProviderSchemePrefix + "github",
+            challenge.AuthenticationScheme);
+        Assert.Equal(
+            "/app/auth/callback?source=login",
+            challenge.Properties.RedirectUri);
+        Assert.Equal(
+            "/app/auth/callback?source=login",
+            challenge.Properties.Items["hello:oidc:return_url"]);
+        Assert.Equal(
+            Boolean.TrueString,
+            challenge.Properties.Items["hello:oidc:headless"]);
+        Assert.Equal(
+            "sign_in",
+            challenge.Properties.Items["hello:oidc:intent"]);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("~/app/auth/callback")]
+    [InlineData("https://evil.example.test/callback")]
+    [InlineData("//evil.example.test/callback")]
+    [InlineData("/\\evil.example.test/callback")]
+    [InlineData("/signin-skopka-oidc/github")]
+    [InlineData("/auth/external/complete")]
+    [InlineData("/auth/external/integration/challenge")]
+    public void HeadlessSignInRejectsUnsafeReturnUrl(string returnUrl)
+    {
+        using var services = CreateServices();
+        var challenges = services.GetRequiredService<
+            IHelloOidcChallengeService>();
+
+        var result = challenges.CreateHeadlessSignIn(
+            "github",
+            returnUrl);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains(
+            result.Errors,
+            error => error.Code
+                == "hello.oidc.return_url_invalid");
+    }
+
+    [Fact]
+    public void HeadlessLinkBindsLocalLandingUserAndSession()
+    {
+        using var services = CreateServices();
+        var challenges = services.GetRequiredService<
+            IHelloOidcChallengeService>();
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+
+        var result = challenges.CreateHeadlessLink(
+            "GitHub",
+            "/app/auth/link-complete",
+            userId,
+            sessionId);
+
+        Assert.True(result.IsSuccess);
+        var challenge = result.Value;
+        Assert.Equal(
+            "/app/auth/link-complete",
+            challenge.Properties.RedirectUri);
+        Assert.Equal(
+            "link",
+            challenge.Properties.Items["hello:oidc:intent"]);
+        Assert.Equal(
+            userId.ToString("D"),
+            challenge.Properties.Items["hello:oidc:user_id"]);
+        Assert.Equal(
+            sessionId.ToString("D"),
+            challenge.Properties.Items["hello:oidc:session_id"]);
+        Assert.Equal(
+            Boolean.TrueString,
+            challenge.Properties.Items["hello:oidc:headless"]);
+    }
+
+    [Fact]
     public void CustomUiPrefixControlsOidcBrowserRoutes()
     {
         using var services = CreateServices("/identity");

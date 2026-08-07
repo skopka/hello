@@ -9,6 +9,7 @@ internal static class HelloOidcProperties
     public const string SessionId = "hello:oidc:session_id";
     public const string ChallengeId = "hello:oidc:challenge_id";
     public const string FlowId = "hello:oidc:flow_id";
+    public const string Headless = "hello:oidc:headless";
 
     public const string SignInIntent = "sign_in";
     public const string LinkIntent = "link";

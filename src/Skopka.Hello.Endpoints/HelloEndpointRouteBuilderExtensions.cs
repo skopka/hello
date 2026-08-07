@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +8,7 @@ using Skopka.Abstraction.OperationResult;
 using Skopka.Hello;
 using Skopka.Hello.Oidc;
 using Skopka.Identity.Errors;
+using Skopka.Identity.Sessions;
 
 namespace Skopka.Hello.Endpoints;
 
@@ -32,6 +34,12 @@ public static class HelloEndpointRouteBuilderExtensions
                 LoginAsync<TProfile>)
             .WithName("SkopkaHelloLogin");
 
+        endpoints.MapGet(
+                "/auth/antiforgery",
+                IssueAuthenticatedAntiforgery)
+            .RequireAuthorization()
+            .WithName("SkopkaHelloIssueAuthenticatedAntiforgery");
+
         var oidcEnabled = endpoints.ServiceProvider.GetService<
             IHelloOidcProviderCatalog>() is not null;
         if (oidcEnabled)
@@ -41,6 +49,45 @@ public static class HelloEndpointRouteBuilderExtensions
                     GetExternalProviders)
                 .AllowAnonymous()
                 .WithName("SkopkaHelloGetExternalProviders");
+
+            endpoints.MapGet(
+                    "/auth/external/{providerId}/challenge",
+                    BeginExternalSignIn)
+                .AllowAnonymous()
+                .WithName("SkopkaHelloBeginExternalSignIn");
+
+            endpoints.MapGet(
+                    HelloOidcDefaults.ApiLinkChallengePath,
+                    BeginExternalLinkAsync<TProfile>)
+                .AllowAnonymous()
+                .WithName("SkopkaHelloBeginExternalLink");
+
+            endpoints.MapPost(
+                    HelloOidcDefaults.ApiCompletionPath,
+                    CompleteExternalSignInAsync<TProfile>)
+                .AllowAnonymous()
+                .WithName("SkopkaHelloCompleteExternalSignIn");
+
+            if (helloOptions.SelfRegistrationEnabled)
+            {
+                endpoints.MapGet(
+                        HelloOidcDefaults.ApiRegistrationPath,
+                        GetExternalRegistrationAsync<TProfile>)
+                    .AllowAnonymous()
+                    .WithName("SkopkaHelloGetExternalRegistration");
+
+                endpoints.MapPost(
+                        HelloOidcDefaults.ApiRegistrationPath,
+                        RegisterExternalAsync<TProfile>)
+                    .AllowAnonymous()
+                    .WithName("SkopkaHelloRegisterExternal");
+            }
+
+            endpoints.MapDelete(
+                    "/auth/external/flow",
+                    CancelExternalFlowAsync<TProfile>)
+                .AllowAnonymous()
+                .WithName("SkopkaHelloCancelExternalFlow");
         }
 
         endpoints.MapPost(
@@ -132,6 +179,36 @@ public static class HelloEndpointRouteBuilderExtensions
                     GetExternalLoginsAsync<TProfile>)
                 .RequireAuthorization()
                 .WithName("SkopkaHelloGetExternalLogins");
+
+            endpoints.MapPost(
+                    "/account/external-logins/{providerId}/link",
+                    PrepareExternalLinkAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloPrepareExternalLink");
+
+            endpoints.MapPost(
+                    "/account/external-logins/link/challenge",
+                    BeginExternalLinkVerificationAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloBeginExternalLinkVerification");
+
+            endpoints.MapPut(
+                    "/account/external-logins/link",
+                    CompleteExternalLinkAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloCompleteExternalLink");
+
+            endpoints.MapPost(
+                    "/account/external-logins/{providerId}/unlink/challenge",
+                    BeginExternalUnlinkAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloBeginExternalUnlink");
+
+            endpoints.MapDelete(
+                    "/account/external-logins/unlink",
+                    CompleteExternalUnlinkAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloCompleteExternalUnlink");
         }
 
         endpoints.MapDelete(
@@ -253,6 +330,24 @@ public static class HelloEndpointRouteBuilderExtensions
             ToSessionResponse(authenticated.Value.Session));
     }
 
+    private static IResult IssueAuthenticatedAntiforgery(
+        IHelloAntiforgeryTokenIssuer antiforgeryTokens,
+        IHelloSessionCookieManager cookies,
+        HttpContext httpContext)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var transport = cookies.ValidateTransport(httpContext);
+        if (!transport.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                transport,
+                httpContext);
+        }
+
+        antiforgeryTokens.Issue(httpContext);
+        return TypedResults.NoContent();
+    }
+
     private static Microsoft.AspNetCore.Http.HttpResults.Ok<
         ExternalProviderResponse[]> GetExternalProviders(
         IHelloOidcProviderCatalog providers)
@@ -262,6 +357,246 @@ public static class HelloEndpointRouteBuilderExtensions
                     provider.Id,
                     provider.DisplayName))
                 .ToArray());
+
+    private static IResult BeginExternalSignIn(
+        string providerId,
+        string returnUrl,
+        IHelloOidcChallengeService challenges,
+        IHelloAntiforgeryTokenIssuer antiforgeryTokens,
+        IHelloSessionCookieManager cookies,
+        HttpContext httpContext)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var transport = cookies.ValidateTransport(httpContext);
+        if (!transport.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                transport,
+                httpContext);
+        }
+
+        var challenge = challenges.CreateHeadlessSignIn(
+            providerId,
+            returnUrl);
+        if (!challenge.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                challenge,
+                httpContext);
+        }
+
+        antiforgeryTokens.Issue(httpContext);
+        return Results.Challenge(
+            challenge.Value.Properties,
+            [challenge.Value.AuthenticationScheme]);
+    }
+
+    private static async Task<IResult> BeginExternalLinkAsync<TProfile>(
+        string providerId,
+        IHelloOidcApplication<TProfile> application,
+        IHelloSessionCookieManager cookies,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var transport = cookies.ValidateTransport(httpContext);
+        if (!transport.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                transport,
+                httpContext);
+        }
+
+        var challenge = await application.BeginHeadlessLinkAsync(
+            providerId,
+            httpContext,
+            cancellationToken);
+        return challenge.IsSuccess
+            ? Results.Challenge(
+                challenge.Value.Properties,
+                [challenge.Value.AuthenticationScheme])
+            : OperationResultProblemMapper.ToResult(
+                challenge,
+                httpContext);
+    }
+
+    private static async Task<IResult>
+        CompleteExternalSignInAsync<TProfile>(
+            IHelloOidcApplication<TProfile> application,
+            IHelloRequestContext requestContext,
+            SkopkaHelloOptions options,
+            IHelloSessionCookieManager cookies,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var transport = cookies.ValidateTransport(httpContext);
+        if (!transport.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                transport,
+                httpContext);
+        }
+
+        var csrf = await cookies.ValidateAntiforgeryAsync(httpContext);
+        if (!csrf.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                csrf,
+                httpContext);
+        }
+
+        var completed = await application.CompleteChallengeAsync(
+            httpContext,
+            TryReadBearerSession(httpContext),
+            requestContext.CreateSessionMetadata(
+                httpContext,
+                options.ClientName),
+            cancellationToken);
+        if (!completed.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                completed,
+                httpContext);
+        }
+
+        return completed.Value.Kind switch
+        {
+            HelloOidcCompletionKind.SignedIn
+                when completed.Value.SignIn is not null =>
+                    FinishExternalSignIn(
+                        completed.Value.SignIn,
+                        completed.Value.ReturnUrl,
+                        cookies,
+                        httpContext),
+            HelloOidcCompletionKind.RegistrationRequired
+                when completed.Value.Registration is not null =>
+                    TypedResults.Ok(
+                        ToExternalRegistrationResponse(
+                            completed.Value.Registration)),
+            HelloOidcCompletionKind.LinkPending
+                when completed.Value.Provider is not null =>
+                    TypedResults.Ok(
+                        ToExternalLinkResponse(
+                            completed.Value.Provider,
+                            completed.Value.ReturnUrl)),
+            _ => InvalidExternalFlow(httpContext),
+        };
+    }
+
+    private static async Task<IResult>
+        GetExternalRegistrationAsync<TProfile>(
+            IHelloOidcApplication<TProfile> application,
+            IHelloSessionCookieManager cookies,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var transport = cookies.ValidateTransport(httpContext);
+        if (!transport.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                transport,
+                httpContext);
+        }
+
+        var hints = await application.GetRegistrationHintsAsync(
+            httpContext,
+            cancellationToken);
+        return hints.IsSuccess
+            ? TypedResults.Ok(
+                ToExternalRegistrationResponse(hints.Value))
+            : OperationResultProblemMapper.ToResult(
+                hints,
+                httpContext);
+    }
+
+    private static async Task<IResult> RegisterExternalAsync<TProfile>(
+        ExternalRegisterRequest<TProfile> request,
+        IHelloOidcApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        SkopkaHelloOptions options,
+        IHelloSessionCookieManager cookies,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var transport = cookies.ValidateTransport(httpContext);
+        if (!transport.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                transport,
+                httpContext);
+        }
+
+        var csrf = await cookies.ValidateAntiforgeryAsync(httpContext);
+        if (!csrf.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                csrf,
+                httpContext);
+        }
+
+        var hints = await application.GetRegistrationHintsAsync(
+            httpContext,
+            cancellationToken);
+        if (!hints.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                hints,
+                httpContext);
+        }
+
+        var registered = await application.RegisterAsync(
+            new HelloOidcRegisterCommand<TProfile>(
+                request.UserName,
+                request.Email,
+                request.Phone,
+                request.Profile,
+                requestContext.CreateSessionMetadata(
+                    httpContext,
+                    options.ClientName)),
+            httpContext,
+            cancellationToken);
+        return registered.IsSuccess
+            ? FinishExternalSignIn(
+                registered.Value,
+                hints.Value.ReturnUrl,
+                cookies,
+                httpContext)
+            : OperationResultProblemMapper.ToResult(
+                registered,
+                httpContext);
+    }
+
+    private static async Task<IResult> CancelExternalFlowAsync<TProfile>(
+        IHelloOidcApplication<TProfile> application,
+        IHelloSessionCookieManager cookies,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var transport = cookies.ValidateTransport(httpContext);
+        if (!transport.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                transport,
+                httpContext);
+        }
+
+        var csrf = await cookies.ValidateAntiforgeryAsync(httpContext);
+        if (!csrf.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                csrf,
+                httpContext);
+        }
+
+        await application.ClearBrowserFlowAsync(
+            httpContext,
+            cancellationToken);
+        return TypedResults.NoContent();
+    }
 
     private static async Task<IResult> RefreshAsync<TProfile>(
         IHelloIdentityApplication<TProfile> application,
@@ -588,8 +923,207 @@ public static class HelloEndpointRouteBuilderExtensions
                         provider.ProviderId,
                         provider.DisplayName,
                         provider.Enabled,
+                        provider.CanUnlink,
                         provider.LinkedAt))
                 .ToArray());
+    }
+
+    private static async Task<IResult> PrepareExternalLinkAsync<TProfile>(
+        string providerId,
+        ExternalLinkRequest request,
+        IHelloOidcApplication<TProfile> application,
+        IHelloSessionCookieManager cookies,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var transport = cookies.ValidateTransport(httpContext);
+        if (!transport.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                transport,
+                httpContext);
+        }
+
+        var csrf = await cookies.ValidateAntiforgeryAsync(httpContext);
+        if (!csrf.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                csrf,
+                httpContext);
+        }
+
+        var localSession = TryReadBearerSession(httpContext);
+        if (localSession is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var prepared = await application.PrepareHeadlessLinkAsync(
+            providerId,
+            request.ReturnUrl,
+            localSession,
+            httpContext,
+            cancellationToken);
+        return prepared.IsSuccess
+            ? TypedResults.Ok(
+                new ExternalLinkStartResponse(
+                    prepared.Value.ChallengeUrl))
+            : OperationResultProblemMapper.ToResult(
+                prepared,
+                httpContext);
+    }
+
+    private static async Task<IResult>
+        BeginExternalLinkVerificationAsync<TProfile>(
+            IHelloOidcApplication<TProfile> application,
+            IHelloRequestContext requestContext,
+            IHelloSessionCookieManager cookies,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var validation = await ValidateExternalCookieMutationAsync(
+            cookies,
+            httpContext);
+        if (!validation.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                validation,
+                httpContext);
+        }
+
+        var localSession = TryReadBearerSession(httpContext);
+        if (localSession is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var begun = await application.BeginLinkAsync(
+            httpContext,
+            localSession,
+            requestContext.CreateClientKey(httpContext),
+            cancellationToken);
+        return ToStepUpResult(begun, httpContext);
+    }
+
+    private static async Task<IResult> CompleteExternalLinkAsync<TProfile>(
+        ExternalLoginMutationRequest request,
+        IHelloOidcApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        SkopkaHelloOptions options,
+        IHelloSessionCookieManager cookies,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var validation = await ValidateExternalCookieMutationAsync(
+            cookies,
+            httpContext);
+        if (!validation.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                validation,
+                httpContext);
+        }
+
+        var localSession = TryReadBearerSession(httpContext);
+        if (localSession is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var completed = await application.CompleteLinkAsync(
+            request.VerificationCode,
+            httpContext,
+            localSession,
+            requestContext.CreateSessionMetadata(
+                httpContext,
+                options.ClientName),
+            cancellationToken);
+        return await FinishExternalLoginMutationAsync(
+            completed,
+            application,
+            cookies,
+            httpContext,
+            cancellationToken);
+    }
+
+    private static async Task<IResult> BeginExternalUnlinkAsync<TProfile>(
+        string providerId,
+        IHelloOidcApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        IHelloSessionCookieManager cookies,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var validation = await ValidateExternalCookieMutationAsync(
+            cookies,
+            httpContext);
+        if (!validation.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                validation,
+                httpContext);
+        }
+
+        var localSession = TryReadBearerSession(httpContext);
+        if (localSession is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var begun = await application.BeginUnlinkAsync(
+            providerId,
+            httpContext,
+            localSession,
+            requestContext.CreateClientKey(httpContext),
+            cancellationToken);
+        return ToStepUpResult(begun, httpContext);
+    }
+
+    private static async Task<IResult>
+        CompleteExternalUnlinkAsync<TProfile>(
+            [FromBody] ExternalLoginMutationRequest request,
+            IHelloOidcApplication<TProfile> application,
+            IHelloRequestContext requestContext,
+            SkopkaHelloOptions options,
+            IHelloSessionCookieManager cookies,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var validation = await ValidateExternalCookieMutationAsync(
+            cookies,
+            httpContext);
+        if (!validation.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                validation,
+                httpContext);
+        }
+
+        var localSession = TryReadBearerSession(httpContext);
+        if (localSession is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var completed = await application.CompleteUnlinkAsync(
+            request.VerificationCode,
+            httpContext,
+            localSession,
+            requestContext.CreateSessionMetadata(
+                httpContext,
+                options.ClientName),
+            cancellationToken);
+        return await FinishExternalLoginMutationAsync(
+            completed,
+            application,
+            cookies,
+            httpContext,
+            cancellationToken);
     }
 
     private static async Task<IResult> DeleteSessionAsync<TProfile>(
@@ -836,6 +1370,117 @@ public static class HelloEndpointRouteBuilderExtensions
             httpContext);
     }
 
+    private static Microsoft.AspNetCore.Http.HttpResults.Ok<
+        ExternalAuthenticationResponse> FinishExternalSignIn<TProfile>(
+        HelloSignIn<TProfile> signIn,
+        string returnUrl,
+        IHelloSessionCookieManager cookies,
+        HttpContext httpContext)
+    {
+        cookies.WriteSessionCookies(httpContext, signIn.Session);
+        return TypedResults.Ok(
+            new ExternalAuthenticationResponse(
+                ExternalAuthenticationOutcome.SignedIn,
+                ToSessionResponse(signIn.Session),
+                null,
+                null,
+                returnUrl));
+    }
+
+    private static ExternalAuthenticationResponse
+        ToExternalRegistrationResponse(
+            HelloOidcRegistrationHints hints)
+        => new(
+            ExternalAuthenticationOutcome.RegistrationRequired,
+            null,
+            new ExternalRegistrationHintsResponse(
+                new ExternalProviderResponse(
+                    hints.Provider.Id,
+                    hints.Provider.DisplayName),
+                hints.DisplayName,
+                hints.VerifiedEmail,
+                hints.Locale),
+            null,
+            hints.ReturnUrl);
+
+    private static ExternalAuthenticationResponse ToExternalLinkResponse(
+        HelloOidcProvider provider,
+        string returnUrl)
+        => new(
+            ExternalAuthenticationOutcome.LinkVerificationRequired,
+            null,
+            null,
+            new ExternalProviderResponse(
+                provider.Id,
+                provider.DisplayName),
+            returnUrl);
+
+    private static async Task<OperationResult>
+        ValidateExternalCookieMutationAsync(
+            IHelloSessionCookieManager cookies,
+            HttpContext httpContext)
+    {
+        var transport = cookies.ValidateTransport(httpContext);
+        return transport.IsSuccess
+            ? await cookies.ValidateAntiforgeryAsync(httpContext)
+            : transport;
+    }
+
+    private static async Task<IResult>
+        FinishExternalLoginMutationAsync<TProfile>(
+            OperationResult<HelloSignIn<TProfile>> result,
+            IHelloOidcApplication<TProfile> application,
+            IHelloSessionCookieManager cookies,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        if (result.IsSuccess)
+        {
+            cookies.WriteSessionCookies(
+                httpContext,
+                result.Value.Session);
+            return TypedResults.Ok(
+                ToSessionResponse(result.Value.Session));
+        }
+
+        var challengeRestartRequired = result.Errors.Any(error =>
+            string.Equals(
+                error.Code,
+                HelloExternalIdentityErrorCodes
+                    .ChallengeRestartRequired,
+                StringComparison.Ordinal));
+        var sessionRestartRequired = result.Errors.Any(error =>
+            string.Equals(
+                error.Code,
+                HelloExternalIdentityErrorCodes.RestartRequired,
+                StringComparison.Ordinal));
+        if (challengeRestartRequired || sessionRestartRequired)
+        {
+            await application.ClearBrowserFlowAsync(
+                httpContext,
+                cancellationToken);
+        }
+
+        if (sessionRestartRequired)
+        {
+            cookies.DeleteSessionCookies(httpContext);
+        }
+
+        return OperationResultProblemMapper.ToResult(
+            result,
+            httpContext);
+    }
+
+    private static Microsoft.AspNetCore.Http.HttpResults.ProblemHttpResult
+        InvalidExternalFlow(HttpContext httpContext)
+        => OperationResultProblemMapper.ToResult(
+            OperationResultFactory.Fail(
+                new Error(
+                    "hello.oidc.pending_identity_invalid",
+                    "The external sign-in attempt is invalid or expired.",
+                    ErrorType.Unauthorized)),
+            httpContext);
+
     private static Microsoft.AspNetCore.Http.HttpResults.ProblemHttpResult
         InvalidSession(HttpContext httpContext)
         => OperationResultProblemMapper.ToResult(
@@ -848,6 +1493,32 @@ public static class HelloEndpointRouteBuilderExtensions
                         ErrorType.Unauthorized),
                 }),
             httpContext);
+
+    private static HelloOidcLocalSession? TryReadBearerSession(
+        HttpContext httpContext)
+    {
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null
+            || !Guid.TryParse(
+                httpContext.User.FindFirstValue("sub")
+                    ?? httpContext.User.FindFirstValue(
+                        ClaimTypes.NameIdentifier),
+                out var userId)
+            || userId == Guid.Empty
+            || !Guid.TryParse(
+                httpContext.User.FindFirstValue(
+                    IdentitySessionClaimTypes.SessionId),
+                out var sessionId)
+            || sessionId == Guid.Empty)
+        {
+            return null;
+        }
+
+        return new HelloOidcLocalSession(
+            userId,
+            sessionId,
+            accessToken);
+    }
 
     private static string? ReadBearerToken(HttpContext httpContext)
     {
@@ -975,6 +1646,10 @@ public static class HelloEndpointRouteBuilderExtensions
         httpContext.Response.Headers.CacheControl =
             "no-store, max-age=0";
         httpContext.Response.Headers.Pragma = "no-cache";
+        httpContext.Response.Headers["Referrer-Policy"] =
+            "no-referrer";
+        httpContext.Response.Headers["X-Robots-Tag"] =
+            "noindex, nofollow";
     }
 
     private static IResult ToStepUpResult(

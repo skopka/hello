@@ -19,6 +19,14 @@ internal sealed record HelloOidcTicket(
     Guid? ChallengeId,
     DateTimeOffset ExpiresAt);
 
+internal sealed record HelloOidcLinkRequest(
+    Guid FlowId,
+    string ProviderId,
+    string ReturnUrl,
+    Guid UserId,
+    Guid SessionId,
+    DateTimeOffset ExpiresAt);
+
 internal sealed class HelloOidcTicketService(
     HelloOidcOptions options,
     HelloUiRoutePaths uiRoutes)
@@ -36,6 +44,115 @@ internal sealed class HelloOidcTicketService(
             httpContext,
             HelloOidcDefaults.PendingCookieScheme,
             options.PendingCookieLifetime);
+
+    public async Task<OperationResult<HelloOidcLinkRequest>>
+        ReadLinkRequestAsync(HttpContext httpContext)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        var authenticated = await httpContext.AuthenticateAsync(
+            HelloOidcDefaults.LinkRequestCookieScheme);
+        if (!authenticated.Succeeded
+            || authenticated.Principal is null
+            || authenticated.Properties is null
+            || authenticated.Properties.IssuedUtc is not { } issuedUtc
+            || authenticated.Properties.ExpiresUtc is not { } expiresUtc
+            || expiresUtc <= DateTimeOffset.UtcNow
+            || expiresUtc <= issuedUtc
+            || expiresUtc - issuedUtc > options.ExternalCookieLifetime)
+        {
+            return InvalidLinkRequest();
+        }
+
+        var properties = authenticated.Properties.Items;
+        if (!properties.TryGetValue(
+                HelloOidcProperties.Provider,
+                out var providerId)
+            || string.IsNullOrWhiteSpace(providerId)
+            || !properties.TryGetValue(
+                HelloOidcProperties.ReturnUrl,
+                out var configuredReturnUrl)
+            || !HelloOidcReturnUrl.TryNormalizeHeadless(
+                configuredReturnUrl,
+                out var returnUrl)
+            || ParseGuid(properties, HelloOidcProperties.FlowId)
+                is not { } flowId
+            || ParseGuid(properties, HelloOidcProperties.UserId)
+                is not { } userId
+            || ParseGuid(properties, HelloOidcProperties.SessionId)
+                is not { } sessionId)
+        {
+            return InvalidLinkRequest();
+        }
+
+        var providerClaims = authenticated.Principal.FindAll(
+                HelloOidcClaims.Provider)
+            .ToArray();
+        if (providerClaims.Length != 1
+            || !string.Equals(
+                providerId,
+                providerClaims[0].Value,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return InvalidLinkRequest();
+        }
+
+        return OperationResultFactory.Success(
+            new HelloOidcLinkRequest(
+                flowId,
+                providerClaims[0].Value,
+                returnUrl,
+                userId,
+                sessionId,
+                expiresUtc));
+    }
+
+    public static async Task<bool> WriteLinkRequestAsync(
+        HttpContext httpContext,
+        HelloOidcLinkRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var now = DateTimeOffset.UtcNow;
+        if (request.FlowId == Guid.Empty
+            || request.UserId == Guid.Empty
+            || request.SessionId == Guid.Empty
+            || request.ExpiresAt <= now)
+        {
+            return false;
+        }
+
+        var identity = new ClaimsIdentity(
+            HelloOidcDefaults.LinkRequestCookieScheme);
+        identity.AddClaim(
+            new Claim(
+                HelloOidcClaims.Provider,
+                request.ProviderId));
+        var properties = new AuthenticationProperties
+        {
+            AllowRefresh = false,
+            IsPersistent = false,
+            IssuedUtc = now,
+            ExpiresUtc = request.ExpiresAt,
+        };
+        properties.Items[HelloOidcProperties.Provider] =
+            request.ProviderId;
+        properties.Items[HelloOidcProperties.ReturnUrl] =
+            request.ReturnUrl;
+        properties.Items[HelloOidcProperties.FlowId] =
+            request.FlowId.ToString("D");
+        properties.Items[HelloOidcProperties.UserId] =
+            request.UserId.ToString("D");
+        properties.Items[HelloOidcProperties.SessionId] =
+            request.SessionId.ToString("D");
+
+        await httpContext.SignInAsync(
+            HelloOidcDefaults.LinkRequestCookieScheme,
+            new ClaimsPrincipal(identity),
+            properties);
+        return true;
+    }
 
     public async Task<bool> PromoteToPendingAsync(
         HttpContext httpContext,
@@ -150,6 +267,10 @@ internal sealed class HelloOidcTicketService(
     public static Task DeletePendingAsync(HttpContext httpContext)
         => httpContext.SignOutAsync(
             HelloOidcDefaults.PendingCookieScheme);
+
+    public static Task DeleteLinkRequestAsync(HttpContext httpContext)
+        => httpContext.SignOutAsync(
+            HelloOidcDefaults.LinkRequestCookieScheme);
 
     private async Task<OperationResult<HelloOidcTicket>> ReadAsync(
         HttpContext httpContext,
@@ -290,5 +411,10 @@ internal sealed class HelloOidcTicketService(
 
     private static OperationResult<HelloOidcTicket> Invalid()
         => OperationResultFactory.Fail<HelloOidcTicket>(
+            HelloOidcErrors.PendingIdentityInvalid());
+
+    private static OperationResult<HelloOidcLinkRequest>
+        InvalidLinkRequest()
+        => OperationResultFactory.Fail<HelloOidcLinkRequest>(
             HelloOidcErrors.PendingIdentityInvalid());
 }

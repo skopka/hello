@@ -44,6 +44,8 @@ public sealed record HelloOidcLinkedProvider(
     bool CanUnlink,
     DateTimeOffset LinkedAt);
 
+public sealed record HelloOidcHeadlessLinkStart(string ChallengeUrl);
+
 public interface IHelloOidcApplication<TProfile>
 {
     Task<OperationResult<HelloOidcCompletion<TProfile>>>
@@ -66,6 +68,20 @@ public interface IHelloOidcApplication<TProfile>
     Task<OperationResult<IReadOnlyList<HelloOidcLinkedProvider>>>
         ListLinkedProvidersAsync(
             string accessToken,
+            CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloOidcHeadlessLinkStart>>
+        PrepareHeadlessLinkAsync(
+            string providerId,
+            string returnUrl,
+            HelloOidcLocalSession localSession,
+            HttpContext httpContext,
+            CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloOidcChallenge>>
+        BeginHeadlessLinkAsync(
+            string providerId,
+            HttpContext httpContext,
             CancellationToken cancellationToken);
 
     Task<OperationResult<HelloOidcProvider>> GetPendingLinkAsync(

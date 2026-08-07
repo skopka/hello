@@ -164,11 +164,24 @@ The raw callback is derived from the normalized provider id:
 {SkopkaHello:PublicOrigin}/signin-skopka-oidc/{provider-id}
 ```
 
-It redirects to `{UiPathPrefix}/external/complete`. That page performs a separate
+The Razor flow redirects to `{UiPathPrefix}/external/complete`; a same-origin
+browser/SPA flow may instead supply a validated local application landing path
+through `/auth/external/{providerId}/challenge`. Both perform a separate
 antiforgery-protected POST before resolving the external identity, registering
-an account or retaining a pending link. This two-stage flow also ensures the
-strict same-site local UI cookie is available again after the cross-site
-provider callback.
+an account or retaining a pending link. This two-stage flow also ensures strict
+same-site local cookies are available again after the cross-site provider
+callback. The headless response contains only a local `SessionResponse` or safe
+registration hints; provider protocol tokens and subjects remain inside the
+adapter.
+
+Headless linking adds an authenticated preflight because a top-level browser
+navigation cannot attach a Bearer header. A Bearer- and antiforgery-protected
+POST writes a short-lived HttpOnly Strict link-request cookie bound to the
+validated user, session, provider and local return path. It returns only a
+local challenge URL. Navigating there atomically consumes the preflight flow id
+and creates the normal OIDC challenge. Completion requires the original Bearer
+session, promotes the provider result to the ordinary pending link ticket and
+then uses the same Identity OTP step-up as Razor UI.
 
 External and pending tickets also contain an unpredictable flow id. The
 terminal POST atomically consumes it before session creation or account

@@ -10,13 +10,15 @@ provider integration, host composition and policy-separated administration.
 Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
-The current `0.6.0` vertical slice contains:
+The current `0.7.0` vertical slice contains:
 
 - atomic password registration;
 - automatic email, phone or user-name password login without user
   enumeration;
 - authorization-code OIDC sign-in with PKCE through configured external providers;
 - atomic external registration without email-based account auto-linking;
+- same-origin browser/SPA OIDC APIs for sign-in, registration and one-use
+  link/unlink flows without exposing provider tokens or subjects;
 - configurable confirmed-email or confirmed-phone OTP step-up for external
   login link and unlink;
 - enumeration-safe email/phone confirmation and password-reset requests;
@@ -77,7 +79,14 @@ An OAuth/OIDC authorization server remains deferred.
 | --- | --- | --- |
 | `POST` | `/auth/register` | Anonymous, when self-registration is enabled |
 | `POST` | `/auth/login` | Anonymous |
+| `GET` | `/auth/antiforgery` | Bearer; issues identity-bound CSRF cookies |
 | `GET` | `/auth/external/providers` | Anonymous |
+| `GET` | `/auth/external/{providerId}/challenge` | Anonymous browser navigation |
+| `GET` | `/auth/external/{providerId}/link-challenge` | One-use link-request cookie |
+| `POST` | `/auth/external/complete` | External-flow cookie + CSRF header; Bearer when linking |
+| `GET` | `/auth/external/registration` | Pending external-flow cookie, when self-registration is enabled |
+| `POST` | `/auth/external/registration` | Pending external-flow cookie + CSRF header, when self-registration is enabled |
+| `DELETE` | `/auth/external/flow` | External-flow cookie + CSRF header |
 | `POST` | `/auth/refresh` | Refresh cookie + CSRF header |
 | `POST` | `/auth/logout` | Refresh cookie + CSRF header |
 | `POST` | `/auth/logout-all` | Bearer |
@@ -94,6 +103,11 @@ An OAuth/OIDC authorization server remains deferred.
 | `PUT` | `/account/profile` | Bearer |
 | `GET` | `/account/sessions` | Bearer |
 | `GET` | `/account/external-logins` | Bearer |
+| `POST` | `/account/external-logins/{providerId}/link` | Bearer + CSRF header; creates browser preflight |
+| `POST` | `/account/external-logins/link/challenge` | Bearer + pending-flow cookie + CSRF header |
+| `PUT` | `/account/external-logins/link` | Bearer + pending-flow cookie + CSRF header + one-time code |
+| `POST` | `/account/external-logins/{providerId}/unlink/challenge` | Bearer + CSRF header |
+| `DELETE` | `/account/external-logins/unlink` | Bearer + pending-flow cookie + CSRF header + one-time code |
 | `DELETE` | `/account/sessions/{sessionId}` | Bearer |
 | `POST` | `/account/password/change/challenge` | Bearer |
 | `POST` | `/account/password/change` | Bearer + one-time code |

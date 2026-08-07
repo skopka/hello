@@ -364,10 +364,117 @@ When OIDC is registered, clients may discover the safe provider catalog:
 GET /auth/external/providers
 ```
 
-Bearer clients may list linked provider labels and timestamps with
-`GET /account/external-logins`. Provider subjects and protocol tokens are not
-returned. External sign-in, registration, link and unlink are currently browser
-flows; there is no native-app token-in-query callback or external mutation API.
+Bearer clients may list linked provider labels, timestamps, enabled state and
+the current `canUnlink` decision with `GET /account/external-logins`. Provider
+subjects and protocol tokens are not returned. External sign-in and
+registration support both the built-in Razor UI
+and a same-origin browser/SPA API. Link and unlink use the same two surfaces and
+the same Identity-owned OTP step-up. There is no native-app token-in-query
+callback and Hello is not an OAuth/OIDC authorization server.
+
+### Same-origin browser/SPA flow
+
+Navigate the browser, rather than calling `fetch`, to a configured provider:
+
+```http
+GET /auth/external/integration/challenge?returnUrl=%2Fapp%2Fauth-callback
+```
+
+The `returnUrl` is the local application landing path after the provider
+callback. It must be an absolute local path and cannot target Hello's external
+API or provider callback paths. The ASP.NET Core handler owns state, nonce,
+PKCE, code redemption and token validation, then redirects the browser to that
+landing path. Provider tokens and subjects are never placed in the URL or an
+API response.
+
+The challenge response also issues the normal antiforgery cookie pair. After
+the browser returns, read the non-HttpOnly
+`SkopkaHelloOptions.AntiforgeryRequestCookieName` cookie and submit it through
+the configured `AntiforgeryHeaderName` (defaults:
+`__Host-Skopka.Hello.XSRF-TOKEN` and `X-CSRF-TOKEN`):
+
+```http
+POST /auth/external/complete
+X-CSRF-TOKEN: <request-token-cookie-value>
+```
+
+For an existing external login, the response has outcome `SignedIn`, contains
+the normal `SessionResponse`, and writes the refresh-cookie transport. For an
+unknown identity it has outcome `RegistrationRequired` and contains only the
+configured provider label plus bounded display-name, verified-email and locale
+hints. Fetch those hints again with `GET /auth/external/registration` or finish
+the atomic registration with the host's exact `TProfile` shape:
+
+```http
+POST /auth/external/registration
+Content-Type: application/json
+X-CSRF-TOKEN: <request-token-cookie-value>
+
+{
+  "userName": "alice",
+  "email": "alice@example.test",
+  "phone": null,
+  "profile": {
+    "displayName": "Alice",
+    "locale": "en"
+  }
+}
+```
+
+Each terminal POST consumes its protected flow id once. Cancel an abandoned
+flow with the antiforgery-protected `DELETE /auth/external/flow`. These routes
+are intended for a browser on the same origin as Hello; a native application
+requires a separate public-client/BFF design.
+
+### Link and unlink from a browser/SPA
+
+Antiforgery tokens are bound to the current ASP.NET Core principal. Before an
+authenticated cookie-backed flow, issue a fresh pair with the current Bearer
+token and then read the new request-token cookie:
+
+```http
+GET /auth/antiforgery
+Authorization: Bearer <access-token>
+```
+
+To link a provider, create an authenticated browser preflight:
+
+```http
+POST /account/external-logins/integration/link
+Authorization: Bearer <access-token>
+Content-Type: application/json
+X-CSRF-TOKEN: <request-token-cookie-value>
+
+{ "returnUrl": "/app/external-result" }
+```
+
+The response contains a local `challengeUrl`. Navigate the browser to it; the
+server consumes a short-lived HttpOnly `SameSite=Strict` link-request cookie
+and its atomic flow id before starting the maintained OIDC handler. After the
+provider returns, POST `/auth/external/complete` with the same Bearer and CSRF
+header. Outcome `LinkVerificationRequired` contains only the safe provider
+label. Request and complete the OTP step-up with:
+
+```http
+POST /account/external-logins/link/challenge
+Authorization: Bearer <access-token>
+X-CSRF-TOKEN: <request-token-cookie-value>
+
+PUT /account/external-logins/link
+Authorization: Bearer <access-token>
+Content-Type: application/json
+X-CSRF-TOKEN: <request-token-cookie-value>
+
+{ "verificationCode": "123456" }
+```
+
+Unlink does not revisit the provider. Start it at
+`POST /account/external-logins/{providerId}/unlink/challenge`, then send the
+code to `DELETE /account/external-logins/unlink`; both requests carry Bearer
+and the CSRF header. The provider id is captured in the protected pending flow,
+not accepted again during completion. Link and unlink preserve at least one
+enabled sign-in method, rotate the security stamp, revoke old refresh sessions
+and return a replacement `SessionResponse` to the current browser.
 
 ## Sign in with an external provider
 
@@ -384,9 +491,10 @@ not locally confirmed. An email matching another account never links it; sign
 in to that account with an existing method and link from
 `{UiPathPrefix}/account/external-logins`. These paths use `/hello` by default.
 
-Link and unlink require a confirmed local email. The UI sends a one-time code
-through `IHelloAccountMessageSender`, binds it to the exact provider identity
-and action, and refuses to remove the final enabled sign-in method. On success,
+Link and unlink require a confirmed local contact for the configured delivery
+channel. Hello sends a one-time code through `IHelloAccountMessageSender`,
+binds it to the exact provider identity and action, and refuses to remove the
+final enabled sign-in method. On success,
 Identity rotates the security stamp, all old refresh sessions are revoked and
 the current browser receives a new session. Existing stateless bearer access
 tokens remain usable only until their short expiry unless online validation is

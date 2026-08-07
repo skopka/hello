@@ -16,11 +16,28 @@ public static class HelloOidcDefaults
     public const string PendingCookieName =
         "__Host-Skopka.Hello.External.Pending";
 
+    public const string LinkRequestCookieScheme =
+        "Skopka.Hello.Oidc.LinkRequest";
+
+    public const string LinkRequestCookieName =
+        "__Host-Skopka.Hello.External.LinkRequest";
+
     public const string ProviderSchemePrefix =
         "Skopka.Hello.Oidc.Provider.";
 
     public const string CallbackPathPrefix =
         "/signin-skopka-oidc/";
+
+    public const string ApiPathPrefix = "/auth/external/";
+
+    public const string ApiCompletionPath =
+        ApiPathPrefix + "complete";
+
+    public const string ApiRegistrationPath =
+        ApiPathPrefix + "registration";
+
+    public const string ApiLinkChallengePath =
+        ApiPathPrefix + "{providerId}/link-challenge";
 
     public const string CompletionPath =
         Skopka.Hello.HelloUiRoutePaths.DefaultPathPrefix

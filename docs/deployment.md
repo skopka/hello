@@ -199,6 +199,7 @@ ExternalCookieName        __Host-Skopka.Hello.External
 ExternalCookieLifetime    00:05:00
 PendingCookieName         __Host-Skopka.Hello.External.Pending
 PendingCookieLifetime     00:10:00
+LinkRequestCookieName     __Host-Skopka.Hello.External.LinkRequest
 ```
 
 Both lifetimes must be between one and thirty minutes. Keep the `__Host-`
@@ -215,6 +216,10 @@ https://public.example/signin-skopka-oidc/google
 Replace the origin and final segment with the configured public origin and
 provider id. `{UiPathPrefix}/external/complete` is the internal same-origin
 completion page and is not registered with the provider.
+
+`LinkRequestCookieName` is the short-lived HttpOnly Strict preflight used by
+same-origin browser/SPA linking. It uses `ExternalCookieLifetime`; all three
+OIDC cookie names must be distinct.
 
 `SkopkaHello:ExternalOidc:PasswordSignInEnabled` tells the external-login
 management policy whether an existing password counts as an alternate method

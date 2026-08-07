@@ -93,21 +93,28 @@ it remains unconfirmed in Skopka.Identity. An equal email address never
 auto-links accounts. A user who already owns that address must authenticate the
 existing account and link explicitly.
 
-The cross-site protocol callback only creates the validated temporary ticket
-and redirects to `{UiPathPrefix}/external/complete`. A separate same-origin,
-antiforgery-protected POST completes sign-in or registration. This preserves
-the default `SameSite=Strict` local-session policy and prevents a callback GET
-from directly performing an account mutation. Callback, completion and pending
-registration responses are no-store/no-referrer. Do not log callback query
-strings, provider error descriptions or external claims.
+The cross-site protocol callback only creates the validated temporary ticket.
+The built-in Razor flow redirects to `{UiPathPrefix}/external/complete`; the
+headless same-origin browser flow redirects to a strictly validated local
+application landing path. In both cases a separate antiforgery-protected POST
+completes sign-in or registration. This preserves the default
+`SameSite=Strict` local-session policy and prevents a callback GET from directly
+performing an account mutation. Callback, completion and pending registration
+responses are no-store/no-referrer. Remote failures reach the headless landing
+path only as `externalError=true`; provider error text is not forwarded. Do not
+log callback query strings, provider error descriptions or external claims.
 
-The completion and pending registration routes are derived from the immutable
-UI prefix registered by `AddSkopkaHello<TProfile>`. When self-registration is
-disabled, an unknown external identity is rejected before a pending registration
-ticket is created; stale pending tickets are cleared. Existing linked external
-identities continue through the normal sign-in path.
+The Razor completion and pending registration routes are derived from the
+immutable UI prefix registered by `AddSkopkaHello<TProfile>`. The headless
+browser routes use the fixed `/auth/external/*` API namespace. Their return URL
+must begin with a single local `/`, cannot contain a backslash and cannot point
+at the OIDC callback or external API namespaces. When self-registration is
+disabled, the headless registration routes are not mapped and an unknown
+external identity is rejected before a pending registration ticket is created;
+stale pending tickets are cleared. Existing linked external identities continue
+through the normal sign-in path.
 
-Every terminal external or pending POST first consumes a random flow id from
+Every terminal external or pending mutation first consumes a random flow id from
 the encrypted ticket through `IHelloOidcFlowStore`. A copied ticket therefore
 cannot issue another local session or repeat an account mutation. Retryable
 form or OTP failures rotate the browser to a new id while preserving the
@@ -116,6 +123,21 @@ rate limiter is configured, the default guard is atomic and persistent in its
 shared bucket store. Otherwise it uses a bounded, fail-closed process-local
 fallback. Multi-replica hosts must use the persistent limiter or replace the
 flow store with an atomic shared implementation.
+
+Headless linking starts with a Bearer-authenticated, antiforgery-protected POST.
+It writes a separate short-lived HttpOnly `SameSite=Strict` link-request cookie
+containing only the configured provider id, validated local return path,
+user/session binding and a random flow id. The response exposes only a local
+challenge path. Browser navigation atomically consumes the preflight flow before
+the OIDC handler is invoked, so a copied preflight cookie cannot start another
+provider round trip. The provider callback then uses the ordinary external and
+pending tickets; completion also requires the same online-valid Bearer session.
+
+ASP.NET Core antiforgery tokens are principal-bound. A same-origin API client
+must call Bearer-authorized `GET /auth/antiforgery` before linking or unlinking
+to replace an anonymous login token with one bound to the current principal.
+The request token remains in the configured readable cookie and must be echoed
+only through the configured header.
 
 Linking and unlinking require the current UI session to pass online access-token
 validation and require a confirmed contact for the configured channel. The

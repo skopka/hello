@@ -40,6 +40,8 @@ public sealed class ExternalOidcFlowTests
     private const string UiCookieName = "__Host-Skopka.Hello.UI";
     private const string RefreshCookieName =
         "__Host-Skopka.Hello.Refresh";
+    private const string AntiforgeryRequestCookieName =
+        "__Host-Skopka.Hello.XSRF-TOKEN";
     private static readonly Uri PublicOrigin =
         new("https://hello.test/");
     private static readonly Uri AuthorityOrigin =
@@ -327,6 +329,482 @@ public sealed class ExternalOidcFlowTests
             removedPasswordLogin.StatusCode);
     }
 
+    [Fact]
+    public async Task HeadlessBrowserFlowRegistersAndReusesExternalIdentity()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var authority =
+            await TestOidcAuthority.CreateAsync();
+        await using var hello = await TestHelloApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            authority);
+        using var helloClient = hello.CreateClient();
+
+        const string returnUrl = "/app/auth-callback";
+        Dictionary<string, string> firstCookies =
+            new(StringComparer.Ordinal);
+        var first = await CompleteHeadlessProviderCallbackAsync(
+            helloClient,
+            authority,
+            firstCookies,
+            returnUrl);
+
+        AssertAuthorizationRequest(first.AuthorizationRequest);
+        Assert.Equal(
+            first.AuthorizationRequest.State,
+            first.CallbackState);
+        Assert.False(string.IsNullOrWhiteSpace(first.AuthorizationCode));
+        Assert.True(firstCookies.TryGetValue(
+            AntiforgeryRequestCookieName,
+            out var antiforgeryToken));
+
+        using (var missingAntiforgery = await SendHelloJsonAsync(
+                   helloClient,
+                   HttpMethod.Post,
+                   HelloOidcDefaults.ApiCompletionPath,
+                   firstCookies))
+        {
+            Assert.Equal(
+                HttpStatusCode.Forbidden,
+                missingAntiforgery.StatusCode);
+        }
+
+        using var completion = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Post,
+            HelloOidcDefaults.ApiCompletionPath,
+            firstCookies,
+            antiforgeryToken: antiforgeryToken);
+        Assert.Equal(HttpStatusCode.OK, completion.StatusCode);
+        var completionJson = await completion.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(Subject, completionJson, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "providerToken",
+            completionJson,
+            StringComparison.OrdinalIgnoreCase);
+        var registrationRequired =
+            await completion.Content.ReadFromJsonAsync<
+                ExternalAuthenticationResponse>();
+        Assert.NotNull(registrationRequired);
+        Assert.Equal(
+            ExternalAuthenticationOutcome.RegistrationRequired,
+            registrationRequired.Outcome);
+        Assert.Null(registrationRequired.Session);
+        Assert.Equal(returnUrl, registrationRequired.ReturnUrl);
+        Assert.Equal(
+            ProviderId,
+            registrationRequired.Registration?.Provider.ProviderId);
+        Assert.Equal(
+            "Integration authority",
+            registrationRequired.Registration?.Provider.DisplayName);
+        Assert.Equal(
+            "Provider Alice",
+            registrationRequired.Registration?.DisplayName);
+        Assert.Equal(
+            "external@example.test",
+            registrationRequired.Registration?.VerifiedEmail);
+        Assert.Equal("en", registrationRequired.Registration?.Locale);
+
+        using var registrationHints = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Get,
+            HelloOidcDefaults.ApiRegistrationPath,
+            firstCookies);
+        Assert.Equal(HttpStatusCode.OK, registrationHints.StatusCode);
+        var hints = await registrationHints.Content.ReadFromJsonAsync<
+            ExternalAuthenticationResponse>();
+        Assert.Equal(
+            ExternalAuthenticationOutcome.RegistrationRequired,
+            Assert.IsType<ExternalAuthenticationResponse>(hints).Outcome);
+
+        using var registration = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Post,
+            HelloOidcDefaults.ApiRegistrationPath,
+            firstCookies,
+            new
+            {
+                userName = "external-headless-alice",
+                email = "external@example.test",
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Headless Alice",
+                    locale = "en",
+                },
+            },
+            antiforgeryToken);
+        Assert.Equal(HttpStatusCode.OK, registration.StatusCode);
+        var signedIn = await registration.Content.ReadFromJsonAsync<
+            ExternalAuthenticationResponse>();
+        Assert.NotNull(signedIn);
+        Assert.Equal(
+            ExternalAuthenticationOutcome.SignedIn,
+            signedIn.Outcome);
+        Assert.NotNull(signedIn.Session);
+        Assert.False(string.IsNullOrWhiteSpace(
+            signedIn.Session.AccessToken));
+        Assert.Null(signedIn.Registration);
+        Assert.Equal(returnUrl, signedIn.ReturnUrl);
+        Assert.Contains(RefreshCookieName, firstCookies.Keys);
+
+        antiforgeryToken = firstCookies[AntiforgeryRequestCookieName];
+        using var replay = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Post,
+            HelloOidcDefaults.ApiRegistrationPath,
+            firstCookies,
+            new
+            {
+                userName = "replayed-registration",
+                email = "external@example.test",
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Replay",
+                    locale = "en",
+                },
+            },
+            antiforgeryToken);
+        Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
+
+        var afterRegistration = await hello.ReadIdentityStateAsync();
+        Assert.Equal(1, afterRegistration.UserCount);
+        Assert.Equal(1, afterRegistration.ExternalLoginCount);
+        Assert.Equal(1, afterRegistration.SessionCount);
+        Assert.Equal("INTEGRATION", afterRegistration.Provider);
+        Assert.Equal(Subject, afterRegistration.Subject);
+
+        Dictionary<string, string> repeatedCookies =
+            new(StringComparer.Ordinal);
+        var repeated = await CompleteHeadlessProviderCallbackAsync(
+            helloClient,
+            authority,
+            repeatedCookies,
+            returnUrl);
+        AssertAuthorizationRequest(repeated.AuthorizationRequest);
+        antiforgeryToken =
+            repeatedCookies[AntiforgeryRequestCookieName];
+
+        using var repeatedCompletion = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Post,
+            HelloOidcDefaults.ApiCompletionPath,
+            repeatedCookies,
+            antiforgeryToken: antiforgeryToken);
+        Assert.Equal(HttpStatusCode.OK, repeatedCompletion.StatusCode);
+        var repeatedSignIn =
+            await repeatedCompletion.Content.ReadFromJsonAsync<
+                ExternalAuthenticationResponse>();
+        Assert.NotNull(repeatedSignIn);
+        Assert.Equal(
+            ExternalAuthenticationOutcome.SignedIn,
+            repeatedSignIn.Outcome);
+        Assert.NotNull(repeatedSignIn.Session);
+        Assert.Null(repeatedSignIn.Registration);
+        Assert.Contains(RefreshCookieName, repeatedCookies.Keys);
+
+        var afterRepeatedLogin = await hello.ReadIdentityStateAsync();
+        Assert.Equal(1, afterRepeatedLogin.UserCount);
+        Assert.Equal(1, afterRepeatedLogin.ExternalLoginCount);
+        Assert.Equal(2, afterRepeatedLogin.SessionCount);
+    }
+
+    [Fact]
+    public async Task HeadlessBrowserFlowLinksAndUnlinksWithOtpStepUp()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var authority =
+            await TestOidcAuthority.CreateAsync();
+        await using var hello = await TestHelloApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            authority);
+        using var helloClient = hello.CreateClient();
+
+        const string returnUrl = "/app/external-result";
+        const string password = "Strong-Headless-Password-42!";
+        Dictionary<string, string> cookies =
+            new(StringComparer.Ordinal);
+        await CompleteHeadlessProviderCallbackAsync(
+            helloClient,
+            authority,
+            cookies,
+            returnUrl);
+        var antiforgeryToken =
+            cookies[AntiforgeryRequestCookieName];
+
+        using var completion = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Post,
+            HelloOidcDefaults.ApiCompletionPath,
+            cookies,
+            antiforgeryToken: antiforgeryToken);
+        Assert.Equal(HttpStatusCode.OK, completion.StatusCode);
+
+        using var registration = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Post,
+            HelloOidcDefaults.ApiRegistrationPath,
+            cookies,
+            new
+            {
+                userName = "headless-mutations",
+                email = "external@example.test",
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Headless Mutations",
+                    locale = "en",
+                },
+            },
+            antiforgeryToken);
+        Assert.Equal(HttpStatusCode.OK, registration.StatusCode);
+        var registrationResult =
+            await registration.Content.ReadFromJsonAsync<
+                ExternalAuthenticationResponse>();
+        var accessToken = Assert.IsType<SessionResponse>(
+            Assert.IsType<ExternalAuthenticationResponse>(
+                registrationResult).Session).AccessToken;
+
+        using var confirmationRequest =
+            await helloClient.PostAsJsonAsync(
+                "/auth/email-confirmation/request",
+                new { email = "external@example.test" });
+        Assert.Equal(
+            HttpStatusCode.Accepted,
+            confirmationRequest.StatusCode);
+        var confirmationMessage = await hello.WaitForMessageAsync(
+            HelloAccountMessageKind.EmailConfirmation);
+        var confirmationQuery = QueryHelpers.ParseQuery(
+            Assert.IsType<Uri>(confirmationMessage.ActionUrl).Query);
+        using var confirmation = await helloClient.PostAsJsonAsync(
+            "/auth/email-confirmation/confirm",
+            new
+            {
+                userId = Guid.Parse(
+                    confirmationQuery["userId"].Single()!),
+                email = confirmationQuery["email"].Single(),
+                token = confirmationQuery["token"].Single(),
+            });
+        Assert.Equal(HttpStatusCode.NoContent, confirmation.StatusCode);
+
+        using var beginPasswordSet = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Post,
+            "/account/password/set/challenge",
+            cookies,
+            accessToken: accessToken);
+        Assert.Equal(HttpStatusCode.OK, beginPasswordSet.StatusCode);
+        var passwordChallenge =
+            await beginPasswordSet.Content.ReadFromJsonAsync<
+                StepUpChallengeResponse>();
+        var passwordMessage = await hello.WaitForMessageAsync(
+            HelloAccountMessageKind.AccountSecurityVerification);
+        using var completePasswordSet = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Put,
+            "/account/password",
+            cookies,
+            new
+            {
+                challengeId = Assert.IsType<StepUpChallengeResponse>(
+                    passwordChallenge).ChallengeId,
+                verificationCode = Assert.IsType<string>(
+                    passwordMessage.VerificationCode),
+                newPassword = password,
+            },
+            accessToken: accessToken);
+        Assert.Equal(
+            HttpStatusCode.NoContent,
+            completePasswordSet.StatusCode);
+
+        using var passwordLogin = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Post,
+            "/auth/login",
+            cookies,
+            new
+            {
+                login = "headless-mutations",
+                password,
+            });
+        Assert.Equal(HttpStatusCode.OK, passwordLogin.StatusCode);
+        var passwordSession =
+            await passwordLogin.Content.ReadFromJsonAsync<SessionResponse>();
+        accessToken = Assert.IsType<SessionResponse>(
+            passwordSession).AccessToken;
+        using var authenticatedAntiforgery = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Get,
+            "/auth/antiforgery",
+            cookies,
+            accessToken: accessToken);
+        Assert.Equal(
+            HttpStatusCode.NoContent,
+            authenticatedAntiforgery.StatusCode);
+        antiforgeryToken = cookies[AntiforgeryRequestCookieName];
+        Assert.True(
+            antiforgeryToken.Length > 0,
+            "Password login did not issue a readable antiforgery token.");
+        Assert.True(
+            cookies.TryGetValue(
+                "__Host-Skopka.Hello.Antiforgery",
+                out var antiforgeryCookie)
+                && antiforgeryCookie.Length > 0,
+            "The authenticated antiforgery endpoint did not issue its cookie.");
+
+        using var beginUnlink = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Post,
+            $"/account/external-logins/{ProviderId}/unlink/challenge",
+            cookies,
+            antiforgeryToken: antiforgeryToken,
+            accessToken: accessToken);
+        Assert.True(
+            beginUnlink.StatusCode == HttpStatusCode.OK,
+            $"Unexpected unlink challenge response: "
+                + $"{beginUnlink.StatusCode} "
+                + await beginUnlink.Content.ReadAsStringAsync());
+        var unlinkMessage = await hello.WaitForMessageAsync(
+            HelloAccountMessageKind.ExternalLoginUnlinkVerification);
+        using var unlink = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Delete,
+            "/account/external-logins/unlink",
+            cookies,
+            new
+            {
+                verificationCode = Assert.IsType<string>(
+                    unlinkMessage.VerificationCode),
+            },
+            antiforgeryToken,
+            accessToken);
+        Assert.Equal(HttpStatusCode.OK, unlink.StatusCode);
+        var unlinkSession =
+            await unlink.Content.ReadFromJsonAsync<SessionResponse>();
+        accessToken = Assert.IsType<SessionResponse>(
+            unlinkSession).AccessToken;
+        antiforgeryToken = cookies[AntiforgeryRequestCookieName];
+
+        using var afterUnlink = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Get,
+            "/account/external-logins",
+            cookies,
+            accessToken: accessToken);
+        Assert.Equal(HttpStatusCode.OK, afterUnlink.StatusCode);
+        Assert.Empty(Assert.IsType<LinkedExternalProviderResponse[]>(
+            await afterUnlink.Content.ReadFromJsonAsync<
+                LinkedExternalProviderResponse[]>()));
+
+        using var prepareLink = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Post,
+            $"/account/external-logins/{ProviderId}/link",
+            cookies,
+            new { returnUrl },
+            antiforgeryToken,
+            accessToken);
+        Assert.Equal(HttpStatusCode.OK, prepareLink.StatusCode);
+        var linkStart = await prepareLink.Content.ReadFromJsonAsync<
+            ExternalLinkStartResponse>();
+        var challengeUrl = Assert.IsType<ExternalLinkStartResponse>(
+            linkStart).ChallengeUrl;
+        var copiedPreflightCookies = new Dictionary<string, string>(
+            cookies,
+            StringComparer.Ordinal);
+
+        var linkProvider =
+            await CompleteHeadlessProviderCallbackFromPathAsync(
+                helloClient,
+                authority,
+                cookies,
+                challengeUrl,
+                returnUrl);
+        AssertAuthorizationRequest(linkProvider.AuthorizationRequest);
+
+        using var replayedPreflight = await SendHelloAsync(
+            helloClient,
+            HttpMethod.Get,
+            challengeUrl,
+            copiedPreflightCookies);
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            replayedPreflight.StatusCode);
+
+        using var completeProviderLink = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Post,
+            HelloOidcDefaults.ApiCompletionPath,
+            cookies,
+            antiforgeryToken: antiforgeryToken,
+            accessToken: accessToken);
+        Assert.Equal(HttpStatusCode.OK, completeProviderLink.StatusCode);
+        var linkPending =
+            await completeProviderLink.Content.ReadFromJsonAsync<
+                ExternalAuthenticationResponse>();
+        Assert.NotNull(linkPending);
+        Assert.Equal(
+            ExternalAuthenticationOutcome.LinkVerificationRequired,
+            linkPending.Outcome);
+        Assert.Equal(ProviderId, linkPending.Provider?.ProviderId);
+        Assert.Null(linkPending.Session);
+        Assert.Null(linkPending.Registration);
+
+        using var beginLinkVerification = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Post,
+            "/account/external-logins/link/challenge",
+            cookies,
+            antiforgeryToken: antiforgeryToken,
+            accessToken: accessToken);
+        Assert.Equal(
+            HttpStatusCode.OK,
+            beginLinkVerification.StatusCode);
+        var linkMessage = await hello.WaitForMessageAsync(
+            HelloAccountMessageKind.ExternalLoginLinkVerification);
+        using var link = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Put,
+            "/account/external-logins/link",
+            cookies,
+            new
+            {
+                verificationCode = Assert.IsType<string>(
+                    linkMessage.VerificationCode),
+            },
+            antiforgeryToken,
+            accessToken);
+        Assert.Equal(HttpStatusCode.OK, link.StatusCode);
+        var linkSession =
+            await link.Content.ReadFromJsonAsync<SessionResponse>();
+        accessToken = Assert.IsType<SessionResponse>(
+            linkSession).AccessToken;
+
+        using var afterLink = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Get,
+            "/account/external-logins",
+            cookies,
+            accessToken: accessToken);
+        Assert.Equal(HttpStatusCode.OK, afterLink.StatusCode);
+        var linked = Assert.Single(
+            Assert.IsType<LinkedExternalProviderResponse[]>(
+                await afterLink.Content.ReadFromJsonAsync<
+                    LinkedExternalProviderResponse[]>()));
+        Assert.Equal(ProviderId, linked.ProviderId);
+        Assert.True(linked.Enabled);
+        Assert.True(linked.CanUnlink);
+    }
+
     private static void AssertAuthorizationRequest(
         RecordedAuthorizationRequest request)
     {
@@ -447,6 +925,74 @@ public sealed class ExternalOidcFlowTests
             callbackState);
     }
 
+    private static async Task<CompletedHeadlessProviderChallenge>
+        CompleteHeadlessProviderCallbackAsync(
+            HttpClient helloClient,
+            TestOidcAuthority authority,
+            Dictionary<string, string> cookies,
+            string returnUrl)
+        => await CompleteHeadlessProviderCallbackFromPathAsync(
+            helloClient,
+            authority,
+            cookies,
+            $"{HelloOidcDefaults.ApiPathPrefix}{ProviderId}/challenge"
+                + $"?returnUrl={Uri.EscapeDataString(returnUrl)}",
+            returnUrl);
+
+    private static async Task<CompletedHeadlessProviderChallenge>
+        CompleteHeadlessProviderCallbackFromPathAsync(
+            HttpClient helloClient,
+            TestOidcAuthority authority,
+            Dictionary<string, string> cookies,
+            string challengePath,
+            string returnUrl)
+    {
+        using var challenge = await SendHelloAsync(
+            helloClient,
+            HttpMethod.Get,
+            challengePath,
+            cookies);
+        Assert.Equal(HttpStatusCode.Redirect, challenge.StatusCode);
+        var authorizationLocation = Assert.IsType<Uri>(
+            challenge.Headers.Location);
+        Assert.Equal(AuthorityOrigin.Host, authorizationLocation.Host);
+
+        var challengeQuery = QueryHelpers.ParseQuery(
+            authorizationLocation.Query);
+        Assert.Equal("code", ReadQuery(challengeQuery, "response_type"));
+        Assert.Equal("form_post", ReadQuery(
+            challengeQuery,
+            "response_mode"));
+        Assert.Equal("S256", ReadQuery(
+            challengeQuery,
+            "code_challenge_method"));
+
+        using var authorization = await authority.Client.GetAsync(
+            authorizationLocation.PathAndQuery);
+        Assert.Equal(HttpStatusCode.OK, authorization.StatusCode);
+        var authorizationHtml =
+            await authorization.Content.ReadAsStringAsync();
+        var callbackLocation = new Uri(
+            ReadFormAction(authorizationHtml),
+            UriKind.Absolute);
+        var callbackForm = ReadHiddenForm(authorizationHtml);
+
+        using var callback = await SendHelloFormAsync(
+            helloClient,
+            callbackLocation.PathAndQuery,
+            cookies,
+            callbackForm);
+        Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
+        Assert.Equal(
+            returnUrl,
+            callback.Headers.Location?.OriginalString);
+
+        return new CompletedHeadlessProviderChallenge(
+            authority.DequeueAuthorizationRequest(),
+            callbackForm["code"],
+            callbackForm["state"]);
+    }
+
     private static async Task<HttpResponseMessage> SendHelloFormAsync(
         HttpClient client,
         string path,
@@ -470,6 +1016,41 @@ public sealed class ExternalOidcFlowTests
         Dictionary<string, string> cookies)
     {
         using var request = new HttpRequestMessage(method, path);
+        AddCookies(request, cookies);
+        var response = await client.SendAsync(request);
+        MergeCookies(cookies, response);
+        return response;
+    }
+
+    private static async Task<HttpResponseMessage> SendHelloJsonAsync(
+        HttpClient client,
+        HttpMethod method,
+        string path,
+        Dictionary<string, string> cookies,
+        object? body = null,
+        string? antiforgeryToken = null,
+        string? accessToken = null)
+    {
+        using var request = new HttpRequestMessage(method, path);
+        if (body is not null)
+        {
+            request.Content = JsonContent.Create(body);
+        }
+
+        if (!string.IsNullOrWhiteSpace(antiforgeryToken))
+        {
+            request.Headers.TryAddWithoutValidation(
+                "X-CSRF-TOKEN",
+                antiforgeryToken);
+        }
+
+        if (!string.IsNullOrWhiteSpace(accessToken))
+        {
+            request.Headers.TryAddWithoutValidation(
+                "Authorization",
+                $"Bearer {accessToken}");
+        }
+
         AddCookies(request, cookies);
         var response = await client.SendAsync(request);
         MergeCookies(cookies, response);
@@ -597,6 +1178,11 @@ public sealed class ExternalOidcFlowTests
 
     private sealed record CompletedProviderChallenge(
         string CompletionLocation,
+        RecordedAuthorizationRequest AuthorizationRequest,
+        string AuthorizationCode,
+        string CallbackState);
+
+    private sealed record CompletedHeadlessProviderChallenge(
         RecordedAuthorizationRequest AuthorizationRequest,
         string AuthorizationCode,
         string CallbackState);

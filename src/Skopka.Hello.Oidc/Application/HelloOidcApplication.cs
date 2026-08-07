@@ -11,6 +11,7 @@ internal sealed class HelloOidcApplication<TProfile>(
     HelloOidcProviderCatalog providers,
     HelloOidcTicketService tickets,
     IHelloOidcFlowStore flows,
+    IHelloOidcChallengeService challenges,
     HelloOidcOptions options,
     SkopkaHelloOptions helloOptions,
     HelloUiRoutePaths uiRoutes)
@@ -302,6 +303,118 @@ internal sealed class HelloOidcApplication<TProfile>(
                 snapshot.Errors);
     }
 
+    public async Task<OperationResult<HelloOidcHeadlessLinkStart>>
+        PrepareHeadlessLinkAsync(
+            string providerId,
+            string returnUrl,
+            HelloOidcLocalSession localSession,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(localSession);
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        if (!providers.TryGet(providerId, out var provider))
+        {
+            return Fail<HelloOidcHeadlessLinkStart>(
+                HelloOidcErrors.ProviderUnavailable());
+        }
+
+        if (!HelloOidcReturnUrl.TryNormalizeHeadless(
+                returnUrl,
+                out var normalizedReturnUrl))
+        {
+            return Fail<HelloOidcHeadlessLinkStart>(
+                HelloOidcErrors.ReturnUrlInvalid());
+        }
+
+        var snapshot = await externalIdentity.GetSignInMethodsAsync(
+            localSession.AccessToken,
+            cancellationToken);
+        if (!snapshot.IsSuccess
+            || snapshot.Value.UserId != localSession.UserId)
+        {
+            return Fail<HelloOidcHeadlessLinkStart>(
+                snapshot.IsSuccess
+                    ? [HelloOidcErrors.PendingIdentityInvalid()]
+                    : snapshot.Errors);
+        }
+
+        if (HasProvider(snapshot.Value, provider.Id))
+        {
+            return Fail<HelloOidcHeadlessLinkStart>(
+                HelloOidcErrors.ProviderAlreadyLinked());
+        }
+
+        var expiresAt = DateTimeOffset.UtcNow.Add(
+            options.ExternalCookieLifetime);
+        if (!await HelloOidcTicketService.WriteLinkRequestAsync(
+                httpContext,
+                new HelloOidcLinkRequest(
+                    HelloOidcFlowId.Create(),
+                    provider.Id,
+                    normalizedReturnUrl,
+                    localSession.UserId,
+                    localSession.SessionId,
+                    expiresAt)))
+        {
+            await HelloOidcTicketService.DeleteLinkRequestAsync(
+                httpContext);
+            return Fail<HelloOidcHeadlessLinkStart>(
+                HelloOidcErrors.PendingIdentityInvalid());
+        }
+
+        return OperationResultFactory.Success(
+            new HelloOidcHeadlessLinkStart(
+                HelloOidcDefaults.ApiPathPrefix
+                    + provider.Id
+                    + "/link-challenge"));
+    }
+
+    public async Task<OperationResult<HelloOidcChallenge>>
+        BeginHeadlessLinkAsync(
+            string providerId,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        var read = await tickets.ReadLinkRequestAsync(httpContext);
+        if (!read.IsSuccess)
+        {
+            await HelloOidcTicketService.DeleteLinkRequestAsync(
+                httpContext);
+            return Fail<HelloOidcChallenge>(read.Errors);
+        }
+
+        try
+        {
+            if (!await flows.TryConsumeAsync(
+                    read.Value.FlowId,
+                    read.Value.ExpiresAt,
+                    cancellationToken)
+                || !string.Equals(
+                    providerId,
+                    read.Value.ProviderId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return Fail<HelloOidcChallenge>(
+                    HelloOidcErrors.PendingIdentityInvalid());
+            }
+
+            return challenges.CreateHeadlessLink(
+                read.Value.ProviderId,
+                read.Value.ReturnUrl,
+                read.Value.UserId,
+                read.Value.SessionId);
+        }
+        finally
+        {
+            await HelloOidcTicketService.DeleteLinkRequestAsync(
+                httpContext);
+        }
+    }
+
     public async Task<OperationResult<HelloOidcProvider>>
         GetPendingLinkAsync(
             HttpContext httpContext,
@@ -501,6 +614,8 @@ internal sealed class HelloOidcApplication<TProfile>(
         {
             var external = await tickets.ReadExternalAsync(httpContext);
             var pending = await tickets.ReadPendingAsync(httpContext);
+            var linkRequest = await tickets.ReadLinkRequestAsync(
+                httpContext);
             if (external.IsSuccess)
             {
                 await flows.TryConsumeAsync(
@@ -516,6 +631,14 @@ internal sealed class HelloOidcApplication<TProfile>(
                     pending.Value.ExpiresAt,
                     cancellationToken);
             }
+
+            if (linkRequest.IsSuccess)
+            {
+                await flows.TryConsumeAsync(
+                    linkRequest.Value.FlowId,
+                    linkRequest.Value.ExpiresAt,
+                    cancellationToken);
+            }
         }
         finally
         {
@@ -526,8 +649,16 @@ internal sealed class HelloOidcApplication<TProfile>(
             }
             finally
             {
-                await HelloOidcTicketService.DeletePendingAsync(
-                    httpContext);
+                try
+                {
+                    await HelloOidcTicketService.DeletePendingAsync(
+                        httpContext);
+                }
+                finally
+                {
+                    await HelloOidcTicketService
+                        .DeleteLinkRequestAsync(httpContext);
+                }
             }
         }
     }

@@ -23,6 +23,7 @@ if (typeof(IHelloAdminRoleApplication).Assembly
         HelloOidcDefaults.ApiCompletionPath)
     || string.IsNullOrWhiteSpace(
         HelloAdminSecurityEventTypes.RoleCreated)
+    || !Enum.IsDefined(HelloAuthorizationAccessTokenFormat.SelfContainedJwt)
     || (HelloUiPages.All & HelloUiPages.Login)
         != HelloUiPages.Login)
 {

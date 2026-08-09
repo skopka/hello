@@ -5,6 +5,93 @@ namespace Skopka.Hello.Tests;
 public sealed class HelloAuthorizationServerOptionsTests
 {
     [Fact]
+    public void ReferenceAccessTokensRemainTheDefault()
+    {
+        var options = CreateOptions();
+
+        Assert.Equal(
+            HelloAuthorizationAccessTokenFormat.Reference,
+            options.AccessTokenFormat);
+        options.Validate();
+    }
+
+    [Fact]
+    public void AdditionalScopeAndPerClientResourceAreSupported()
+    {
+        var options = CreateOptions();
+        options.AccessTokenFormat =
+            HelloAuthorizationAccessTokenFormat.SelfContainedJwt;
+        options.AdditionalScopes.Add("mail");
+        options.Clients.Add(new HelloAuthorizationClientOptions
+        {
+            ClientId = "roundcube",
+            DisplayName = "Roundcube",
+            Type = HelloAuthorizationClientType.Confidential,
+            ClientSecret = "secret",
+            Resource = "stalwart",
+            RedirectUris =
+            [
+                "https://webmail.example.test/index.php/login/oauth",
+            ],
+            Scopes =
+            [
+                "openid",
+                "offline_access",
+                "email",
+                "mail",
+            ],
+        });
+
+        options.Validate();
+    }
+
+    [Theory]
+    [InlineData("openid")]
+    [InlineData("mail scope")]
+    [InlineData("mail\\scope")]
+    [InlineData("mail\"scope")]
+    public void AdditionalScopeRejectsReservedOrInvalidName(string scope)
+    {
+        var options = CreateOptions();
+        options.AdditionalScopes.Add(scope);
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Fact]
+    public void AdditionalScopesRejectDuplicatesAndExcessiveCount()
+    {
+        var duplicated = CreateOptions();
+        duplicated.AdditionalScopes.AddRange(["mail", "mail"]);
+        Assert.Throws<InvalidOperationException>(duplicated.Validate);
+
+        var excessive = CreateOptions();
+        excessive.AdditionalScopes.AddRange(
+            Enumerable.Range(0, 33).Select(index => $"scope-{index}"));
+        Assert.Throws<InvalidOperationException>(excessive.Validate);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("stalwart mail")]
+    public void ClientRejectsInvalidResource(string resource)
+    {
+        var options = CreateOptions();
+        options.Clients.Add(new HelloAuthorizationClientOptions
+        {
+            ClientId = "roundcube",
+            DisplayName = "Roundcube",
+            Type = HelloAuthorizationClientType.Confidential,
+            ClientSecret = "secret",
+            Resource = resource,
+            RedirectUris = ["https://webmail.example.test/oauth"],
+            Scopes = ["openid"],
+        });
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Fact]
     public void PublicClientRequiresPkceSafeRedirectWithoutSecret()
     {
         var options = CreateOptions();

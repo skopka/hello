@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -16,6 +17,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using OpenIddict.Abstractions;
 using Skopka.Abstraction.OperationResult;
@@ -32,7 +34,21 @@ public sealed class AuthorizationServerFlowTests
     private const string BrowserScheme = "Test.Browser";
     private const string ClientId = "native-test";
     private const string RedirectUri = "com.example.test:/callback";
+    private const string PortalClientId = "home-portal";
+    private const string PortalClientSecret = "home-portal-test-secret";
+    private const string PortalRedirectUri =
+        "https://home.example.test/signin-oidc";
+    private const string RoundcubeClientId = "roundcube";
+    private const string RoundcubeClientSecret = "roundcube-test-secret";
+    private const string RoundcubeRedirectUri =
+        "https://webmail.example.test/index.php/login/oauth";
+    private const string HelloResource = "skopka-hello-api";
+    private const string MailResource = "stalwart";
+    private const string MailScope = "mail";
     private static readonly Uri Issuer = new("https://hello.test");
+    private static readonly byte[] IdentitySigningKey =
+        SHA256.HashData(Encoding.UTF8.GetBytes(
+            "Skopka.Hello integration identity signing key"));
 
     [Fact]
     public async Task CodePkceRefreshAndLogicalRevocationAreEnforced()
@@ -79,6 +95,7 @@ public sealed class AuthorizationServerFlowTests
         Assert.False(string.IsNullOrWhiteSpace(tokens.AccessToken));
         Assert.False(string.IsNullOrWhiteSpace(tokens.RefreshToken));
         Assert.False(string.IsNullOrWhiteSpace(tokens.IdentityToken));
+        Assert.NotEqual(2, tokens.AccessToken.Count(character => character == '.'));
         Assert.NotEqual(
             TestSessionRegistry.SourceSessionId,
             host.Sessions.LastRegisteredSessionId);
@@ -93,6 +110,7 @@ public sealed class AuthorizationServerFlowTests
             });
         Assert.False(string.IsNullOrWhiteSpace(refreshed.AccessToken));
         Assert.False(string.IsNullOrWhiteSpace(refreshed.RefreshToken));
+        Assert.NotEqual(tokens.RefreshToken, refreshed.RefreshToken);
         Assert.Equal(
             HttpStatusCode.OK,
             await ValidateApiAccessAsync(
@@ -132,6 +150,462 @@ public sealed class AuthorizationServerFlowTests
         Assert.Equal(
             Errors.InvalidGrant,
             error.RootElement.GetProperty(Parameters.Error).GetString());
+    }
+
+    [Fact]
+    public async Task RoundcubeConfidentialFlowProducesStalwartJwtAndRotatesRefresh()
+    {
+        await using var host = await TestAuthorizationHost.CreateAsync(
+            HelloAuthorizationAccessTokenFormat.SelfContainedJwt);
+        const string verifier =
+            "roundcube-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789";
+        var code = await AuthorizeCodeAsync(
+            host.Client,
+            RoundcubeClientId,
+            RoundcubeRedirectUri,
+            "openid offline_access profile email mail",
+            verifier);
+        var tokens = await ExchangeAsync(
+            host.Client,
+            new Dictionary<string, string>
+            {
+                [Parameters.GrantType] = GrantTypes.AuthorizationCode,
+                [Parameters.ClientId] = RoundcubeClientId,
+                [Parameters.ClientSecret] = RoundcubeClientSecret,
+                [Parameters.RedirectUri] = RoundcubeRedirectUri,
+                [Parameters.Code] = code,
+                [Parameters.CodeVerifier] = verifier,
+            });
+
+        Assert.Equal(2, tokens.AccessToken.Count(character => character == '.'));
+        Assert.NotEqual(2, tokens.RefreshToken.Count(character => character == '.'));
+        Assert.NotNull(tokens.IdentityToken);
+
+        using var discovery = JsonDocument.Parse(
+            await host.Client.GetStringAsync(
+                "/.well-known/openid-configuration"));
+        Assert.Equal(
+            Issuer.AbsoluteUri,
+            discovery.RootElement.GetProperty("issuer").GetString());
+        var jwksUri = discovery.RootElement.GetProperty("jwks_uri")
+            .GetString();
+        Assert.False(string.IsNullOrWhiteSpace(jwksUri));
+        var jwksJson = await host.Client.GetStringAsync(jwksUri);
+        using (var jwksDocument = JsonDocument.Parse(jwksJson))
+        {
+            foreach (var key in jwksDocument.RootElement
+                .GetProperty("keys")
+                .EnumerateArray())
+            {
+                Assert.False(key.TryGetProperty("d", out _));
+                Assert.False(key.TryGetProperty("p", out _));
+                Assert.False(key.TryGetProperty("q", out _));
+                Assert.False(key.TryGetProperty("dp", out _));
+                Assert.False(key.TryGetProperty("dq", out _));
+                Assert.False(key.TryGetProperty("qi", out _));
+                Assert.False(key.TryGetProperty("k", out _));
+            }
+        }
+
+        var handler = new JsonWebTokenHandler();
+        var validation = await handler.ValidateTokenAsync(
+            tokens.AccessToken,
+            new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = Issuer.AbsoluteUri,
+                ValidateAudience = true,
+                ValidAudience = MailResource,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKeys = new JsonWebKeySet(jwksJson).Keys,
+                RequireSignedTokens = true,
+                RequireExpirationTime = true,
+                ValidateLifetime = true,
+                ValidTypes = ["at+jwt"],
+                ClockSkew = TimeSpan.Zero,
+            });
+        Assert.True(validation.IsValid, validation.Exception?.ToString());
+
+        var jwt = handler.ReadJsonWebToken(tokens.AccessToken);
+        Assert.Equal(
+            TestSessionRegistry.UserId.ToString("D"),
+            jwt.Subject);
+        Assert.Contains(MailResource, jwt.Audiences);
+        Assert.NotNull(jwt.GetClaim(Claims.JwtId));
+        Assert.NotNull(jwt.GetClaim(Claims.IssuedAt));
+        Assert.Equal(
+            host.Sessions.LastRegisteredSessionId.ToString("D"),
+            jwt.GetClaim(IdentitySessionClaimTypes.SessionId).Value);
+        Assert.Equal(
+            "alice@example.test",
+            jwt.GetClaim(IdentitySessionClaimTypes.PreferredUserName).Value);
+        Assert.Equal(
+            "alice@example.test",
+            jwt.GetClaim(IdentitySessionClaimTypes.Email).Value);
+        Assert.Equal(
+            "true",
+            jwt.GetClaim(IdentitySessionClaimTypes.EmailVerified).Value);
+        Assert.Equal(
+            "Alice",
+            jwt.GetClaim(IdentitySessionClaimTypes.Name).Value);
+        var scopes = jwt.GetClaim(Claims.Scope).Value.Split(' ');
+        Assert.Contains(Scopes.OpenId, scopes);
+        Assert.Contains(Scopes.Email, scopes);
+        Assert.Contains(MailScope, scopes);
+
+        var refreshed = await ExchangeAsync(
+            host.Client,
+            new Dictionary<string, string>
+            {
+                [Parameters.GrantType] = GrantTypes.RefreshToken,
+                [Parameters.ClientId] = RoundcubeClientId,
+                [Parameters.ClientSecret] = RoundcubeClientSecret,
+                [Parameters.RefreshToken] = tokens.RefreshToken,
+            });
+        Assert.Equal(2, refreshed.AccessToken.Count(character => character == '.'));
+        Assert.NotEqual(tokens.RefreshToken, refreshed.RefreshToken);
+
+    }
+
+    [Fact]
+    public async Task RoundcubeFlowRejectsInvalidPkceSecretRedirectResourceAndScope()
+    {
+        await using var host = await TestAuthorizationHost.CreateAsync(
+            HelloAuthorizationAccessTokenFormat.SelfContainedJwt);
+
+        using (var missingPkce = await host.Client.GetAsync(
+            CreateAuthorizeUri(
+                RoundcubeClientId,
+                RoundcubeRedirectUri,
+                "openid email mail",
+                challenge: null)))
+        {
+            await AssertProtocolErrorAsync(missingPkce, Errors.InvalidRequest);
+        }
+
+        const string verifier =
+            "negative-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789";
+        var code = await AuthorizeCodeAsync(
+            host.Client,
+            RoundcubeClientId,
+            RoundcubeRedirectUri,
+            "openid offline_access email mail",
+            verifier);
+        using (var wrongVerifier = await PostTokenAsync(
+            host.Client,
+            new Dictionary<string, string>
+            {
+                [Parameters.GrantType] = GrantTypes.AuthorizationCode,
+                [Parameters.ClientId] = RoundcubeClientId,
+                [Parameters.ClientSecret] = RoundcubeClientSecret,
+                [Parameters.RedirectUri] = RoundcubeRedirectUri,
+                [Parameters.Code] = code,
+                [Parameters.CodeVerifier] = verifier + "-wrong",
+            }))
+        {
+            await AssertProtocolErrorAsync(wrongVerifier, Errors.InvalidGrant);
+        }
+
+        code = await AuthorizeCodeAsync(
+            host.Client,
+            RoundcubeClientId,
+            RoundcubeRedirectUri,
+            "openid email mail",
+            verifier);
+        using (var wrongSecret = await PostTokenAsync(
+            host.Client,
+            new Dictionary<string, string>
+            {
+                [Parameters.GrantType] = GrantTypes.AuthorizationCode,
+                [Parameters.ClientId] = RoundcubeClientId,
+                [Parameters.ClientSecret] = "wrong-secret",
+                [Parameters.RedirectUri] = RoundcubeRedirectUri,
+                [Parameters.Code] = code,
+                [Parameters.CodeVerifier] = verifier,
+            }))
+        {
+            await AssertProtocolErrorAsync(wrongSecret, Errors.InvalidClient);
+        }
+
+        using (var wrongRedirect = await host.Client.GetAsync(
+            CreateAuthorizeUri(
+                RoundcubeClientId,
+                "https://attacker.example.test/callback",
+                "openid email mail",
+                CreateChallenge(verifier))))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, wrongRedirect.StatusCode);
+        }
+
+        using (var foreignResource = await host.Client.GetAsync(
+            CreateAuthorizeUri(
+                RoundcubeClientId,
+                RoundcubeRedirectUri,
+                "openid email mail",
+                CreateChallenge(verifier),
+                HelloResource)))
+        {
+            await AssertProtocolErrorAsync(
+                foreignResource,
+                Errors.InvalidRequest);
+        }
+
+        using var forbiddenScope = await host.Client.GetAsync(
+            CreateAuthorizeUri(
+                RoundcubeClientId,
+                RoundcubeRedirectUri,
+                "openid email mail roles",
+                CreateChallenge(verifier)));
+        await AssertProtocolErrorAsync(forbiddenScope, Errors.InvalidRequest);
+    }
+
+    [Fact]
+    public async Task CompositeBearerSeparatesIdentityOAuthJwtAndIdTokens()
+    {
+        await using var host = await TestAuthorizationHost.CreateAsync(
+            HelloAuthorizationAccessTokenFormat.SelfContainedJwt);
+        const string portalVerifier =
+            "portal-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789";
+        var portalCode = await AuthorizeCodeAsync(
+            host.Client,
+            PortalClientId,
+            PortalRedirectUri,
+            "openid offline_access profile email",
+            portalVerifier);
+        var portal = await ExchangeAsync(
+            host.Client,
+            new Dictionary<string, string>
+            {
+                [Parameters.GrantType] = GrantTypes.AuthorizationCode,
+                [Parameters.ClientId] = PortalClientId,
+                [Parameters.ClientSecret] = PortalClientSecret,
+                [Parameters.RedirectUri] = PortalRedirectUri,
+                [Parameters.Code] = portalCode,
+                [Parameters.CodeVerifier] = portalVerifier,
+            });
+        var portalSessionId = host.Sessions.LastRegisteredSessionId;
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            await ValidateApiAccessAsync(
+                host.Client,
+                portal.AccessToken,
+                "/test/admin"));
+        Assert.Equal(
+            HttpStatusCode.OK,
+            await ValidateApiAccessAsync(
+                host.Client,
+                CreateIdentityJwt(Issuer.AbsoluteUri, HelloResource, "JWT"),
+                "/test/admin"));
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            await ValidateApiAccessAsync(
+                host.Client,
+                CreateIdentityJwt(
+                    "https://wrong-issuer.example.test/",
+                    HelloResource,
+                    "JWT"),
+                "/test/admin"));
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            await ValidateApiAccessAsync(
+                host.Client,
+                CreateIdentityJwt(Issuer.AbsoluteUri, "wrong-audience", "JWT"),
+                "/test/admin"));
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            await ValidateApiAccessAsync(
+                host.Client,
+                CreateIdentityJwt(
+                    Issuer.AbsoluteUri,
+                    HelloResource,
+                    "at+jwt"),
+                "/test/admin"));
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            await ValidateApiAccessAsync(
+                host.Client,
+                "eyJ0eXAiOiJhdCtqd3QifQ.e30.invalid",
+                "/test/admin"));
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            await ValidateApiAccessAsync(
+                host.Client,
+                portal.IdentityToken!,
+                "/test/admin"));
+
+        const string mailVerifier =
+            "mail-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789";
+        var mailCode = await AuthorizeCodeAsync(
+            host.Client,
+            RoundcubeClientId,
+            RoundcubeRedirectUri,
+            "openid offline_access email mail",
+            mailVerifier);
+        var mail = await ExchangeAsync(
+            host.Client,
+            new Dictionary<string, string>
+            {
+                [Parameters.GrantType] = GrantTypes.AuthorizationCode,
+                [Parameters.ClientId] = RoundcubeClientId,
+                [Parameters.ClientSecret] = RoundcubeClientSecret,
+                [Parameters.RedirectUri] = RoundcubeRedirectUri,
+                [Parameters.Code] = mailCode,
+                [Parameters.CodeVerifier] = mailVerifier,
+            });
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            await ValidateApiAccessAsync(
+                host.Client,
+                mail.AccessToken,
+                "/test/admin"));
+
+        host.Sessions.Revoke(portalSessionId);
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            await ValidateApiAccessAsync(
+                host.Client,
+                portal.AccessToken,
+                "/test/admin"));
+        using var rejectedRefresh = await PostTokenAsync(
+            host.Client,
+            new Dictionary<string, string>
+            {
+                [Parameters.GrantType] = GrantTypes.RefreshToken,
+                [Parameters.ClientId] = PortalClientId,
+                [Parameters.ClientSecret] = PortalClientSecret,
+                [Parameters.RefreshToken] = portal.RefreshToken,
+            });
+        await AssertProtocolErrorAsync(
+            rejectedRefresh,
+            Errors.InvalidGrant);
+    }
+
+    private static async Task<string> AuthorizeCodeAsync(
+        HttpClient client,
+        string clientId,
+        string redirectUri,
+        string scopes,
+        string verifier)
+    {
+        using var response = await client.GetAsync(
+            CreateAuthorizeUri(
+                clientId,
+                redirectUri,
+                scopes,
+                CreateChallenge(verifier)));
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var location = Assert.IsType<Uri>(response.Headers.Location);
+        var query = QueryHelpers.ParseQuery(location.Query);
+        Assert.False(query.ContainsKey(Parameters.Error));
+        return Assert.IsType<string>(
+            Assert.Single(query[Parameters.Code]));
+    }
+
+    private static string CreateAuthorizeUri(
+        string clientId,
+        string redirectUri,
+        string scopes,
+        string? challenge,
+        string? resource = null)
+    {
+        var parameters = new Dictionary<string, string?>
+        {
+            [Parameters.ClientId] = clientId,
+            [Parameters.RedirectUri] = redirectUri,
+            [Parameters.ResponseType] = ResponseTypes.Code,
+            [Parameters.Scope] = scopes,
+            [Parameters.State] = "integration-state",
+        };
+        if (challenge is not null)
+        {
+            parameters[Parameters.CodeChallenge] = challenge;
+            parameters[Parameters.CodeChallengeMethod] =
+                CodeChallengeMethods.Sha256;
+        }
+
+        if (resource is not null)
+        {
+            parameters[Parameters.Resource] = resource;
+        }
+
+        return QueryHelpers.AddQueryString(
+            "/connect/authorize",
+            parameters);
+    }
+
+    private static string CreateChallenge(string verifier)
+        => Base64UrlEncoder.Encode(
+            SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
+
+    private static async Task AssertProtocolErrorAsync(
+        HttpResponseMessage response,
+        string expectedError)
+    {
+        Assert.False(response.IsSuccessStatusCode);
+        if (response.Headers.Location is { } location)
+        {
+            var query = QueryHelpers.ParseQuery(location.Query);
+            Assert.Equal(expectedError, query[Parameters.Error]);
+            return;
+        }
+
+        var payload = await response.Content.ReadAsStringAsync();
+        if (payload.TrimStart().StartsWith('{'))
+        {
+            using var document = JsonDocument.Parse(payload);
+            Assert.Equal(
+                expectedError,
+                document.RootElement.GetProperty(Parameters.Error).GetString());
+            return;
+        }
+
+        var parameters = QueryHelpers.ParseQuery("?" + payload);
+        if (!parameters.TryGetValue(Parameters.Error, out var error))
+        {
+            error = payload
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault(line => line.StartsWith(
+                    Parameters.Error + ":",
+                    StringComparison.Ordinal))?
+                [(Parameters.Error.Length + 1)..]
+                .Trim();
+        }
+
+        Assert.True(
+            !string.IsNullOrWhiteSpace(error),
+            $"Protocol response did not contain an error: {payload}");
+        Assert.Equal(expectedError, error);
+    }
+
+    private static string CreateIdentityJwt(
+        string tokenIssuer,
+        string audience,
+        string tokenType)
+    {
+        var now = DateTime.UtcNow;
+        return new JsonWebTokenHandler().CreateToken(
+            new SecurityTokenDescriptor
+            {
+                Issuer = tokenIssuer,
+                Audience = audience,
+                IssuedAt = now,
+                NotBefore = now,
+                Expires = now.AddMinutes(5),
+                TokenType = tokenType,
+                SigningCredentials = new SigningCredentials(
+                    new SymmetricSecurityKey(IdentitySigningKey),
+                    SecurityAlgorithms.HmacSha256),
+                Subject = new ClaimsIdentity(
+                [
+                    new Claim(
+                        Claims.Subject,
+                        TestSessionRegistry.UserId.ToString("D")),
+                    new Claim(
+                        IdentitySessionClaimTypes.SessionId,
+                        TestSessionRegistry.SourceSessionId.ToString("D")),
+                ]),
+            });
     }
 
     private static async Task<HttpStatusCode> ValidateApiAccessAsync(
@@ -206,7 +680,9 @@ public sealed class AuthorizationServerFlowTests
 
         public bool StaleClientWasRemoved { get; }
 
-        public static async Task<TestAuthorizationHost> CreateAsync()
+        public static async Task<TestAuthorizationHost> CreateAsync(
+            HelloAuthorizationAccessTokenFormat accessTokenFormat =
+                HelloAuthorizationAccessTokenFormat.Reference)
         {
             var connection = new SqliteConnection("Data Source=:memory:");
             await connection.OpenAsync();
@@ -239,16 +715,40 @@ public sealed class AuthorizationServerFlowTests
                     TestBrowserAuthenticationHandler>(
                     BrowserScheme,
                     _ => { })
-                .AddScheme<
-                    AuthenticationSchemeOptions,
-                    NoResultAuthenticationHandler>(
-                    "Bearer",
-                    _ => { });
+                .AddJwtBearer(
+                    JwtBearerDefaults.AuthenticationScheme,
+                    options =>
+                    {
+                        options.MapInboundClaims = false;
+                        options.TokenValidationParameters = new()
+                        {
+                            ValidateIssuer = true,
+                            ValidIssuer = Issuer.AbsoluteUri,
+                            ValidateAudience = true,
+                            ValidAudience = HelloResource,
+                            ValidateIssuerSigningKey = true,
+                            IssuerSigningKey = new SymmetricSecurityKey(
+                                IdentitySigningKey),
+                            ValidAlgorithms =
+                            [
+                                SecurityAlgorithms.HmacSha256,
+                            ],
+                            ValidTypes = ["JWT"],
+                            RequireSignedTokens = true,
+                            RequireExpirationTime = true,
+                            ValidateLifetime = true,
+                            ClockSkew = TimeSpan.Zero,
+                        };
+                    });
             builder.Services.AddSkopkaHelloAuthorizationServer<TestProfile>(
                 options =>
                 {
                     options.Issuer = Issuer;
                     options.BrowserAuthenticationScheme = BrowserScheme;
+                    options.Resource = HelloResource;
+                    options.AccessTokenFormat = accessTokenFormat;
+                    options.AccessTokenLifetime = TimeSpan.FromMinutes(5);
+                    options.AdditionalScopes.Add(MailScope);
                     options.Clients.Add(
                         new HelloAuthorizationClientOptions
                         {
@@ -262,6 +762,41 @@ public sealed class AuthorizationServerFlowTests
                                 Scopes.OfflineAccess,
                                 Scopes.Profile,
                                 HelloAuthorizationDefaults.RolesScope,
+                            ],
+                        });
+                    options.Clients.Add(
+                        new HelloAuthorizationClientOptions
+                        {
+                            ClientId = PortalClientId,
+                            DisplayName = "Home Portal",
+                            Type = HelloAuthorizationClientType.Confidential,
+                            ClientSecret = PortalClientSecret,
+                            Resource = HelloResource,
+                            RedirectUris = [PortalRedirectUri],
+                            Scopes =
+                            [
+                                Scopes.OpenId,
+                                Scopes.OfflineAccess,
+                                Scopes.Profile,
+                                Scopes.Email,
+                            ],
+                        });
+                    options.Clients.Add(
+                        new HelloAuthorizationClientOptions
+                        {
+                            ClientId = RoundcubeClientId,
+                            DisplayName = "Roundcube Webmail",
+                            Type = HelloAuthorizationClientType.Confidential,
+                            ClientSecret = RoundcubeClientSecret,
+                            Resource = MailResource,
+                            RedirectUris = [RoundcubeRedirectUri],
+                            Scopes =
+                            [
+                                Scopes.OpenId,
+                                Scopes.OfflineAccess,
+                                Scopes.Profile,
+                                Scopes.Email,
+                                MailScope,
                             ],
                         });
                 },
@@ -390,19 +925,6 @@ public sealed class AuthorizationServerFlowTests
         }
     }
 
-    private sealed class NoResultAuthenticationHandler(
-        IOptionsMonitor<AuthenticationSchemeOptions> options,
-        ILoggerFactory logger,
-        UrlEncoder encoder)
-        : AuthenticationHandler<AuthenticationSchemeOptions>(
-            options,
-            logger,
-            encoder)
-    {
-        protected override Task<AuthenticateResult> HandleAuthenticateAsync()
-            => Task.FromResult(AuthenticateResult.NoResult());
-    }
-
     private sealed class TestClaimsProvider
         : IIdentitySessionClaimsProvider<TestProfile>
     {
@@ -412,6 +934,14 @@ public sealed class AuthorizationServerFlowTests
             => Task.FromResult<IReadOnlyCollection<IdentitySessionClaim>>(
             [
                 new(IdentitySessionClaimTypes.Name, user.Profile.Name),
+                new(IdentitySessionClaimTypes.PreferredUserName, "alice"),
+                new(
+                    IdentitySessionClaimTypes.PreferredUserName,
+                    "alice@example.test"),
+                new(
+                    IdentitySessionClaimTypes.Email,
+                    "alice@example.test"),
+                new(IdentitySessionClaimTypes.EmailVerified, "true"),
                 new(IdentitySessionClaimTypes.Role, "member"),
             ]);
     }

@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Tokens;
 using OpenIddict.Abstractions;
 using OpenIddict.Server;
 using OpenIddict.Validation.AspNetCore;
@@ -61,20 +63,24 @@ public static class SkopkaHelloAuthorizationServerServiceCollectionExtensions
                 server.AllowAuthorizationCodeFlow();
                 server.AllowRefreshTokenFlow();
                 server.RequireProofKeyForCodeExchange();
-                server.RegisterScopes(
-                    OpenIddictConstants.Scopes.OpenId,
-                    OpenIddictConstants.Scopes.OfflineAccess,
-                    OpenIddictConstants.Scopes.Profile,
-                    OpenIddictConstants.Scopes.Email,
-                    OpenIddictConstants.Scopes.Phone,
-                    Skopka.Hello.AuthorizationServer
-                        .HelloAuthorizationDefaults.RolesScope);
+                server.RegisterAudiences(options.GetResources());
+                server.RegisterScopes(options.GetScopes());
                 server.SetAuthorizationCodeLifetime(
                     options.AuthorizationCodeLifetime);
                 server.SetAccessTokenLifetime(options.AccessTokenLifetime);
                 server.SetIdentityTokenLifetime(options.IdentityTokenLifetime);
                 server.SetRefreshTokenLifetime(options.RefreshTokenLifetime);
-                server.UseReferenceAccessTokens();
+                if (options.AccessTokenFormat == Skopka.Hello
+                    .AuthorizationServer
+                    .HelloAuthorizationAccessTokenFormat.Reference)
+                {
+                    server.UseReferenceAccessTokens();
+                }
+                else
+                {
+                    server.DisableAccessTokenEncryption();
+                }
+
                 server.UseReferenceRefreshTokens();
 
                 configureServer?.Invoke(server);
@@ -89,6 +95,7 @@ public static class SkopkaHelloAuthorizationServerServiceCollectionExtensions
             })
             .AddValidation(validation =>
             {
+                validation.AddAudiences(options.Resource);
                 validation.UseLocalServer();
                 validation.EnableTokenEntryValidation();
                 validation.UseAspNetCore();
@@ -118,10 +125,50 @@ public static class SkopkaHelloAuthorizationServerServiceCollectionExtensions
         }
 
         var token = header[prefix.Length..].Trim();
-        return token.Count(character => character == '.') == 2
-            ? options.IdentityBearerAuthenticationScheme
-            : Skopka.Hello.AuthorizationServer.HelloAuthorizationDefaults
-                .OAuthAuthenticationScheme;
+        if (token.Count(character => character == '.') != 2)
+        {
+            return Skopka.Hello.AuthorizationServer
+                .HelloAuthorizationDefaults.OAuthAuthenticationScheme;
+        }
+
+        const int maximumJwtLength = 64 * 1024;
+        if (token.Length > maximumJwtLength)
+        {
+            return options.IdentityBearerAuthenticationScheme;
+        }
+
+        try
+        {
+            var handler = new JsonWebTokenHandler
+            {
+                MaximumTokenSizeInBytes = maximumJwtLength,
+            };
+            if (!handler.CanReadToken(token))
+            {
+                return options.IdentityBearerAuthenticationScheme;
+            }
+
+            var jwt = handler.ReadJsonWebToken(token);
+            if (string.Equals(
+                    jwt.Typ,
+                    "at+jwt",
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    jwt.Issuer,
+                    options.Issuer!.AbsoluteUri,
+                    StringComparison.Ordinal))
+            {
+                return Skopka.Hello.AuthorizationServer
+                    .HelloAuthorizationDefaults.OAuthAuthenticationScheme;
+            }
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or SecurityTokenException)
+        {
+            // The selected handler remains responsible for returning 401.
+        }
+
+        return options.IdentityBearerAuthenticationScheme;
     }
 
     public static IServiceCollection AddSkopkaHelloAuthorizationClients(

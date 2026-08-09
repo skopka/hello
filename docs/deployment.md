@@ -238,9 +238,20 @@ login.
 The ready Server binds the optional issuer and clients from
 `SkopkaHello:AuthorizationServer`. Production defaults to disabled. Enabling it
 requires stable signing and encryption certificates, exact client redirect
-URIs and a migration run. The checked-in Development configuration uses
+URIs, per-client resources, allowed scopes and a migration run. Reference
+access tokens remain the default. Set `AccessTokenFormat` to
+`SelfContainedJwt` only for a resource server that must validate a signed JWS
+from discovery/JWKS, and give that token a short `AccessTokenLifetime`. The
+checked-in Development configuration uses
 ephemeral protocol keys and public test clients only; that file is excluded
 from publish and the Docker image.
+
+`AdditionalScopes` extends the server scope registry, while every client still
+has its own explicit `Scopes`. A client's `Resource` becomes its only allowed
+audience and falls back to the server-level `Resource` when omitted. Deploy the
+same format, lifetime, resources and scopes on every replica. The signing PFX
+must contain an asymmetric private key; only its public key is exposed by JWKS.
+The encryption PFX continues to protect non-access-token protocol artifacts.
 
 `--migrate` makes the stored OpenIddict application set exactly match the
 configured list. Treat removal or renaming as a security change: existing
@@ -283,8 +294,8 @@ Every replica must share:
 - the same current and overlapping historical rate-limit key versions;
 - the same current and overlapping historical verification key versions;
 - identical enabled OIDC provider ids, authorities, clients and scopes.
-- when enabled, identical authorization-server issuer, client registrations
-  and signing/encryption certificates.
+- when enabled, identical authorization-server issuer, token format/lifetimes,
+  client registrations/resources/scopes and signing/encryption certificates.
 
 To rotate a JWT signing key, deploy the new key as another entry under
 `SkopkaHello:Jwt:Keys`, set `CurrentVersion` to its id and retain every key
@@ -343,10 +354,12 @@ access tokens, but an already issued access token remains valid until expiry.
 Enable online validation when immediate revocation is more important than the
 extra database read.
 
-OpenIddict reference access and refresh tokens always validate their Identity
-logical session online. Revoking that session immediately blocks Hello account
-and admin APIs and prevents refresh; do not remove this check from the composed
-OAuth authentication scheme.
+OpenIddict reference access tokens, self-contained OAuth JWTs presented to
+Hello, and reference refresh tokens validate their Identity logical session
+online. Revoking that session immediately blocks Hello account/admin APIs and
+prevents refresh. A separate offline resource server can accept an already
+issued OAuth JWT until `exp`; keep that access-token lifetime short and include
+clock skew in the operational revocation window.
 
 ## Operational checks
 

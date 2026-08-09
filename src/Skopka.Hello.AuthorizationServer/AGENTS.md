@@ -15,6 +15,14 @@ refresh redemption validates that session online before issuing new tokens.
 Never copy a security stamp, browser access token, provider token or client
 secret into claims.
 
+Reference access tokens are the compatibility default. Self-contained access
+tokens must be signed asymmetric JWSs with access-token encryption disabled;
+authorization codes and rotating refresh tokens stay reference tokens. Assign
+one configured resource to each client, reject request-selected alternatives
+and keep Hello API validation audience-bound plus online-session-bound. An
+offline external validator can observe revocation only when the short-lived JWT
+expires.
+
 Client ids, exact redirect URIs and scopes are operator configuration. Public
 clients never have secrets and always require PKCE. Confidential clients must
 authenticate at the token endpoint and also require PKCE. Consent is implicit

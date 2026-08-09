@@ -10,6 +10,8 @@ public sealed class HelloAuthorizationClientOptions
 
     public string? ClientSecret { get; set; }
 
+    public string? Resource { get; set; }
+
     public List<string> RedirectUris { get; set; } = [];
 
     public List<string> Scopes { get; set; } = [];

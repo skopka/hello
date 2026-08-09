@@ -6,6 +6,9 @@ public sealed class HelloAuthorizationServerOptions
 {
     private const int MaximumClients = 64;
     private const int MaximumRedirectUris = 16;
+    private const int MaximumAdditionalScopes = 32;
+    private const int MaximumScopeLength = 128;
+    private const int MaximumResourceLength = 256;
 
     public Uri? Issuer { get; set; }
 
@@ -25,6 +28,11 @@ public sealed class HelloAuthorizationServerOptions
         HelloAuthorizationDefaults.CompositeBearerAuthenticationScheme;
 
     public string Resource { get; set; } = "skopka-hello-api";
+
+    public HelloAuthorizationAccessTokenFormat AccessTokenFormat { get; set; } =
+        HelloAuthorizationAccessTokenFormat.Reference;
+
+    public List<string> AdditionalScopes { get; set; } = [];
 
     public TimeSpan AuthorizationCodeLifetime { get; set; } =
         TimeSpan.FromMinutes(5);
@@ -75,6 +83,37 @@ public sealed class HelloAuthorizationServerOptions
         ArgumentException.ThrowIfNullOrWhiteSpace(
             CompositeBearerAuthenticationScheme);
         ArgumentException.ThrowIfNullOrWhiteSpace(Resource);
+        ValidateResource(Resource, "The default authorization resource");
+
+        if (!Enum.IsDefined(AccessTokenFormat))
+        {
+            throw new InvalidOperationException(
+                "The authorization access-token format is invalid.");
+        }
+
+        if (AdditionalScopes is null)
+        {
+            throw new InvalidOperationException(
+                "The additional authorization scopes collection is required.");
+        }
+
+        if (AdditionalScopes.Count > MaximumAdditionalScopes)
+        {
+            throw new InvalidOperationException(
+                $"No more than {MaximumAdditionalScopes} additional authorization scopes are supported.");
+        }
+
+        var supportedScopes = new HashSet<string>(
+            BuiltInScopes,
+            StringComparer.Ordinal);
+        foreach (var scope in AdditionalScopes)
+        {
+            if (!IsValidScopeName(scope) || !supportedScopes.Add(scope))
+            {
+                throw new InvalidOperationException(
+                    "An additional authorization scope is invalid, duplicated or reserved.");
+            }
+        }
 
         if (AuthorizationCodeLifetime <= TimeSpan.Zero
             || AccessTokenLifetime <= TimeSpan.Zero
@@ -100,7 +139,7 @@ public sealed class HelloAuthorizationServerOptions
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var client in Clients)
         {
-            ValidateClient(client, ids);
+            ValidateClient(client, ids, supportedScopes);
         }
     }
 
@@ -110,9 +149,27 @@ public sealed class HelloAuthorizationServerOptions
     internal string GetOpenIddictTokenEndpointPath()
         => TokenEndpointPath.TrimStart('/');
 
+    internal string GetResource(HelloAuthorizationClientOptions client)
+        => string.IsNullOrWhiteSpace(client.Resource)
+            ? Resource
+            : client.Resource;
+
+    internal string[] GetResources()
+        => Clients
+            .Select(GetResource)
+            .Append(Resource)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+    internal string[] GetScopes()
+        => BuiltInScopes
+            .Concat(AdditionalScopes)
+            .ToArray();
+
     private void ValidateClient(
         HelloAuthorizationClientOptions client,
-        HashSet<string> ids)
+        HashSet<string> ids,
+        HashSet<string> supportedScopes)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentException.ThrowIfNullOrWhiteSpace(client.ClientId);
@@ -149,6 +206,13 @@ public sealed class HelloAuthorizationServerOptions
                 $"Confidential client '{client.ClientId}' requires a secret.");
         }
 
+        if (client.Resource is not null)
+        {
+            ValidateResource(
+                client.Resource,
+                $"Authorization client '{client.ClientId}' resource");
+        }
+
         if (client.RedirectUris is not { Count: > 0 }
             || client.RedirectUris.Count > MaximumRedirectUris)
         {
@@ -171,7 +235,7 @@ public sealed class HelloAuthorizationServerOptions
         foreach (var scope in client.Scopes)
         {
             if (string.IsNullOrWhiteSpace(scope)
-                || !SupportedScopes.Contains(scope)
+                || !supportedScopes.Contains(scope)
                 || !scopes.Add(scope))
             {
                 throw new InvalidOperationException(
@@ -228,14 +292,46 @@ public sealed class HelloAuthorizationServerOptions
         }
     }
 
-    private static readonly HashSet<string> SupportedScopes = new(
-        StringComparer.Ordinal)
+    private static void ValidateResource(string value, string name)
     {
+        if (string.IsNullOrWhiteSpace(value)
+            || value.Length > MaximumResourceLength
+            || value.Any(character => char.IsWhiteSpace(character)
+                || char.IsControl(character)))
+        {
+            throw new InvalidOperationException(
+                $"{name} must be a non-empty value without whitespace or control characters.");
+        }
+    }
+
+    private static bool IsValidScopeName(string? scope)
+    {
+        if (string.IsNullOrEmpty(scope)
+            || scope.Length > MaximumScopeLength)
+        {
+            return false;
+        }
+
+        foreach (var character in scope)
+        {
+            if (character is not ('\u0021')
+                && character is not (>= '\u0023' and <= '\u005B')
+                && character is not (>= '\u005D' and <= '\u007E'))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static readonly string[] BuiltInScopes =
+    [
         OpenIddictConstants.Scopes.OpenId,
         OpenIddictConstants.Scopes.OfflineAccess,
         OpenIddictConstants.Scopes.Profile,
         OpenIddictConstants.Scopes.Email,
         OpenIddictConstants.Scopes.Phone,
         HelloAuthorizationDefaults.RolesScope,
-    };
+    ];
 }

@@ -47,6 +47,24 @@ public static class
             ?? throw new InvalidOperationException(
                 "OpenIddict did not expose the authorization request.");
 
+        if (!TryGetClientResource(
+                request,
+                options,
+                out _,
+                out var resource))
+        {
+            return Forbid(
+                Errors.InvalidClient,
+                "The authorization client is not configured.");
+        }
+
+        if (!HasAllowedResource(request, resource))
+        {
+            return Forbid(
+                Errors.InvalidTarget,
+                "The requested resource is not allowed for this client.");
+        }
+
         if (HasPrompt(request, "consent"))
         {
             return Forbid(
@@ -129,7 +147,7 @@ public static class
 
         var principal = new ClaimsPrincipal(identity);
         principal.SetScopes(request.GetScopes());
-        principal.SetResources(options.Resource);
+        principal.SetResources(resource);
         return Results.SignIn(
             principal,
             authenticationScheme:
@@ -145,6 +163,24 @@ public static class
         var request = httpContext.GetOpenIddictServerRequest()
             ?? throw new InvalidOperationException(
                 "OpenIddict did not expose the token request.");
+        if (!TryGetClientResource(
+                request,
+                options,
+                out var client,
+                out var resource))
+        {
+            return Forbid(
+                Errors.InvalidClient,
+                "The authorization client is not configured.");
+        }
+
+        if (!HasAllowedResource(request, resource))
+        {
+            return Forbid(
+                Errors.InvalidTarget,
+                "The requested resource is not allowed for this client.");
+        }
+
         var authentication = await httpContext.AuthenticateAsync(
             OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
         if (!authentication.Succeeded
@@ -156,6 +192,13 @@ public static class
             return Forbid(
                 Errors.InvalidGrant,
                 "The token grant is invalid or expired.");
+        }
+
+        if (!HasOnlyResource(authentication.Principal, resource))
+        {
+            return Forbid(
+                Errors.InvalidGrant,
+                "The token grant is not bound to the configured resource.");
         }
 
         OperationResult<HelloAuthorizationSubject> result;
@@ -172,15 +215,10 @@ public static class
                     "The authorization code is not bound to a local session.");
             }
 
-            var clientName = options.Clients.Single(
-                client => string.Equals(
-                    client.ClientId,
-                    request.ClientId,
-                    StringComparison.Ordinal)).DisplayName;
             result = await application.CreateAsync(
                 userId,
                 sourceSessionId,
-                clientName,
+                client.DisplayName,
                 cancellationToken);
         }
         else if (request.IsRefreshTokenGrantType())
@@ -225,7 +263,7 @@ public static class
         var principal = CreateTokenPrincipal(
             result.Value,
             scopes,
-            options.Resource);
+            resource);
         return Results.SignIn(
             principal,
             authenticationScheme:
@@ -255,10 +293,24 @@ public static class
                 continue;
             }
 
-            identity.AddClaim(new Claim(
+            var claim = new Claim(
                 projected.Type,
                 projected.Value,
-                GetClaimValueType(projected.Type)));
+                GetClaimValueType(projected.Type));
+            if (SingletonClaimTypes.Contains(projected.Type))
+            {
+                foreach (var existing in identity.FindAll(projected.Type)
+                    .ToArray())
+                {
+                    identity.RemoveClaim(existing);
+                }
+
+                identity.AddClaim(claim);
+            }
+            else
+            {
+                identity.AddClaim(claim);
+            }
         }
 
         var principal = new ClaimsPrincipal(identity);
@@ -349,6 +401,17 @@ public static class
         "token_id",
     };
 
+    private static readonly HashSet<string> SingletonClaimTypes = new(
+        StringComparer.Ordinal)
+    {
+        IdentitySessionClaimTypes.Name,
+        IdentitySessionClaimTypes.PreferredUserName,
+        IdentitySessionClaimTypes.Email,
+        IdentitySessionClaimTypes.EmailVerified,
+        IdentitySessionClaimTypes.PhoneNumber,
+        IdentitySessionClaimTypes.PhoneNumberVerified,
+    };
+
     private static bool TryReadSession(
         ClaimsPrincipal principal,
         out Guid userId,
@@ -361,6 +424,51 @@ public static class
                     IdentitySessionClaimTypes.SessionId),
                 out sessionId)
             && sessionId != Guid.Empty;
+    }
+
+    private static bool TryGetClientResource(
+        OpenIddictRequest request,
+        HelloAuthorizationServerOptions options,
+        out HelloAuthorizationClientOptions client,
+        out string resource)
+    {
+        client = options.Clients.FirstOrDefault(candidate => string.Equals(
+            candidate.ClientId,
+            request.ClientId,
+            StringComparison.Ordinal))!;
+        if (client is null)
+        {
+            resource = string.Empty;
+            return false;
+        }
+
+        resource = options.GetResource(client);
+        return true;
+    }
+
+    private static bool HasAllowedResource(
+        OpenIddictRequest request,
+        string configuredResource)
+    {
+        var requested = request.GetResources().ToArray();
+        return requested.Length == 0
+            || (requested.Length == 1
+                && string.Equals(
+                    requested[0],
+                    configuredResource,
+                    StringComparison.Ordinal));
+    }
+
+    private static bool HasOnlyResource(
+        ClaimsPrincipal principal,
+        string configuredResource)
+    {
+        var resources = principal.GetResources().ToArray();
+        return resources.Length == 1
+            && string.Equals(
+                resources[0],
+                configuredResource,
+                StringComparison.Ordinal);
     }
 
     private static bool HasPrompt(

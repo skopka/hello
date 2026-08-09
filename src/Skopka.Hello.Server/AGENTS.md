@@ -19,6 +19,13 @@ Production deployments protect the persisted Data Protection key ring with a
 PFX supplied from a secret mount; never add that certificate or password to
 source or the image.
 
+When the optional authorization server uses self-contained access tokens, keep
+its access lifetime short and load an asymmetric signing PFX so discovery/JWKS
+can support offline resource servers. The separate encryption PFX remains
+required for other protocol artifacts. Reference access tokens remain the
+configuration default; authorization codes and refresh tokens remain reference
+tokens in both modes.
+
 Rate-limit HMAC keys use a current version and optional overlapping historical
 versions. All replicas must share the configured key material during overlap.
 Keep both session and rate-limit bounded pruning workers registered. The

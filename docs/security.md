@@ -45,6 +45,29 @@ request validates the access token online. When it expires, the cookie handler
 uses strict refresh rotation and renews both protected browser artifacts. A
 revoked session therefore stops authorizing the UI immediately.
 
+### Authorization-server access tokens
+
+The optional OpenIddict server keeps reference access tokens as its default.
+`SelfContainedJwt` is an explicit interoperability mode for offline resource
+servers: access tokens are asymmetrically signed JWSs, access-token encryption
+is disabled, and authorization codes plus refresh tokens remain reference
+tokens. Use a short, independently configured access-token lifetime. Signing
+and encryption certificates are separate from the Identity JWT HMAC key set.
+
+Each client has one fixed configured resource. The authorization request cannot
+select another client's audience, and Hello's local OpenIddict validation
+accepts only the configured Hello API resource. The composite bearer selector
+may inspect unverified JWT `iss`/`typ` solely to select a candidate handler;
+the selected Identity or OpenIddict handler still validates the signature,
+exact issuer, audience, lifetime, algorithm and token type. ID tokens are never
+accepted as access tokens.
+
+OAuth access and refresh at Hello validate the bound Identity logical `sid`
+online. Revocation therefore blocks Hello APIs and refresh immediately. An
+external resource server validating a JWT only from discovery/JWKS cannot see
+that revoke and may accept the token until `exp`; this is the deliberate
+revocation window behind the five-minute mail-token recommendation.
+
 ## CSRF
 
 `POST /auth/refresh` and `POST /auth/logout` validate ASP.NET Core antiforgery
@@ -359,8 +382,10 @@ error details.
 - Keep external providers disabled until their HTTPS authority, exact callback
   URL and client credentials are configured.
 - Keep the authorization server disabled until its HTTPS issuer, exact client
-  redirects, confidential secrets and stable protocol certificates are
-  configured; run `--migrate` after changing the client set.
+  redirects, per-client resources, confidential secrets and stable protocol
+  certificates are configured; run `--migrate` after changing the client set.
+- Keep externally validated OAuth JWTs short-lived, require the exact audience
+  and scopes at the resource server, and test public JWKS rotation.
 - Share provider configuration and Data Protection keys across replicas.
 - Exclude OIDC callback query strings and provider tokens from proxy and
   application logs.

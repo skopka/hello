@@ -10,14 +10,15 @@ provider integration, host composition and policy-separated administration.
 Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
-The current `0.8.0` vertical slice contains:
+The current `0.9.0` vertical slice contains:
 
 - atomic password registration;
 - automatic email, phone or user-name password login without user
   enumeration;
 - authorization-code OIDC sign-in with PKCE through configured external providers;
 - optional first-party OAuth/OIDC authorization server for pre-registered
-  native and BFF clients with mandatory PKCE and rotating reference refresh tokens;
+  native and BFF clients with mandatory PKCE, per-client audiences, reference
+  or signed-JWT access tokens and rotating reference refresh tokens;
 - atomic external registration without email-based account auto-linking;
 - same-origin browser/SPA OIDC APIs for sign-in, registration and one-use
   link/unlink flows without exposing provider tokens or subjects;
@@ -218,6 +219,8 @@ for policy, projection and bootstrap,
 for boundaries and
 [authorization server](https://github.com/skopka/hello/blob/main/docs/authorization-server.md)
 for native/BFF OAuth configuration and limits,
+[mail OIDC integration](https://github.com/skopka/hello/blob/main/docs/mail-oidc-integration.md)
+for Roundcube and Stalwart interoperability,
 [customization](https://github.com/skopka/hello/blob/main/docs/customization.md)
 for custom CSS volumes, and
 [security](https://github.com/skopka/hello/blob/main/docs/security.md) before

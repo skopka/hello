@@ -82,10 +82,13 @@ hosts without one use the bounded process-local fallback or replace
 `IHelloOidcFlowStore` with a shared atomic implementation.
 
 The optional authorization server uses OpenIddict authorization code with
-mandatory PKCE for pre-registered native and BFF clients. Protocol artifacts
-are reference tokens in an OpenIddict store; code redemption creates a distinct
-Identity logical session, and access/refresh authentication validates its `sid`
-online. Client configuration is synchronized only by the migration command.
+mandatory PKCE for pre-registered native and BFF clients. Authorization codes
+and rotating refresh tokens remain reference tokens. Access tokens are opaque
+reference tokens by default or explicitly configured signed, unencrypted JWTs
+for offline resource-server validation. Code redemption creates a distinct
+Identity logical session; Hello access/refresh authentication validates its
+`sid` online. Client configuration is synchronized only by the migration
+command.
 
 ## Modules
 

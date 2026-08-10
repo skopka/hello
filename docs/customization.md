@@ -98,6 +98,53 @@ removes registration even when its UI flag is selected.
 returns `OperationResult<TProfile>`. Profile construction therefore stays
 outside Razor page models.
 
+### UI localization
+
+Localization is opt-in for package consumers. The package includes complete
+English and Russian catalogs. Culture selection uses a protected UI preference
+cookie, then `Accept-Language`, then the configured default; it does not add a
+culture segment to the stable Hello routes.
+
+```csharp
+services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
+{
+    options.Localization.Enabled = true;
+    options.Localization.DefaultCulture = "ru";
+
+    options.Localization.AddCulture("en", "English");
+    options.Localization.AddCulture("ru", "Русский");
+    options.Localization.AddDictionaryFile(
+        "de",
+        "Localization/skopka-hello.de.json",
+        displayName: "Deutsch");
+    options.Localization.AddDictionaryFile(
+        "ru",
+        "Localization/skopka-hello.ru.override.json");
+});
+```
+
+Dictionary paths are absolute or relative to the host content root. Files are
+read once at startup, are never served as static content and can contain a
+partial override. Host values win over packaged values; missing values fall
+back through the parent culture, the configured default and English.
+
+```json
+{
+  "culture": "de",
+  "texts": {
+    "Layout.SignIn": "Anmelden",
+    "Account.Greeting": "Hallo, {0}"
+  }
+}
+```
+
+Invalid JSON, a mismatched culture or duplicate keys fail startup. The language
+selector is rendered in the footer when localization is enabled and more than
+one culture is configured. It posts to `{UiPathPrefix}/culture` with
+antiforgery validation and accepts only a local return URL. Profile locale,
+host-provided profile labels and provider display names remain host-owned data;
+they are not inferred from the UI preference cookie.
+
 To expose host-defined profile fields on the account page, the same factory
 can also implement `IHelloUiProfileEditor<TProfile>`:
 
@@ -158,6 +205,7 @@ default `/hello` prefix they are:
 /hello/account/change-password
 /hello/account/security
 /hello/account/external-logins
+/hello/culture
 ```
 
 The custom stylesheet contract is:

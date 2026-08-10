@@ -27,6 +27,7 @@ public sealed class HelloUiRoutePaths
         ExternalCompletionPath = Append("/external/complete");
         ExternalRegistrationPath = Append("/external/register");
         ExternalLoginsPath = Append("/account/external-logins");
+        CulturePath = Append("/culture");
     }
 
     public string PathPrefix { get; }
@@ -62,6 +63,8 @@ public sealed class HelloUiRoutePaths
     public string ExternalRegistrationPath { get; }
 
     public string ExternalLoginsPath { get; }
+
+    public string CulturePath { get; }
 
     internal static void ValidatePathPrefix(string? pathPrefix)
         => _ = NormalizePathPrefix(pathPrefix);

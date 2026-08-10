@@ -9,7 +9,8 @@ namespace Skopka.Hello.UI.Pages;
 
 public sealed class ExternalRegisterModel(
     IHelloUiExternalApplication application,
-    IHelloSessionCookieManager sessionCookies)
+    IHelloSessionCookieManager sessionCookies,
+    IHelloUiLocalizer text)
     : PageModel
 {
     [BindProperty]
@@ -50,7 +51,10 @@ public sealed class ExternalRegisterModel(
         var transport = sessionCookies.ValidateTransport(HttpContext);
         if (!transport.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, transport.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                transport.Errors,
+                text);
             await LoadHintsAsync(prefill: false, cancellationToken);
             return Page();
         }
@@ -66,7 +70,10 @@ public sealed class ExternalRegisterModel(
             cancellationToken);
         if (!result.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors,
+                text);
             await LoadHintsAsync(prefill: false, cancellationToken);
             return Page();
         }
@@ -99,7 +106,10 @@ public sealed class ExternalRegisterModel(
             cancellationToken);
         if (!hints.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, hints.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                hints.Errors,
+                text);
             return;
         }
 
@@ -120,23 +130,25 @@ public sealed class ExternalRegisterModel(
 
     public sealed class InputModel
     {
-        [Required]
-        [StringLength(200)]
-        [Display(Name = "Display name")]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(200, ErrorMessage = "Validation.StringLength")]
+        [Display(Name = "Field.DisplayName")]
         public string DisplayName { get; set; } = string.Empty;
 
-        [EmailAddress]
-        [StringLength(320)]
+        [EmailAddress(ErrorMessage = "Validation.EmailAddress")]
+        [StringLength(320, ErrorMessage = "Validation.StringLength")]
         public string? Email { get; set; }
 
-        [StringLength(100)]
-        [Display(Name = "User name")]
+        [StringLength(100, ErrorMessage = "Validation.StringLength")]
+        [Display(Name = "Field.UserName")]
         public string? UserName { get; set; }
 
-        [StringLength(IdentityLoginLimits.MaximumLoginLength)]
+        [StringLength(
+            IdentityLoginLimits.MaximumLoginLength,
+            ErrorMessage = "Validation.StringLength")]
         public string? Phone { get; set; }
 
-        [StringLength(32)]
+        [StringLength(32, ErrorMessage = "Validation.StringLength")]
         public string? Locale { get; set; }
     }
 }

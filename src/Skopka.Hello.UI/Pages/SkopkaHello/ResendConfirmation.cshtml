@@ -1,19 +1,17 @@
 @page
 @model ResendConfirmationModel
 @{
-    ViewData["Title"] = "Confirm email";
+    ViewData["Title"] = Text["ConfirmEmail.Title"];
 }
 
 <section class="hello-card hello-auth-card">
-    <p class="hello-eyebrow">Email confirmation</p>
-    <h1>Send a confirmation link</h1>
+    <p class="hello-eyebrow">@Text["ConfirmEmail.Eyebrow"]</p>
+    <h1>@Text["ResendEmail.Title"]</h1>
 
     @if (Model.Sent)
     {
         <p class="hello-status" role="status">
-            The request was accepted. If that email belongs to an
-            unconfirmed active account, delivery of a confirmation link
-            will be attempted.
+            @Text["ResendEmail.Accepted"]
         </p>
     }
     else
@@ -23,7 +21,7 @@
                  class="hello-validation"
                  role="alert"></div>
 
-            <label asp-for="Input.Email"></label>
+            <label asp-for="Input.Email">@Text["Field.Email"]</label>
             <input asp-for="Input.Email"
                    autocomplete="email"
                    inputmode="email" />
@@ -31,12 +29,12 @@
                   class="hello-field-error"></span>
 
             <button class="hello-button" type="submit">
-                Send confirmation link
+                @Text["Common.SendConfirmationLink"]
             </button>
         </form>
     }
 
     <p class="hello-card-footer">
-        <a asp-page="/SkopkaHello/Login">Back to sign in</a>
+        <a asp-page="/SkopkaHello/Login">@Text["Common.BackToSignIn"]</a>
     </p>
 </section>

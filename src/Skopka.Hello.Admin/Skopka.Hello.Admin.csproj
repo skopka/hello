@@ -11,4 +11,9 @@
     <ProjectReference Include="..\Skopka.Hello.Endpoints\Skopka.Hello.Endpoints.csproj" />
     <ProjectReference Include="..\Skopka.Hello.UI\Skopka.Hello.UI.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Localization\Resources\*.json"
+                      LogicalName="Skopka.Hello.Admin.Localization.%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

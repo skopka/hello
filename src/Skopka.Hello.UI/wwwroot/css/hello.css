@@ -20,6 +20,8 @@
 }
 
 body {
+  display: flex;
+  flex-direction: column;
   margin: 0;
   min-height: 100vh;
   background: var(--skopka-hello-color-background);
@@ -74,9 +76,38 @@ select {
 }
 
 .hello-main {
+  flex: 1;
   width: min(66rem, calc(100% - 2rem));
   margin: 0 auto;
   padding: clamp(2rem, 7vw, 5rem) 0;
+}
+
+.hello-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 1rem clamp(1rem, 5vw, 4rem);
+  border-top: 1px solid var(--skopka-hello-color-border);
+  background: var(--skopka-hello-color-surface);
+}
+
+.hello-language-form {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.hello-language-form label {
+  color: var(--skopka-hello-color-muted);
+}
+
+.hello-language-form select {
+  min-height: 2.25rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--skopka-hello-color-border);
+  border-radius: calc(var(--skopka-hello-radius) * 0.5);
+  background: var(--skopka-hello-color-surface);
+  color: var(--skopka-hello-color-text);
 }
 
 .hello-card {
@@ -369,6 +400,12 @@ select {
 
   .hello-header nav {
     gap: 0.5rem;
+  }
+
+  .hello-footer,
+  .hello-language-form {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .hello-provider {

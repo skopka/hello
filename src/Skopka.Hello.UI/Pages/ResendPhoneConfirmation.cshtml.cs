@@ -6,7 +6,8 @@ using Skopka.Identity.Authentication;
 namespace Skopka.Hello.UI.Pages;
 
 public sealed class ResendPhoneConfirmationModel(
-    IHelloUiApplication application)
+    IHelloUiApplication application,
+    IHelloUiLocalizer text)
     : PageModel
 {
     [BindProperty]
@@ -32,7 +33,10 @@ public sealed class ResendPhoneConfirmationModel(
             cancellationToken);
         if (!result.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors,
+                text);
             return Page();
         }
 
@@ -42,8 +46,10 @@ public sealed class ResendPhoneConfirmationModel(
 
     public sealed class InputModel
     {
-        [Required]
-        [StringLength(IdentityLoginLimits.MaximumLoginLength)]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(
+            IdentityLoginLimits.MaximumLoginLength,
+            ErrorMessage = "Validation.StringLength")]
         public string Phone { get; set; } = string.Empty;
     }
 }

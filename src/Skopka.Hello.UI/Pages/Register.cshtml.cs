@@ -5,7 +5,9 @@ using Skopka.Identity.Authentication;
 
 namespace Skopka.Hello.UI.Pages;
 
-public sealed class RegisterModel(IHelloUiApplication application)
+public sealed class RegisterModel(
+    IHelloUiApplication application,
+    IHelloUiLocalizer text)
     : PageModel
 {
     [BindProperty]
@@ -32,7 +34,8 @@ public sealed class RegisterModel(IHelloUiApplication application)
         {
             HelloUiModelState.AddErrors(
                 ModelState,
-                result.Errors);
+                result.Errors,
+                text);
             return Page();
         }
 
@@ -43,36 +46,38 @@ public sealed class RegisterModel(IHelloUiApplication application)
 
     public sealed class InputModel : IValidatableObject
     {
-        [Required]
-        [StringLength(200)]
-        [Display(Name = "Display name")]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(200, ErrorMessage = "Validation.StringLength")]
+        [Display(Name = "Field.DisplayName")]
         public string DisplayName { get; set; } = string.Empty;
 
-        [EmailAddress]
-        [StringLength(320)]
+        [EmailAddress(ErrorMessage = "Validation.EmailAddress")]
+        [StringLength(320, ErrorMessage = "Validation.StringLength")]
         public string? Email { get; set; }
 
-        [StringLength(100)]
-        [Display(Name = "User name")]
+        [StringLength(100, ErrorMessage = "Validation.StringLength")]
+        [Display(Name = "Field.UserName")]
         public string? UserName { get; set; }
 
-        [StringLength(IdentityLoginLimits.MaximumLoginLength)]
+        [StringLength(
+            IdentityLoginLimits.MaximumLoginLength,
+            ErrorMessage = "Validation.StringLength")]
         public string? Phone { get; set; }
 
-        [StringLength(32)]
+        [StringLength(32, ErrorMessage = "Validation.StringLength")]
         public string? Locale { get; set; }
 
-        [Required]
-        [StringLength(128)]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(128, ErrorMessage = "Validation.StringLength")]
         [DataType(DataType.Password)]
         public string Password { get; set; } = string.Empty;
 
-        [Required]
+        [Required(ErrorMessage = "Validation.Required")]
         [DataType(DataType.Password)]
         [Compare(
             nameof(Password),
-            ErrorMessage = "The passwords do not match.")]
-        [Display(Name = "Confirm password")]
+            ErrorMessage = "Validation.PasswordsDoNotMatch")]
+        [Display(Name = "Field.ConfirmPassword")]
         public string ConfirmPassword { get; set; } = string.Empty;
 
         public IEnumerable<ValidationResult> Validate(
@@ -82,8 +87,12 @@ public sealed class RegisterModel(IHelloUiApplication application)
                 && string.IsNullOrWhiteSpace(Email)
                 && string.IsNullOrWhiteSpace(Phone))
             {
+                var localizer = validationContext.GetService(
+                    typeof(IHelloUiLocalizer)) as IHelloUiLocalizer;
                 yield return new ValidationResult(
-                    "Enter a user name, email address or phone number.",
+                    localizer?["Validation.LoginIdentifierRequired"]
+                        .Value
+                    ?? "Enter a user name, email address or phone number.",
                     [nameof(UserName), nameof(Email), nameof(Phone)]);
             }
         }

@@ -2,20 +2,16 @@
 @model AccountModel
 @inject IHelloUiExternalApplication ExternalIdentity
 @{
-    ViewData["Title"] = "Account";
+    ViewData["Title"] = Text["Layout.Account"];
 }
 
 <section class="hello-page-heading">
-    <p class="hello-eyebrow">Account</p>
-    <h1>Hello, @Model.DisplayName</h1>
-    <p class="hello-muted">
-        This page is authenticated by a protected browser session backed by
-        Skopka.Identity.
-    </p>
+    <p class="hello-eyebrow">@Text["Layout.Account"]</p>
+    <h1>@Text["Account.Greeting", Model.DisplayName]</h1>
 </section>
 
 <section class="hello-card">
-    <h2>Profile</h2>
+    <h2>@Text["Account.Profile"]</h2>
     <div asp-validation-summary="ModelOnly"
          class="hello-validation"
          role="alert"></div>
@@ -23,65 +19,65 @@
     @if (Model.EmailConfirmationRequested)
     {
         <p class="hello-status" role="status">
-            The request was accepted. If the address still needs
-            confirmation, delivery of a new link will be attempted.
+            @Text["Account.EmailConfirmationAccepted"]
         </p>
     }
 
     @if (Model.PhoneConfirmationRequested)
     {
         <p class="hello-status" role="status">
-            The request was accepted. If the phone still needs
-            confirmation, delivery of a new SMS will be attempted.
+            @Text["Account.PhoneConfirmationAccepted"]
         </p>
     }
 
     <dl class="hello-details">
         <div>
-            <dt>User ID</dt>
+            <dt>@Text["Account.UserId"]</dt>
             <dd><code>@Model.UserId</code></dd>
         </div>
         <div>
-            <dt>User name</dt>
-            <dd>@(Model.UserName ?? "Not set")</dd>
+            <dt>@Text["Field.UserName"]</dt>
+            <dd>@(Model.UserName ?? Text["Common.NotSet"])</dd>
         </div>
         <div>
-            <dt>Email</dt>
-            <dd>@(Model.Email ?? "Not set")</dd>
+            <dt>@Text["Field.Email"]</dt>
+            <dd>@(Model.Email ?? Text["Common.NotSet"])</dd>
         </div>
         <div>
-            <dt>Email status</dt>
-            <dd>@(Model.EmailConfirmed ? "Confirmed" : "Not confirmed")</dd>
+            <dt>@Text["Account.EmailStatus"]</dt>
+            <dd>@(Model.EmailConfirmed
+                ? Text["Common.Confirmed"]
+                : Text["Common.NotConfirmed"])</dd>
         </div>
         <div>
-            <dt>Phone</dt>
-            <dd>@(Model.Phone ?? "Not set")</dd>
+            <dt>@Text["Field.Phone"]</dt>
+            <dd>@(Model.Phone ?? Text["Common.NotSet"])</dd>
         </div>
         <div>
-            <dt>Phone status</dt>
-            <dd>@(Model.PhoneConfirmed ? "Confirmed" : "Not confirmed")</dd>
+            <dt>@Text["Account.PhoneStatus"]</dt>
+            <dd>@(Model.PhoneConfirmed
+                ? Text["Common.Confirmed"]
+                : Text["Common.NotConfirmed"])</dd>
         </div>
     </dl>
 
-    <h2>Sign-in handles</h2>
+    <h2>@Text["Account.SignInHandles"]</h2>
     <p class="hello-muted">
-        Changing an email address or phone number resets its confirmation.
-        Leave an optional value empty to remove it. Password sign-in must
-        retain at least one user name, email address or phone number.
+        @Text["Account.SignInHandlesDescription"]
     </p>
 
     <form method="post"
           asp-page-handler="ChangeUserName"
           class="hello-form">
         <input asp-for="UserNameInput.ExpectedVersion" type="hidden" />
-        <label asp-for="UserNameInput.UserName"></label>
+        <label asp-for="UserNameInput.UserName">@Text["Field.UserName"]</label>
         <input asp-for="UserNameInput.UserName"
                autocomplete="username" />
         <span asp-validation-for="UserNameInput.UserName"
               class="hello-field-error"></span>
         <button class="hello-button hello-button-secondary"
                 type="submit">
-            Change user name
+            @Text["Account.ChangeUserName"]
         </button>
     </form>
 
@@ -89,13 +85,13 @@
           asp-page-handler="ChangeEmail"
           class="hello-form">
         <input asp-for="EmailInput.ExpectedVersion" type="hidden" />
-        <label asp-for="EmailInput.Email"></label>
+        <label asp-for="EmailInput.Email">@Text["Field.Email"]</label>
         <input asp-for="EmailInput.Email" autocomplete="email" />
         <span asp-validation-for="EmailInput.Email"
               class="hello-field-error"></span>
         <button class="hello-button hello-button-secondary"
                 type="submit">
-            Change email
+            @Text["Account.ChangeEmail"]
         </button>
     </form>
 
@@ -103,19 +99,19 @@
           asp-page-handler="ChangePhone"
           class="hello-form">
         <input asp-for="PhoneInput.ExpectedVersion" type="hidden" />
-        <label asp-for="PhoneInput.Phone"></label>
+        <label asp-for="PhoneInput.Phone">@Text["Field.Phone"]</label>
         <input asp-for="PhoneInput.Phone" autocomplete="tel" />
         <span asp-validation-for="PhoneInput.Phone"
               class="hello-field-error"></span>
         <button class="hello-button hello-button-secondary"
                 type="submit">
-            Change phone
+            @Text["Account.ChangePhone"]
         </button>
     </form>
 
     @if (Model.ProfileFields.Count > 0)
     {
-        <h2>Editable profile</h2>
+        <h2>@Text["Account.EditableProfile"]</h2>
         <form method="post"
               asp-page-handler="UpdateProfile"
               class="hello-form">
@@ -134,7 +130,7 @@
             }
             <button class="hello-button hello-button-secondary"
                     type="submit">
-                Update profile
+                @Text["Account.UpdateProfile"]
             </button>
         </form>
     }
@@ -144,14 +140,14 @@
         {
             <a class="hello-button"
                asp-page="/SkopkaHello/Account/Sessions">
-                Manage sessions
+                @Text["Account.ManageSessions"]
             </a>
         }
         @if ((UiOptions.EnabledPages & HelloUiPages.AccountSecurity) != 0)
         {
             <a class="hello-button hello-button-secondary"
                asp-page="/SkopkaHello/Account/Security">
-                Credentials and deletion
+                @Text["Account.CredentialsAndDeletion"]
             </a>
         }
         @if ((UiOptions.EnabledPages & HelloUiPages.ExternalIdentity) != 0
@@ -159,13 +155,13 @@
         {
             <a class="hello-button hello-button-secondary"
                asp-page="/SkopkaHello/Account/ExternalLogins">
-                External sign-in methods
+                @Text["Account.ExternalSignInMethods"]
             </a>
         }
         <form method="post" asp-page-handler="Logout">
             <button class="hello-button hello-button-secondary"
                     type="submit">
-                Sign out
+                @Text["Layout.SignOut"]
             </button>
         </form>
         @if ((UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0
@@ -176,7 +172,7 @@
                   asp-page-handler="RequestEmailConfirmation">
                 <button class="hello-button hello-button-secondary"
                         type="submit">
-                    Send confirmation link
+                    @Text["Common.SendConfirmationLink"]
                 </button>
             </form>
         }
@@ -188,7 +184,7 @@
                   asp-page-handler="RequestPhoneConfirmation">
                 <button class="hello-button hello-button-secondary"
                         type="submit">
-                    Send phone confirmation
+                    @Text["Account.SendPhoneConfirmation"]
                 </button>
             </form>
         }

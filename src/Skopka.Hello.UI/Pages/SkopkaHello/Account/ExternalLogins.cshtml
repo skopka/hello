@@ -2,15 +2,14 @@
 @model ExternalLoginsModel
 @inject HelloDeliveryOptions DeliveryOptions
 @{
-    ViewData["Title"] = "External sign-in methods";
+    ViewData["Title"] = Text["Account.ExternalSignInMethods"];
 }
 
 <section class="hello-page-heading">
-    <p class="hello-eyebrow">Account security</p>
-    <h1>External sign-in methods</h1>
+    <p class="hello-eyebrow">@Text["Security.Eyebrow"]</p>
+    <h1>@Text["Account.ExternalSignInMethods"]</h1>
     <p class="hello-muted">
-        Link a validated provider identity or remove a method you no
-        longer use. Provider tokens and identifiers are never displayed.
+        @Text["ExternalLogins.Instructions"]
     </p>
 </section>
 
@@ -22,38 +21,34 @@
     @if (Model.ExternalError)
     {
         <p class="hello-status hello-status-error" role="alert">
-            The external provider request was cancelled or could not be
-            validated. No sign-in method was changed.
+            @Text["ExternalLogins.ExternalError"]
         </p>
     }
 
     @if (Model.ChallengeRestarted)
     {
         <p class="hello-status" role="status">
-            The verification challenge can no longer be used. Start the
-            provider change again to request a new code.
+            @Text["ExternalLogins.ChallengeRestarted"]
         </p>
     }
 
     @if (Model.Changed == "linked")
     {
         <p class="hello-status" role="status">
-            The external sign-in method was linked. Other sessions were
-            revoked and this browser received a new session.
+            @Text["ExternalLogins.Linked"]
         </p>
     }
     else if (Model.Changed == "unlinked")
     {
         <p class="hello-status" role="status">
-            The external sign-in method was removed. Other sessions were
-            revoked and this browser received a new session.
+            @Text["ExternalLogins.Unlinked"]
         </p>
     }
 
-    <h2>Linked providers</h2>
+    <h2>@Text["ExternalLogins.LinkedProviders"]</h2>
     @if (Model.LinkedProviders.Count == 0)
     {
-        <p class="hello-muted">No external providers are linked.</p>
+        <p class="hello-muted">@Text["ExternalLogins.NoneLinked"]</p>
     }
     else
     {
@@ -64,12 +59,13 @@
                     <div>
                         <h3>@provider.DisplayName</h3>
                         <p>
-                            Linked
-                            @provider.LinkedAt.ToUniversalTime().ToString("u")
-                            UTC
+                            @Text["ExternalLogins.LinkedAtUtc",
+                                provider.LinkedAt
+                                    .ToUniversalTime()
+                                    .ToString("g")]
                             @if (!provider.Enabled)
                             {
-                                <span class="hello-badge">Disabled</span>
+                                <span class="hello-badge">@Text["ExternalLogins.Disabled"]</span>
                             }
                         </p>
                     </div>
@@ -81,16 +77,14 @@
                                     type="submit"
                                     name="providerId"
                                     value="@provider.ProviderId">
-                                Remove
+                                @Text["Common.Remove"]
                             </button>
                         </form>
                     }
                     else
                     {
                         <span class="hello-muted">
-                            This method cannot currently be removed through
-                            self-service. Add another enabled sign-in method
-                            first, or contact support if links are duplicated.
+                            @Text["ExternalLogins.CannotRemove"]
                         </span>
                     }
                 </article>
@@ -100,7 +94,7 @@
 
     @if (Model.Providers.Any(provider => !Model.IsLinked(provider.Id)))
     {
-        <h2 class="hello-section-heading">Add a provider</h2>
+        <h2 class="hello-section-heading">@Text["ExternalLogins.AddProvider"]</h2>
         <div class="hello-actions hello-provider-actions"
              data-hello-available-providers>
             @foreach (var provider in Model.Providers)
@@ -113,7 +107,7 @@
                                 name="providerId"
                                 value="@provider.Id"
                                 data-hello-provider="@provider.Id">
-                            Link @provider.DisplayName
+                            @Text["ExternalLogins.LinkProviderName", provider.DisplayName]
                         </button>
                     </form>
                 }
@@ -124,65 +118,71 @@
     @if (Model.PendingOperation is not null)
     {
         <div class="hello-step-up" data-hello-step-up>
-            <h2>Confirm account change</h2>
+            <h2>@Text["ExternalLogins.ConfirmChange"]</h2>
             @if (!Model.CodeRequested && Model.PendingOperation == "link")
             {
                 <p class="hello-muted">
-                    The identity from
-                    <strong>@(Model.PendingProvider?.DisplayName ?? "the provider")</strong>
-                    was validated. Send a one-time code to your confirmed
-                    @(DeliveryOptions.VerificationChannel == HelloDeliveryChannel.Sms
-                        ? "phone number"
-                        : "email address") before linking it.
+                    @Text["ExternalLogins.IdentityFrom"]
+                    <strong>@(Model.PendingProvider?.DisplayName
+                        ?? Text["ExternalLogins.ProviderFallback"])</strong>
+                    @Text["ExternalLogins.SendCodeBeforeLink",
+                        DeliveryOptions.VerificationChannel
+                            == HelloDeliveryChannel.Sms
+                                ? Text["Field.PhoneNumber"]
+                                : Text["Field.EmailAddress"]]
                 </p>
                 <form method="post"
                       asp-page-handler="RequestLinkCode"
                       class="hello-form">
                     <button class="hello-button" type="submit">
-                        Send verification code
+                        @Text["Common.SendVerificationCode"]
                     </button>
                 </form>
             }
             else
             {
                 <p class="hello-status" role="status">
-                    A one-time code was accepted for delivery to your confirmed
-                    @(DeliveryOptions.VerificationChannel == HelloDeliveryChannel.Sms
-                        ? "phone number"
-                        : "email address").
+                    @Text["ExternalLogins.CodeAccepted",
+                        DeliveryOptions.VerificationChannel
+                            == HelloDeliveryChannel.Sms
+                                ? Text["Field.PhoneNumber"]
+                                : Text["Field.EmailAddress"]]
                     @if (Model.CodeExpiresAt is not null)
                     {
                         <span>
-                            It expires at
-                            @Model.CodeExpiresAt.Value.ToUniversalTime().ToString("u")
-                            UTC.
+                            @Text["ChangePassword.ExpiresAtUtc",
+                                Model.CodeExpiresAt.Value
+                                    .ToUniversalTime()
+                                    .ToString("g")]
                         </span>
                     }
                 </p>
                 <form method="post"
                       asp-page-handler="@(Model.PendingOperation == "link" ? "CompleteLink" : "CompleteUnlink")"
                       class="hello-form">
-                    <label asp-for="Input.VerificationCode"></label>
+                    <label asp-for="Input.VerificationCode">@Text["Field.VerificationCode"]</label>
                     <input asp-for="Input.VerificationCode"
                            autocomplete="one-time-code"
                            inputmode="numeric" />
                     <span asp-validation-for="Input.VerificationCode"
                           class="hello-field-error"></span>
                     <button class="hello-button" type="submit">
-                        @(Model.PendingOperation == "link" ? "Link provider" : "Remove provider")
+                        @(Model.PendingOperation == "link"
+                            ? Text["ExternalLogins.LinkProvider"]
+                            : Text["ExternalLogins.RemoveProvider"])
                     </button>
                 </form>
             }
 
             <form method="post" asp-page-handler="CancelPending">
                 <button class="hello-link-button" type="submit">
-                    Cancel this change
+                    @Text["ExternalLogins.CancelChange"]
                 </button>
             </form>
         </div>
     }
 
     <p class="hello-card-footer">
-        <a asp-page="/SkopkaHello/Account/Index">Back to account</a>
+        <a asp-page="/SkopkaHello/Account/Index">@Text["Common.BackToAccount"]</a>
     </p>
 </section>

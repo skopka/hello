@@ -15,7 +15,8 @@ public sealed class RolesModel(
     IHelloAdminRoleApplication application,
     IHelloRequestContext requestContext,
     IAuthorizationService authorization,
-    SkopkaHelloAdminOptions options)
+    SkopkaHelloAdminOptions options,
+    IHelloUiLocalizer text)
     : PageModel
 {
     public IReadOnlyList<IdentityRole> Roles { get; private set; } = [];
@@ -49,7 +50,7 @@ public sealed class RolesModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "The paging cursor is incomplete.");
+                text["Admin.Errors.IncompleteCursor"]);
             CursorCreatedAt = null;
             CursorId = null;
         }
@@ -81,7 +82,7 @@ public sealed class RolesModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "The role action is invalid.");
+                text["Admin.Errors.InvalidRoleAction"]);
             return await ReloadPageAsync(cancellationToken);
         }
 
@@ -150,7 +151,7 @@ public sealed class RolesModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "The role action is invalid.");
+                text["Admin.Errors.InvalidRoleAction"]);
             return await ReloadPageAsync(cancellationToken);
         }
 
@@ -183,7 +184,9 @@ public sealed class RolesModel(
             cancellationToken);
         if (result.IsSuccess)
         {
-            StatusMessage = $"{GetActionLabel(parsedAction)} completed.";
+            StatusMessage = text[
+                "Admin.Common.ActionCompleted",
+                text[GetActionTextKey(parsedAction)]];
             return RedirectToPage(
                 "/SkopkaHelloAdmin/Roles",
                 new { Search });
@@ -213,6 +216,17 @@ public sealed class RolesModel(
             HelloAdminRoleAction.Delete => "Delete role",
             HelloAdminRoleAction.Assign => "Assign role",
             HelloAdminRoleAction.Remove => "Remove role",
+            _ => throw new ArgumentOutOfRangeException(nameof(action)),
+        };
+
+    public static string GetActionTextKey(HelloAdminRoleAction action)
+        => action switch
+        {
+            HelloAdminRoleAction.Create => "Admin.Roles.Create",
+            HelloAdminRoleAction.Update => "Admin.Roles.Update",
+            HelloAdminRoleAction.Delete => "Admin.Roles.Delete",
+            HelloAdminRoleAction.Assign => "Admin.Roles.Assign",
+            HelloAdminRoleAction.Remove => "Admin.Roles.Remove",
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
 
@@ -285,15 +299,39 @@ public sealed class RolesModel(
                 {
                     foreach (var message in field.Value)
                     {
-                        ModelState.AddModelError(field.Key, message);
+                        ModelState.AddModelError(
+                            field.Key,
+                            LocalizeError(error, field.Key, message));
                     }
                 }
 
                 continue;
             }
 
-            ModelState.AddModelError(string.Empty, error.Message);
+            ModelState.AddModelError(
+                string.Empty,
+                LocalizeError(error, null, error.Message));
         }
+    }
+
+    private string LocalizeError(
+        Error error,
+        string? field,
+        string fallback)
+    {
+        if (field is not null
+            && text.TryGetString(
+                $"Errors.{error.Code}.{field}",
+                out var fieldMessage))
+        {
+            return fieldMessage;
+        }
+
+        return text.TryGetString(
+            $"Errors.{error.Code}",
+            out var message)
+                ? message
+                : fallback;
     }
 
     private void ApplySensitiveResponseHeaders()

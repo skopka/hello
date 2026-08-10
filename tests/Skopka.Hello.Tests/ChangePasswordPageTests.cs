@@ -37,7 +37,8 @@ public sealed class ChangePasswordPageTests
                 ]));
         var model = new ChangePasswordModel(
             application,
-            new FakeSessionCookieManager())
+            new FakeSessionCookieManager(),
+            TestHelloUiLocalizer.Instance)
         {
             PageContext = new PageContext
             {
@@ -86,7 +87,10 @@ public sealed class ChangePasswordPageTests
                     "Sign in again with the new password.",
                     ErrorType.Conflict)));
         var cookies = new FakeSessionCookieManager();
-        var model = new ChangePasswordModel(application, cookies)
+        var model = new ChangePasswordModel(
+            application,
+            cookies,
+            TestHelloUiLocalizer.Instance)
         {
             PageContext = new PageContext
             {

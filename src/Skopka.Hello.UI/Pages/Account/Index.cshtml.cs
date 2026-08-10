@@ -11,7 +11,8 @@ public sealed class AccountModel(
     IHelloUiApplication application,
     IHelloSessionCookieManager sessionCookies,
     IHelloAccountMessageSender messageSender,
-    SkopkaHelloUiOptions uiOptions)
+    SkopkaHelloUiOptions uiOptions,
+    IHelloUiLocalizer text)
     : PageModel
 {
     public Guid UserId { get; private set; }
@@ -162,7 +163,7 @@ public sealed class AccountModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "The account does not have an email address.");
+                text["Account.NoEmailAddress"]);
             return Page();
         }
 
@@ -172,7 +173,8 @@ public sealed class AccountModel(
         {
             HelloUiModelState.AddErrors(
                 ModelState,
-                deliveryAvailable.Errors);
+                deliveryAvailable.Errors,
+                text);
             return Page();
         }
 
@@ -185,7 +187,8 @@ public sealed class AccountModel(
         {
             HelloUiModelState.AddErrors(
                 ModelState,
-                result.Errors);
+                result.Errors,
+                text);
             return Page();
         }
 
@@ -214,7 +217,7 @@ public sealed class AccountModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "The account does not have a phone number.");
+                text["Account.NoPhoneNumber"]);
             return Page();
         }
 
@@ -224,7 +227,8 @@ public sealed class AccountModel(
         {
             HelloUiModelState.AddErrors(
                 ModelState,
-                deliveryAvailable.Errors);
+                deliveryAvailable.Errors,
+                text);
             return Page();
         }
 
@@ -237,7 +241,8 @@ public sealed class AccountModel(
         {
             HelloUiModelState.AddErrors(
                 ModelState,
-                result.Errors);
+                result.Errors,
+                text);
             return Page();
         }
 
@@ -262,7 +267,10 @@ public sealed class AccountModel(
                 return Challenge();
             }
 
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors,
+                text);
             return Page();
         }
 
@@ -280,7 +288,10 @@ public sealed class AccountModel(
             return RedirectToPage();
         }
 
-        HelloUiModelState.AddErrors(ModelState, result.Errors);
+        HelloUiModelState.AddErrors(
+            ModelState,
+            result.Errors,
+            text);
         return await LoadAccountAsync(
             preserveSubmittedValues: true,
             cancellationToken);
@@ -344,9 +355,9 @@ public sealed class AccountModel(
     {
         public long ExpectedVersion { get; set; }
 
-        [Required]
-        [StringLength(100)]
-        [Display(Name = "User name")]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(100, ErrorMessage = "Validation.StringLength")]
+        [Display(Name = "Field.UserName")]
         public string UserName { get; set; } = string.Empty;
     }
 
@@ -354,8 +365,8 @@ public sealed class AccountModel(
     {
         public long ExpectedVersion { get; set; }
 
-        [EmailAddress]
-        [StringLength(320)]
+        [EmailAddress(ErrorMessage = "Validation.EmailAddress")]
+        [StringLength(320, ErrorMessage = "Validation.StringLength")]
         public string? Email { get; set; }
     }
 
@@ -363,8 +374,10 @@ public sealed class AccountModel(
     {
         public long ExpectedVersion { get; set; }
 
-        [StringLength(Skopka.Identity.Authentication
-            .IdentityLoginLimits.MaximumLoginLength)]
+        [StringLength(
+            Skopka.Identity.Authentication.IdentityLoginLimits
+                .MaximumLoginLength,
+            ErrorMessage = "Validation.StringLength")]
         public string? Phone { get; set; }
     }
 }

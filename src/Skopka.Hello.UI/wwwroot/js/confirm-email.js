@@ -29,8 +29,7 @@
         form.removeAttribute("aria-busy");
         if (status) {
             status.textContent =
-                "Automatic confirmation could not be started. " +
-                "Use the button below to confirm your email.";
+                status.dataset.helloConfirmationError || "";
         }
     }
 })();

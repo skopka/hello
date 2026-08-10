@@ -10,7 +10,7 @@ provider integration, host composition and policy-separated administration.
 Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
-The current `0.9.0` vertical slice contains:
+The current `0.10.0` vertical slice contains:
 
 - atomic password registration;
 - automatic email, phone or user-name password login without user
@@ -174,6 +174,25 @@ if `HelloUiPages.Registration` is selected. A login-only configuration must set
 `AuthenticatedRedirectPath` to a local absolute path; a valid local
 `ReturnUrl` still takes priority after sign-in.
 
+The optional UI localizer ships English and Russian catalogs without changing
+route paths:
+
+```csharp
+services.AddSkopkaHelloUi<Profile, ProfileFactory>(options =>
+{
+    options.Localization.Enabled = true;
+    options.Localization.DefaultCulture = "ru";
+    options.Localization.AddDictionaryFile(
+        "de",
+        "Localization/skopka-hello.de.json",
+        displayName: "Deutsch");
+});
+```
+
+The footer selector persists the supported culture in a secure preference
+cookie. Custom JSON files can add a culture or partially override stable text
+keys; details are in [UI localization](docs/customization.md#ui-localization).
+
 With the default prefix, the ready server exposes:
 
 | Path | Purpose |
@@ -195,6 +214,7 @@ With the default prefix, the ready server exposes:
 | `/hello/account/external-logins` | Link and unlink external providers after configured-channel OTP step-up |
 | `/hello/admin/users` | Search and administer users after current role-policy authorization |
 | `/hello/admin/roles` | Search and administer roles after current role-policy authorization |
+| `/hello/culture` | Antiforgery-protected UI culture selection when localization is enabled |
 
 Account and credential API and Razor handlers share
 `IHelloIdentityApplication<TProfile>`;

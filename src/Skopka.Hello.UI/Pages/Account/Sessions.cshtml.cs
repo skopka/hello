@@ -8,7 +8,8 @@ namespace Skopka.Hello.UI.Pages;
 [Authorize(Policy = HelloUiDefaults.AuthorizationPolicy)]
 public sealed class SessionsModel(
     IHelloUiApplication application,
-    IHelloSessionCookieManager sessionCookies)
+    IHelloSessionCookieManager sessionCookies,
+    IHelloUiLocalizer text)
     : PageModel
 {
     public IReadOnlyList<HelloSessionInfo> Sessions { get; private set; } =
@@ -49,7 +50,8 @@ public sealed class SessionsModel(
         {
             HelloUiModelState.AddErrors(
                 ModelState,
-                result.Errors);
+                result.Errors,
+                text);
             await LoadAsync(userId, cancellationToken);
             return Page();
         }
@@ -79,7 +81,8 @@ public sealed class SessionsModel(
         {
             HelloUiModelState.AddErrors(
                 ModelState,
-                result.Errors);
+                result.Errors,
+                text);
             await LoadAsync(userId, cancellationToken);
             return Page();
         }
@@ -121,7 +124,8 @@ public sealed class SessionsModel(
 
         HelloUiModelState.AddErrors(
             ModelState,
-            result.Errors);
+            result.Errors,
+            text);
     }
 
     private async Task ClearLocalSessionAsync()

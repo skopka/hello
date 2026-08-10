@@ -5,7 +5,7 @@
 - .NET SDK 10.0.101 or a compatible patch;
 - PostgreSQL;
 - Docker Engine for integration tests;
-- published Skopka.Identity `0.9.0` packages.
+- published Skopka.Identity `0.10.0` packages.
 
 ## Configure the server
 
@@ -78,6 +78,8 @@ SkopkaHello__Jwt__ValidateSessionOnEveryRequest=false
 SkopkaHello__Jwt__CurrentVersion=v1
 SkopkaHello__SelfRegistration__Enabled=true
 SkopkaHello__Ui__PathPrefix=/hello
+SkopkaHello__Ui__Localization__Enabled=true
+SkopkaHello__Ui__Localization__DefaultCulture=en
 SkopkaHello__Admin__ApiPathPrefix=/admin
 SkopkaHello__Admin__RazorUiEnabled=true
 SkopkaHello__Persistence__DurableDeliveryEnabled=true
@@ -116,6 +118,12 @@ requires an application restart. Prefixes inside the reserved `/auth`,
 `/account`, `/health`, `/swagger`, `/openapi`, `/_content` and
 `/signin-skopka-oidc` namespaces are rejected at startup to prevent ambiguous
 routes.
+
+`Ui:Localization:Enabled` enables the packaged English/Russian language
+selector. `Ui:Localization:DefaultCulture` supplies the fallback. Additional
+cultures and server-side JSON dictionaries can be configured through
+`Ui:Localization:Cultures`; see [customization](customization.md#ui-localization).
+Culture selection does not change the Razor route paths.
 
 The user/role administration API uses `Admin:ApiPathPrefix`; its Razor pages
 are composed under `{UiPathPrefix}{AdminApiPathPrefix}/users` and `/roles`.

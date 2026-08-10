@@ -106,6 +106,12 @@ builder.Services.AddSkopkaHelloUi<
     SampleProfileUiFactory>(options =>
 {
     options.SecureCookies = secureCookies;
+    options.Localization.Enabled = configuration.GetValue(
+        "SkopkaHello:Ui:Localization:Enabled",
+        false);
+    options.Localization.DefaultCulture = configuration[
+            "SkopkaHello:Ui:Localization:DefaultCulture"]
+        ?? "en";
     if (!secureCookies)
     {
         options.AuthenticationCookieName =

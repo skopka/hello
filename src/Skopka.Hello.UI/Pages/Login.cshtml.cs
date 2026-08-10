@@ -11,7 +11,8 @@ public sealed class LoginModel(
     IHelloUiExternalApplication externalApplication,
     IHelloSessionCookieManager sessionCookies,
     SkopkaHelloUiOptions uiOptions,
-    HelloUiRoutePaths routes)
+    HelloUiRoutePaths routes,
+    IHelloUiLocalizer text)
     : PageModel
 {
     [BindProperty]
@@ -73,7 +74,8 @@ public sealed class LoginModel(
         {
             HelloUiModelState.AddErrors(
                 ModelState,
-                transport.Errors);
+                transport.Errors,
+                text);
         }
 
         if (!ModelState.IsValid)
@@ -91,7 +93,8 @@ public sealed class LoginModel(
         {
             HelloUiModelState.AddErrors(
                 ModelState,
-                result.Errors);
+                result.Errors,
+                text);
             return Page();
         }
 
@@ -127,7 +130,10 @@ public sealed class LoginModel(
         var transport = sessionCookies.ValidateTransport(HttpContext);
         if (!transport.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, transport.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                transport.Errors,
+                text);
             return Page();
         }
 
@@ -138,7 +144,8 @@ public sealed class LoginModel(
         {
             HelloUiModelState.AddErrors(
                 ModelState,
-                challenge.Errors);
+                challenge.Errors,
+                text);
             return Page();
         }
 
@@ -153,13 +160,15 @@ public sealed class LoginModel(
 
     public sealed class InputModel
     {
-        [Required]
-        [StringLength(IdentityLoginLimits.MaximumLoginLength)]
-        [Display(Name = "Email, phone, or user name")]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(
+            IdentityLoginLimits.MaximumLoginLength,
+            ErrorMessage = "Validation.StringLength")]
+        [Display(Name = "Field.Login")]
         public string Login { get; set; } = string.Empty;
 
-        [Required]
-        [StringLength(128)]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(128, ErrorMessage = "Validation.StringLength")]
         [DataType(DataType.Password)]
         public string Password { get; set; } = string.Empty;
     }

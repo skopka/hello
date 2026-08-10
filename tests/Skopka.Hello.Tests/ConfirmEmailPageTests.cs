@@ -79,7 +79,7 @@ public sealed class ConfirmEmailPageTests
     private static ConfirmEmailModel CreateModel(
         RecordingApplication application,
         HttpContext context)
-        => new(application)
+        => new(application, TestHelloUiLocalizer.Instance)
         {
             PageContext = new PageContext
             {

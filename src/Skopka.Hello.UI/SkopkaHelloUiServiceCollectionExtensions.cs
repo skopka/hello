@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace Microsoft.Extensions.DependencyInjection;
@@ -17,6 +18,7 @@ public static class SkopkaHelloUiServiceCollectionExtensions
         configure?.Invoke(options);
         options.Validate();
         services.AddSingleton(options);
+        AddLocalizationServices(services);
 
         return services;
     }
@@ -35,6 +37,7 @@ public static class SkopkaHelloUiServiceCollectionExtensions
         configure?.Invoke(options);
         options.Validate();
         services.AddSingleton(options);
+        AddLocalizationServices(services);
 
         services.TryAddScoped<TProfileFactory>();
         services.TryAddScoped<
@@ -104,6 +107,7 @@ public static class SkopkaHelloUiServiceCollectionExtensions
 
         services
             .AddRazorPages()
+            .AddDataAnnotationsLocalization()
             .AddApplicationPart(
                 typeof(Skopka.Hello.UI.HelloUiDefaults).Assembly);
         services.TryAddEnumerable(
@@ -112,5 +116,40 @@ public static class SkopkaHelloUiServiceCollectionExtensions
                 Skopka.Hello.UI.HelloUiRazorPagesOptionsSetup>());
 
         return services;
+    }
+
+    private static void AddLocalizationServices(
+        IServiceCollection services)
+    {
+        services.AddAntiforgery();
+        services.AddSingleton(
+            new Skopka.Hello.UI.HelloUiDictionarySource(
+                typeof(Skopka.Hello.UI.HelloUiModule).Assembly,
+                [
+                    "Skopka.Hello.UI.Localization.en.json",
+                    "Skopka.Hello.UI.Localization.ru.json",
+                ]));
+        services.AddSingleton(
+            new Skopka.Hello.UI.HelloUiLocalizationTarget(
+                typeof(Skopka.Hello.UI.HelloUiModule).Assembly));
+        services.TryAddSingleton<
+            Skopka.Hello.UI.HelloUiTextCatalog>();
+        services.TryAddSingleton<
+            Skopka.Hello.UI.IHelloUiLocalizer,
+            Skopka.Hello.UI.HelloUiLocalizer>();
+        services.TryAddScoped<
+            Skopka.Hello.UI.HelloUiRequestCultureFilter>();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<
+                IPostConfigureOptions<
+                    Microsoft.AspNetCore.Mvc.DataAnnotations
+                        .MvcDataAnnotationsLocalizationOptions>,
+                Skopka.Hello.UI
+                    .HelloUiDataAnnotationsLocalizationSetup>());
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<
+                IHostedService,
+                Skopka.Hello.UI
+                    .HelloUiLocalizationStartupValidator>());
     }
 }

@@ -16,7 +16,8 @@ public sealed class UsersModel(
     IHelloAdminRoleApplication roleApplication,
     IHelloRequestContext requestContext,
     IAuthorizationService authorization,
-    SkopkaHelloAdminOptions options)
+    SkopkaHelloAdminOptions options,
+    IHelloUiLocalizer text)
     : PageModel
 {
     public IReadOnlyList<HelloAdminUser> Users { get; private set; } = [];
@@ -60,7 +61,7 @@ public sealed class UsersModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "The paging cursor is incomplete.");
+                text["Admin.Errors.IncompleteCursor"]);
             CursorCreatedAt = null;
             CursorId = null;
         }
@@ -88,7 +89,9 @@ public sealed class UsersModel(
                 action,
                 out var parsedAction))
         {
-            ModelState.AddModelError(string.Empty, "The admin action is invalid.");
+            ModelState.AddModelError(
+                string.Empty,
+                text["Admin.Errors.InvalidUserAction"]);
             return await ReloadPageAsync(cancellationToken);
         }
 
@@ -150,7 +153,9 @@ public sealed class UsersModel(
                 action,
                 out var parsedAction))
         {
-            ModelState.AddModelError(string.Empty, "The admin action is invalid.");
+            ModelState.AddModelError(
+                string.Empty,
+                text["Admin.Errors.InvalidUserAction"]);
             return await ReloadPageAsync(cancellationToken);
         }
 
@@ -181,7 +186,9 @@ public sealed class UsersModel(
             cancellationToken);
         if (result.IsSuccess)
         {
-            StatusMessage = $"{GetActionLabel(parsedAction)} completed.";
+            StatusMessage = text[
+                "Admin.Common.ActionCompleted",
+                text[GetActionTextKey(parsedAction)]];
             return RedirectToPage(
                 "/SkopkaHelloAdmin/Users",
                 new
@@ -195,7 +202,8 @@ public sealed class UsersModel(
         {
             StatusMessage = string.Join(
                 " ",
-                result.Errors.Select(error => error.Message));
+                result.Errors.Select(error =>
+                    LocalizeError(error, null, error.Message)));
             return RedirectToPage(
                 "/SkopkaHelloAdmin/Users",
                 new
@@ -232,7 +240,7 @@ public sealed class UsersModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "The role membership action is invalid.");
+                text["Admin.Errors.InvalidRoleMembershipAction"]);
             return await ReloadPageAsync(cancellationToken);
         }
 
@@ -295,7 +303,7 @@ public sealed class UsersModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "The role membership action is invalid.");
+                text["Admin.Errors.InvalidRoleMembershipAction"]);
             return await ReloadPageAsync(cancellationToken);
         }
 
@@ -324,7 +332,9 @@ public sealed class UsersModel(
             cancellationToken);
         if (result.IsSuccess)
         {
-            StatusMessage = $"{GetRoleActionLabel(parsedAction)} completed.";
+            StatusMessage = text[
+                "Admin.Common.ActionCompleted",
+                text[GetRoleActionTextKey(parsedAction)]];
             return RedirectToPage(
                 "/SkopkaHelloAdmin/Users",
                 new
@@ -338,7 +348,8 @@ public sealed class UsersModel(
         {
             StatusMessage = string.Join(
                 " ",
-                result.Errors.Select(error => error.Message));
+                result.Errors.Select(error =>
+                    LocalizeError(error, null, error.Message)));
             return RedirectToPage(
                 "/SkopkaHelloAdmin/Users",
                 new
@@ -380,6 +391,26 @@ public sealed class UsersModel(
         {
             HelloAdminRoleAction.Assign => "Assign role",
             HelloAdminRoleAction.Remove => "Remove role",
+            _ => throw new ArgumentOutOfRangeException(nameof(action)),
+        };
+
+    public static string GetActionTextKey(HelloAdminUserAction action)
+        => action switch
+        {
+            HelloAdminUserAction.Block => "Admin.Users.BlockUser",
+            HelloAdminUserAction.Unblock => "Admin.Users.UnblockUser",
+            HelloAdminUserAction.Delete => "Admin.Users.DeleteUser",
+            HelloAdminUserAction.Restore => "Admin.Users.RestoreUser",
+            HelloAdminUserAction.RevokeSessions =>
+                "Admin.Users.RevokeSessions",
+            _ => throw new ArgumentOutOfRangeException(nameof(action)),
+        };
+
+    public static string GetRoleActionTextKey(HelloAdminRoleAction action)
+        => action switch
+        {
+            HelloAdminRoleAction.Assign => "Admin.Roles.Assign",
+            HelloAdminRoleAction.Remove => "Admin.Roles.Remove",
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
 
@@ -484,15 +515,39 @@ public sealed class UsersModel(
                 {
                     foreach (var message in field.Value)
                     {
-                        ModelState.AddModelError(field.Key, message);
+                        ModelState.AddModelError(
+                            field.Key,
+                            LocalizeError(error, field.Key, message));
                     }
                 }
 
                 continue;
             }
 
-            ModelState.AddModelError(string.Empty, error.Message);
+            ModelState.AddModelError(
+                string.Empty,
+                LocalizeError(error, null, error.Message));
         }
+    }
+
+    private string LocalizeError(
+        Error error,
+        string? field,
+        string fallback)
+    {
+        if (field is not null
+            && text.TryGetString(
+                $"Errors.{error.Code}.{field}",
+                out var fieldMessage))
+        {
+            return fieldMessage;
+        }
+
+        return text.TryGetString(
+            $"Errors.{error.Code}",
+            out var message)
+                ? message
+                : fallback;
     }
 
     private static bool IsCommittedSessionCleanupFailure(

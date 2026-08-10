@@ -6,7 +6,8 @@ namespace Skopka.Hello.UI.Pages;
 
 public sealed class ExternalCompleteModel(
     IHelloUiExternalApplication application,
-    IHelloSessionCookieManager sessionCookies)
+    IHelloSessionCookieManager sessionCookies,
+    IHelloUiLocalizer text)
     : PageModel
 {
     public void OnGet()
@@ -19,7 +20,10 @@ public sealed class ExternalCompleteModel(
         var transport = sessionCookies.ValidateTransport(HttpContext);
         if (!transport.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, transport.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                transport.Errors,
+                text);
             return Page();
         }
 
@@ -28,7 +32,10 @@ public sealed class ExternalCompleteModel(
             cancellationToken);
         if (!result.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors,
+                text);
             return Page();
         }
 
@@ -77,7 +84,7 @@ public sealed class ExternalCompleteModel(
     {
         ModelState.AddModelError(
             string.Empty,
-            "The external sign-in attempt is invalid or expired.");
+            text["ExternalComplete.Invalid"]);
         return Page();
     }
 }

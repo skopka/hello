@@ -1,15 +1,14 @@
 @page
 @model SessionsModel
 @{
-    ViewData["Title"] = "Sessions";
+    ViewData["Title"] = Text["Layout.Sessions"];
 }
 
 <section class="hello-page-heading">
-    <p class="hello-eyebrow">Security</p>
-    <h1>Active sessions</h1>
+    <p class="hello-eyebrow">@Text["Sessions.Eyebrow"]</p>
+    <h1>@Text["Sessions.Title"]</h1>
     <p class="hello-muted">
-        Revoke devices you no longer use. Revoking this session signs this
-        browser out.
+        @Text["Sessions.Instructions"]
     </p>
 </section>
 
@@ -20,7 +19,7 @@
 @if (Model.Sessions.Count == 0)
 {
     <section class="hello-card">
-        <p>No active refresh sessions were found.</p>
+        <p>@Text["Sessions.None"]</p>
     </section>
 }
 else
@@ -31,20 +30,20 @@ else
             <article class="hello-card hello-session">
                 <div>
                     <h2>
-                        @(session.ClientName ?? "Unknown client")
+                        @(session.ClientName ?? Text["Sessions.UnknownClient"])
                         @if (session.SessionId == Model.CurrentSessionId)
                         {
-                            <span class="hello-badge">Current</span>
+                            <span class="hello-badge">@Text["Sessions.Current"]</span>
                         }
                     </h2>
-                    <p>@(session.DeviceName ?? "Unknown device")</p>
+                    <p>@(session.DeviceName ?? Text["Sessions.UnknownDevice"])</p>
                     <dl class="hello-session-meta">
                         <div>
-                            <dt>Last refreshed</dt>
+                            <dt>@Text["Sessions.LastRefreshed"]</dt>
                             <dd>@session.LastRefreshedAt.ToLocalTime()</dd>
                         </div>
                         <div>
-                            <dt>Expires</dt>
+                            <dt>@Text["Sessions.Expires"]</dt>
                             <dd>@session.ExpiresAt.ToLocalTime()</dd>
                         </div>
                     </dl>
@@ -55,7 +54,7 @@ else
                            value="@session.SessionId" />
                     <button class="hello-button hello-button-danger"
                             type="submit">
-                        Revoke
+                        @Text["Sessions.Revoke"]
                     </button>
                 </form>
             </article>
@@ -67,10 +66,10 @@ else
       asp-page-handler="LogoutAll"
       class="hello-danger-zone">
     <div>
-        <h2>Sign out everywhere</h2>
-        <p>Revokes every active refresh session for this account.</p>
+        <h2>@Text["Sessions.SignOutEverywhere"]</h2>
+        <p>@Text["Sessions.SignOutEverywhereDescription"]</p>
     </div>
     <button class="hello-button hello-button-danger" type="submit">
-        Revoke all sessions
+        @Text["Sessions.RevokeAll"]
     </button>
 </form>

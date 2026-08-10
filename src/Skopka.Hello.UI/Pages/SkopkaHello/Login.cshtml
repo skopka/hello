@@ -1,70 +1,65 @@
 @page
 @model LoginModel
 @{
-    ViewData["Title"] = "Sign in";
+    ViewData["Title"] = Text["Login.Title"];
 }
 
 <section class="hello-card hello-auth-card">
-    <p class="hello-eyebrow">Welcome back</p>
-    <h1>Sign in</h1>
+    <p class="hello-eyebrow">@Text["Login.Eyebrow"]</p>
+    <h1>@Text["Login.Title"]</h1>
 
     @if (Model.Registered)
     {
         <p class="hello-status" role="status">
-            Your account was created. You can sign in now.
+            @Text["Login.Registered"]
         </p>
     }
 
     @if (Model.PasswordReset)
     {
         <p class="hello-status" role="status">
-            Your password was changed. Sign in with the new password.
+            @Text["Login.PasswordReset"]
         </p>
     }
 
     @if (Model.ExternalError)
     {
         <p class="hello-status hello-status-error" role="alert">
-            External sign-in could not be completed. Try again or use
-            another sign-in method.
+            @Text["Login.ExternalError"]
         </p>
     }
 
     @if (Model.AccountChangeRestarted)
     {
         <p class="hello-status" role="status">
-            The account change reached a terminal state. Your browser
-            session was cleared; sign in again to review the current
-            sign-in methods.
+            @Text["Login.AccountChangeRestarted"]
         </p>
     }
 
     @if (Model.PasswordChangedSessionCleanup)
     {
         <p class="hello-status" role="status">
-            Your password was changed, but session cleanup could not be
-            completed. Sign in again with the new password.
+            @Text["Login.PasswordChangedSessionCleanup"]
         </p>
     }
 
     @if (Model.AccountDeleted)
     {
         <p class="hello-status" role="status">
-            Your account was deleted and this browser session was cleared.
+            @Text["Login.AccountDeleted"]
         </p>
     }
     else if (Model.SecurityChanged)
     {
         <p class="hello-status" role="status">
-            Your sign-in credentials were changed. Sign in again.
+            @Text["Login.SecurityChanged"]
         </p>
     }
 
     @if (Model.AccountSecurityChangedSessionCleanup)
     {
         <p class="hello-status" role="status">
-            The account security action completed, but full session cleanup
-            could not be confirmed. This browser session was cleared.
+            @Text["Login.AccountSecurityChangedSessionCleanup"]
         </p>
     }
 
@@ -82,13 +77,13 @@
                             name="providerId"
                             value="@provider.Id"
                             data-hello-provider="@provider.Id">
-                        Continue with @provider.DisplayName
+                        @Text["Login.ContinueWith", provider.DisplayName]
                     </button>
                 </form>
             }
         </div>
         <div class="hello-divider" role="separator">
-            <span>or use a password</span>
+            <span>@Text["Login.OrUsePassword"]</span>
         </div>
     }
 
@@ -98,12 +93,12 @@
              class="hello-validation"
              role="alert"></div>
 
-        <label asp-for="Input.Login"></label>
+        <label asp-for="Input.Login">@Text["Field.Login"]</label>
         <input asp-for="Input.Login" autocomplete="username" />
         <span asp-validation-for="Input.Login"
               class="hello-field-error"></span>
 
-        <label asp-for="Input.Password"></label>
+        <label asp-for="Input.Password">@Text["Field.Password"]</label>
         <input asp-for="Input.Password"
                autocomplete="current-password" />
         <span asp-validation-for="Input.Password"
@@ -113,12 +108,12 @@
         {
             <a class="hello-form-help"
                asp-page="/SkopkaHello/ForgotPassword">
-                Forgot your password?
+                @Text["Login.ForgotPassword"]
             </a>
         }
 
         <button class="hello-button" type="submit">
-            Sign in
+            @Text["Layout.SignIn"]
         </button>
     </form>
 
@@ -130,8 +125,8 @@
             @if (HelloOptions.SelfRegistrationEnabled
                 && (UiOptions.EnabledPages & HelloUiPages.Registration) != 0)
             {
-                <span>Need an account?</span>
-                <a asp-page="/SkopkaHello/Register">Register</a>
+                <span>@Text["Login.NeedAccount"]</span>
+                <a asp-page="/SkopkaHello/Register">@Text["Layout.Register"]</a>
                 @if ((UiOptions.EnabledPages
                         & HelloUiPages.ContactConfirmation) != 0)
                 {
@@ -141,11 +136,11 @@
             @if ((UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0)
             {
                 <a asp-page="/SkopkaHello/ResendConfirmation">
-                    Resend email confirmation
+                    @Text["Login.ResendEmailConfirmation"]
                 </a>
                 <br />
                 <a asp-page="/SkopkaHello/ResendPhoneConfirmation">
-                    Resend phone confirmation
+                    @Text["Login.ResendPhoneConfirmation"]
                 </a>
             }
         </p>

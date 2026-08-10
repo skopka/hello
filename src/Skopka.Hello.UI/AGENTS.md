@@ -28,6 +28,13 @@ must not expose or browse the mounted directory. CSS custom properties are the
 theming contract, built-in styles can be disabled, and custom CSS is linked
 after built-in styles.
 
+Localization stays scoped to the packaged UI and Admin Razor pages. Do not add
+culture segments to Hello routes or change the OIDC/return-URL route contract.
+The culture selector is an antiforgery-protected POST with a local-only return
+URL. Custom JSON dictionaries are explicit startup files outside static-file
+serving; preserve packaged-English fallback and fail startup for malformed or
+mismatched dictionaries.
+
 Hello pages live under the collision-resistant `/SkopkaHello` Razor page-name
 namespace. Their selectors are replaced by the DI-configured UI prefix through
 the exact RCL page-route convention. Do not reintroduce absolute `@page

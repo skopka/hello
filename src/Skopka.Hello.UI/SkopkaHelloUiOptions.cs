@@ -27,8 +27,13 @@ public sealed class SkopkaHelloUiOptions
 
     public string? AuthenticatedRedirectPath { get; set; }
 
+    public SkopkaHelloUiLocalizationOptions Localization { get; } =
+        new();
+
     public void Validate()
     {
+        Localization.Validate();
+
         if ((EnabledPages & ~HelloUiPages.All) != 0)
         {
             throw new InvalidOperationException(
@@ -208,5 +213,6 @@ public sealed class SkopkaHelloUiOptions
             routes.ExternalCompletionPath,
             routes.ExternalRegistrationPath,
             routes.ExternalLoginsPath,
+            routes.CulturePath,
         ];
 }

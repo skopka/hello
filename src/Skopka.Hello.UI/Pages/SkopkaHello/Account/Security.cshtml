@@ -1,15 +1,14 @@
 @page
 @model AccountSecurityModel
 @{
-    ViewData["Title"] = "Account security";
+    ViewData["Title"] = Text["Security.Title"];
 }
 
 <section class="hello-page-heading">
-    <p class="hello-eyebrow">Account</p>
-    <h1>Credentials and deletion</h1>
+    <p class="hello-eyebrow">@Text["Layout.Account"]</p>
+    <h1>@Text["Account.CredentialsAndDeletion"]</h1>
     <p class="hello-muted">
-        Sensitive actions require a one-time verification code and end all
-        active sessions.
+        @Text["Security.Instructions"]
     </p>
 </section>
 
@@ -20,122 +19,121 @@
 
     @if (Model.Credentials is { } credentials)
     {
-        <h2>Password</h2>
+        <h2>@Text["Field.Password"]</h2>
         @if (credentials.HasPassword)
         {
-            <p>A password is configured.</p>
+            <p>@Text["Security.PasswordConfigured"]</p>
             <div class="hello-actions">
                 <a class="hello-button hello-button-secondary"
                    asp-page="/SkopkaHello/Account/ChangePassword">
-                    Change password
+                    @Text["Common.ChangePassword"]
                 </a>
                 @if (credentials.CanRemovePassword)
                 {
                     <form method="post" asp-page-handler="BeginRemove">
                         <button class="hello-button hello-button-secondary"
                                 type="submit">
-                            Request password removal
+                            @Text["Security.RequestPasswordRemoval"]
                         </button>
                     </form>
                 }
                 else
                 {
                     <p class="hello-muted">
-                        Link another sign-in method before removing the
-                        password.
+                        @Text["Security.LinkBeforeRemovingPassword"]
                     </p>
                 }
             </div>
         }
         else
         {
-            <p>No password is configured.</p>
+            <p>@Text["Security.NoPassword"]</p>
             <form method="post" asp-page-handler="BeginSet">
                 <button class="hello-button hello-button-secondary"
                         type="submit">
-                    Request password setup
+                    @Text["Security.RequestPasswordSetup"]
                 </button>
             </form>
         }
 
-        <h2>Delete account</h2>
+        <h2>@Text["Security.DeleteAccount"]</h2>
         <p class="hello-muted">
-            Deletion disables sign-in and invalidates every session.
+            @Text["Security.DeleteDescription"]
         </p>
         <form method="post" asp-page-handler="BeginDelete">
             <button class="hello-button hello-button-secondary"
                     type="submit">
-                Request account deletion
+                @Text["Security.RequestDeletion"]
             </button>
         </form>
     }
 
     @if (Model.Pending is { Action: "set" } setChallenge)
     {
-        <h2>Set password</h2>
+        <h2>@Text["Security.SetPassword"]</h2>
         <form method="post"
               asp-page-handler="CompleteSet"
               class="hello-form">
             <input name="SetInput.ChallengeId"
                    value="@setChallenge.ChallengeId"
                    type="hidden" />
-            <label for="set-code">Verification code</label>
+            <label for="set-code">@Text["Field.VerificationCode"]</label>
             <input id="set-code"
                    name="SetInput.VerificationCode"
                    autocomplete="one-time-code" />
-            <label for="set-password">New password</label>
+            <label for="set-password">@Text["Field.NewPassword"]</label>
             <input id="set-password"
                    name="SetInput.NewPassword"
                    type="password"
                    autocomplete="new-password" />
-            <label for="set-confirm">Confirm password</label>
+            <label for="set-confirm">@Text["Field.ConfirmPassword"]</label>
             <input id="set-confirm"
                    name="SetInput.ConfirmPassword"
                    type="password"
                    autocomplete="new-password" />
-            <button class="hello-button" type="submit">Set password</button>
+            <button class="hello-button" type="submit">@Text["Security.SetPassword"]</button>
         </form>
     }
 
     @if (Model.Pending is { Action: "remove" } removeChallenge)
     {
-        <h2>Remove password</h2>
+        <h2>@Text["Security.RemovePassword"]</h2>
         <form method="post"
               asp-page-handler="CompleteRemove"
               class="hello-form">
             <input name="ActionInput.ChallengeId"
                    value="@removeChallenge.ChallengeId"
                    type="hidden" />
-            <label for="remove-code">Verification code</label>
+            <label for="remove-code">@Text["Field.VerificationCode"]</label>
             <input id="remove-code"
                    name="ActionInput.VerificationCode"
                    autocomplete="one-time-code" />
             <button class="hello-button" type="submit">
-                Remove password and sign out
+                @Text["Security.RemovePasswordAndSignOut"]
             </button>
         </form>
     }
 
     @if (Model.Pending is { Action: "delete" } deleteChallenge)
     {
-        <h2>Confirm account deletion</h2>
+        <h2>@Text["Security.ConfirmDeletion"]</h2>
         <form method="post"
               asp-page-handler="CompleteDelete"
               class="hello-form">
             <input name="ActionInput.ChallengeId"
                    value="@deleteChallenge.ChallengeId"
                    type="hidden" />
-            <label for="delete-code">Verification code</label>
+            <label for="delete-code">@Text["Field.VerificationCode"]</label>
             <input id="delete-code"
                    name="ActionInput.VerificationCode"
                    autocomplete="one-time-code" />
             <button class="hello-button" type="submit">
-                Delete account and sign out
+                @Text["Security.DeleteAndSignOut"]
             </button>
         </form>
     }
 
     <p class="hello-card-footer">
-        <a asp-page="/SkopkaHello/Account/Index">Back to account</a>
+        <a asp-page="/SkopkaHello/Account/Index">@Text["Common.BackToAccount"]</a>
     </p>
 </section>

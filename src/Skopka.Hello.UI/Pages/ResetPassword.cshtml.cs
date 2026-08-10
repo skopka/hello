@@ -7,7 +7,8 @@ namespace Skopka.Hello.UI.Pages;
 
 public sealed class ResetPasswordModel(
     IHelloUiApplication application,
-    IHelloSessionCookieManager sessionCookies)
+    IHelloSessionCookieManager sessionCookies,
+    IHelloUiLocalizer text)
     : PageModel
 {
     [BindProperty(SupportsGet = true)]
@@ -36,7 +37,7 @@ public sealed class ResetPasswordModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "This password reset link is incomplete or invalid.");
+                text["ResetPassword.InvalidLink"]);
         }
 
         if (!ModelState.IsValid)
@@ -52,7 +53,10 @@ public sealed class ResetPasswordModel(
             cancellationToken);
         if (!result.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors,
+                text);
             return Page();
         }
 
@@ -70,18 +74,18 @@ public sealed class ResetPasswordModel(
 
     public sealed class InputModel
     {
-        [Required]
-        [StringLength(128)]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(128, ErrorMessage = "Validation.StringLength")]
         [DataType(DataType.Password)]
-        [Display(Name = "New password")]
+        [Display(Name = "Field.NewPassword")]
         public string NewPassword { get; set; } = string.Empty;
 
-        [Required]
+        [Required(ErrorMessage = "Validation.Required")]
         [DataType(DataType.Password)]
         [Compare(
             nameof(NewPassword),
-            ErrorMessage = "The passwords do not match.")]
-        [Display(Name = "Confirm password")]
+            ErrorMessage = "Validation.PasswordsDoNotMatch")]
+        [Display(Name = "Field.ConfirmPassword")]
         public string ConfirmPassword { get; set; } = string.Empty;
     }
 }

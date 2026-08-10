@@ -1,6 +1,6 @@
 @inject IHelloUiExternalApplication ExternalIdentity
 <!doctype html>
-<html lang="en">
+<html lang="@System.Globalization.CultureInfo.CurrentUICulture.Name">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -34,26 +34,26 @@
         {
             <span class="hello-brand">Skopka.Hello</span>
         }
-        <nav aria-label="Account navigation">
+        <nav aria-label="@Text["Layout.AccountNavigation"]">
             @if (User.Identity?.IsAuthenticated == true)
             {
                 @if ((UiOptions.EnabledPages & HelloUiPages.Account) != 0)
                 {
-                    <a asp-page="/SkopkaHello/Account/Index">Account</a>
+                    <a asp-page="/SkopkaHello/Account/Index">@Text["Layout.Account"]</a>
                     @if ((UiOptions.EnabledPages & HelloUiPages.Sessions) != 0)
                     {
-                        <a asp-page="/SkopkaHello/Account/Sessions">Sessions</a>
+                        <a asp-page="/SkopkaHello/Account/Sessions">@Text["Layout.Sessions"]</a>
                     }
                     @if ((UiOptions.EnabledPages & HelloUiPages.ExternalIdentity) != 0
                         && ExternalIdentity.IsConfigured)
                     {
-                        <a asp-page="/SkopkaHello/Account/ExternalLogins">Sign-in methods</a>
+                        <a asp-page="/SkopkaHello/Account/ExternalLogins">@Text["Layout.SignInMethods"]</a>
                     }
                     <form method="post"
                           asp-page="/SkopkaHello/Account/Index"
                           asp-page-handler="Logout">
                         <button class="hello-link-button" type="submit">
-                            Sign out
+                            @Text["Layout.SignOut"]
                         </button>
                     </form>
                 }
@@ -62,12 +62,12 @@
             {
                 @if ((UiOptions.EnabledPages & HelloUiPages.Login) != 0)
                 {
-                    <a asp-page="/SkopkaHello/Login">Sign in</a>
+                    <a asp-page="/SkopkaHello/Login">@Text["Layout.SignIn"]</a>
                 }
                 @if (HelloOptions.SelfRegistrationEnabled
                     && (UiOptions.EnabledPages & HelloUiPages.Registration) != 0)
                 {
-                    <a asp-page="/SkopkaHello/Register">Register</a>
+                    <a asp-page="/SkopkaHello/Register">@Text["Layout.Register"]</a>
                 }
             }
         </nav>
@@ -75,5 +75,50 @@
     <main class="hello-main">
         @RenderBody()
     </main>
+    @if (UiOptions.Localization.Enabled
+        && UiOptions.Localization.SupportedCultures.Count > 1)
+    {
+        <footer class="hello-footer">
+            <form method="post"
+                  action="@(Context.Request.PathBase
+                      + HelloRoutes.CulturePath)"
+                  asp-antiforgery="true"
+                  class="hello-language-form">
+                <label for="hello-culture">
+                    @Text["Layout.Language"]
+                </label>
+                <select id="hello-culture" name="culture">
+                    @foreach (var culture in
+                        UiOptions.Localization.SupportedCultures)
+                    {
+                        if (String.Equals(
+                            culture.Name,
+                            System.Globalization.CultureInfo
+                                .CurrentUICulture.Name,
+                            StringComparison.OrdinalIgnoreCase))
+                        {
+                            <option value="@culture.Name" selected>
+                                @culture.DisplayName
+                            </option>
+                        }
+                        else
+                        {
+                            <option value="@culture.Name">
+                                @culture.DisplayName
+                            </option>
+                        }
+                    }
+                </select>
+                <input type="hidden"
+                       name="returnUrl"
+                       value="@(Context.Request.PathBase
+                           + Context.Request.Path
+                           + Context.Request.QueryString)" />
+                <button class="hello-link-button" type="submit">
+                    @Text["Layout.ChangeLanguage"]
+                </button>
+            </form>
+        </footer>
+    }
 </body>
 </html>

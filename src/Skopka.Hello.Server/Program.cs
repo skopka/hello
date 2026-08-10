@@ -486,6 +486,36 @@ builder.Services.AddSkopkaHelloUi<
     options.BuiltInStylesEnabled = configuration.GetValue(
         "SkopkaHello:Customization:BuiltInStylesEnabled",
         true);
+    var localization = configuration.GetSection(
+        "SkopkaHello:Ui:Localization");
+    options.Localization.Enabled = localization.GetValue(
+        "Enabled",
+        false);
+    options.Localization.DefaultCulture =
+        localization["DefaultCulture"] ?? "en";
+    foreach (var culture in localization
+                 .GetSection("Cultures")
+                 .GetChildren())
+    {
+        var name = culture["Name"]
+            ?? throw new InvalidOperationException(
+                "SkopkaHello:Ui:Localization:Cultures entries require Name.");
+        var displayName = culture["DisplayName"];
+        if (displayName is not null)
+        {
+            options.Localization.AddCulture(name, displayName);
+        }
+
+        foreach (var dictionaryFile in culture
+                     .GetSection("DictionaryFiles")
+                     .Get<string[]>() ?? [])
+        {
+            options.Localization.AddDictionaryFile(
+                name,
+                dictionaryFile,
+                displayName);
+        }
+    }
     options.SecureCookies = secureCookies;
     if (!secureCookies)
     {

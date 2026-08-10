@@ -9,7 +9,8 @@ namespace Skopka.Hello.UI.Pages;
 [Authorize(Policy = HelloUiDefaults.AuthorizationPolicy)]
 public sealed class ChangePasswordModel(
     IHelloUiApplication application,
-    IHelloSessionCookieManager sessionCookies)
+    IHelloSessionCookieManager sessionCookies,
+    IHelloUiLocalizer text)
     : PageModel
 {
     [BindProperty]
@@ -36,7 +37,10 @@ public sealed class ChangePasswordModel(
             cancellationToken);
         if (!result.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors,
+                text);
             return Page();
         }
 
@@ -53,7 +57,7 @@ public sealed class ChangePasswordModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "Request a verification code before changing the password.");
+                text["ChangePassword.RequestCodeFirst"]);
         }
 
         if (!ModelState.IsValid)
@@ -96,14 +100,17 @@ public sealed class ChangePasswordModel(
             {
                 HelloUiModelState.AddErrors(
                     ModelState,
-                    result.Errors);
+                    result.Errors,
+                    text);
                 return Page();
             }
 
             Input = new InputModel();
             ModelState.Clear();
             RestartRequired = true;
-            ModelState.AddModelError(string.Empty, restart.Message);
+            ModelState.AddModelError(
+                string.Empty,
+                LocalizeError(restart));
             foreach (var cause in result.Errors.Where(error =>
                 !string.Equals(
                     error.Code,
@@ -112,7 +119,7 @@ public sealed class ChangePasswordModel(
             {
                 ModelState.AddModelError(
                     string.Empty,
-                    cause.Message);
+                    LocalizeError(cause));
             }
 
             return Page();
@@ -130,29 +137,40 @@ public sealed class ChangePasswordModel(
     {
         public Guid ChallengeId { get; set; }
 
-        [Required]
-        [StringLength(8, MinimumLength = 6)]
-        [Display(Name = "Verification code")]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(
+            8,
+            MinimumLength = 6,
+            ErrorMessage = "Validation.StringLengthRange")]
+        [Display(Name = "Field.VerificationCode")]
         public string VerificationCode { get; set; } = string.Empty;
 
-        [Required]
-        [StringLength(128)]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(128, ErrorMessage = "Validation.StringLength")]
         [DataType(DataType.Password)]
-        [Display(Name = "Current password")]
+        [Display(Name = "Field.CurrentPassword")]
         public string CurrentPassword { get; set; } = string.Empty;
 
-        [Required]
-        [StringLength(128)]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(128, ErrorMessage = "Validation.StringLength")]
         [DataType(DataType.Password)]
-        [Display(Name = "New password")]
+        [Display(Name = "Field.NewPassword")]
         public string NewPassword { get; set; } = string.Empty;
 
-        [Required]
+        [Required(ErrorMessage = "Validation.Required")]
         [DataType(DataType.Password)]
         [Compare(
             nameof(NewPassword),
-            ErrorMessage = "The passwords do not match.")]
-        [Display(Name = "Confirm password")]
+            ErrorMessage = "Validation.PasswordsDoNotMatch")]
+        [Display(Name = "Field.ConfirmPassword")]
         public string ConfirmPassword { get; set; } = string.Empty;
     }
+
+    private string LocalizeError(
+        Skopka.Abstraction.OperationResult.Error error)
+        => text.TryGetString(
+            $"Errors.{error.Code}",
+            out var message)
+                ? message
+                : error.Message;
 }

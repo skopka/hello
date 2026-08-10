@@ -5,7 +5,8 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace Skopka.Hello.UI.Pages;
 
 public sealed class ConfirmEmailModel(
-    IHelloUiApplication application)
+    IHelloUiApplication application,
+    IHelloUiLocalizer text)
     : PageModel
 {
     [BindProperty(SupportsGet = true)]
@@ -40,7 +41,7 @@ public sealed class ConfirmEmailModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "This email confirmation link is incomplete or invalid.");
+                text["ConfirmEmail.InvalidLink"]);
         }
 
         if (!ModelState.IsValid)
@@ -56,7 +57,10 @@ public sealed class ConfirmEmailModel(
             cancellationToken);
         if (!result.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors,
+                text);
             return Page();
         }
 

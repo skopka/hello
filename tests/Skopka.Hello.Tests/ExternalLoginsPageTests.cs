@@ -27,7 +27,10 @@ public sealed class ExternalLoginsPageTests
         {
             RequestServices = services,
         };
-        var model = new ExternalLoginsModel(application, cookies)
+        var model = new ExternalLoginsModel(
+            application,
+            cookies,
+            TestHelloUiLocalizer.Instance)
         {
             PageContext = new PageContext
             {
@@ -71,7 +74,10 @@ public sealed class ExternalLoginsPageTests
                     "Request a new challenge.",
                     ErrorType.Conflict)));
         var cookies = new FakeSessionCookieManager();
-        var model = new ExternalLoginsModel(application, cookies)
+        var model = new ExternalLoginsModel(
+            application,
+            cookies,
+            TestHelloUiLocalizer.Instance)
         {
             PageContext = new PageContext
             {
@@ -115,7 +121,10 @@ public sealed class ExternalLoginsPageTests
         static ExternalLoginsModel CreateModel(
             FakeExternalApplication application,
             FakeSessionCookieManager cookies)
-            => new(application, cookies)
+            => new(
+                application,
+                cookies,
+                TestHelloUiLocalizer.Instance)
             {
                 PageContext = new PageContext
                 {
@@ -152,7 +161,8 @@ public sealed class ExternalLoginsPageTests
         var application = new FakeExternalApplication();
         var model = new ExternalCompleteModel(
             application,
-            new FakeSessionCookieManager())
+            new FakeSessionCookieManager(),
+            TestHelloUiLocalizer.Instance)
         {
             PageContext = new PageContext
             {
@@ -174,7 +184,8 @@ public sealed class ExternalLoginsPageTests
         var application = new FakeExternalApplication();
         var model = new ExternalRegisterModel(
             application,
-            new FakeSessionCookieManager())
+            new FakeSessionCookieManager(),
+            TestHelloUiLocalizer.Instance)
         {
             PageContext = new PageContext
             {

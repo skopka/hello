@@ -71,8 +71,21 @@ public static class SkopkaHelloAdminServiceCollectionExtensions
                     provider.GetRequiredService<
                         Skopka.Hello.HelloUiRoutePaths>(),
                     options));
+            services.AddSingleton(
+                new Skopka.Hello.UI.HelloUiDictionarySource(
+                    typeof(Skopka.Hello.Admin.HelloAdminDefaults)
+                        .Assembly,
+                    [
+                        "Skopka.Hello.Admin.Localization.en.json",
+                        "Skopka.Hello.Admin.Localization.ru.json",
+                    ]));
+            services.AddSingleton(
+                new Skopka.Hello.UI.HelloUiLocalizationTarget(
+                    typeof(Skopka.Hello.Admin.HelloAdminDefaults)
+                        .Assembly));
             services
                 .AddRazorPages()
+                .AddDataAnnotationsLocalization()
                 .AddApplicationPart(
                     typeof(Skopka.Hello.Admin.HelloAdminDefaults)
                         .Assembly);

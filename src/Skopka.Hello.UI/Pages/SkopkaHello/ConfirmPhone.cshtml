@@ -1,40 +1,39 @@
 @page
 @model ConfirmPhoneModel
 @{
-    ViewData["Title"] = "Confirm phone";
+    ViewData["Title"] = Text["ConfirmPhone.Title"];
 }
 
 <section class="hello-card hello-auth-card">
-    <p class="hello-eyebrow">Phone confirmation</p>
-    <h1>Confirm your phone</h1>
+    <p class="hello-eyebrow">@Text["ConfirmPhone.Eyebrow"]</p>
+    <h1>@Text["ConfirmPhone.Title"]</h1>
 
     @if (Model.Confirmed)
     {
         <p class="hello-status" role="status">
-            Your phone number is confirmed.
+            @Text["ConfirmPhone.Confirmed"]
         </p>
         <p class="hello-card-footer">
             @if ((UiOptions.EnabledPages & HelloUiPages.Account) != 0)
             {
-                <a asp-page="/SkopkaHello/Account/Index">Continue to account</a>
+                <a asp-page="/SkopkaHello/Account/Index">@Text["Common.ContinueToAccount"]</a>
             }
             else
             {
-                <a asp-page="/SkopkaHello/Login">Continue to sign in</a>
+                <a asp-page="/SkopkaHello/Login">@Text["Common.ContinueToSignIn"]</a>
             }
         </p>
     }
     else if (!Model.LinkValid)
     {
         <p class="hello-validation" role="alert">
-            This phone confirmation link is incomplete or invalid.
+            @Text["ConfirmPhone.InvalidLink"]
         </p>
     }
     else
     {
         <p class="hello-muted">
-            For safety, opening the link does not change your account.
-            Use the button below to confirm the phone number.
+            @Text["ConfirmPhone.Instructions"]
         </p>
 
         <form method="post" class="hello-form">
@@ -46,7 +45,7 @@
                  role="alert"></div>
 
             <button class="hello-button" type="submit">
-                Confirm phone
+                @Text["ConfirmPhone.Action"]
             </button>
         </form>
     }

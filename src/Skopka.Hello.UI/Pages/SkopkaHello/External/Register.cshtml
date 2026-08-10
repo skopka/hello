@@ -1,19 +1,18 @@
 @page
 @model ExternalRegisterModel
 @{
-    ViewData["Title"] = "Create external account";
+    ViewData["Title"] = Text["ExternalRegister.PageTitle"];
 }
 
 <section class="hello-card hello-auth-card">
-    <p class="hello-eyebrow">New account</p>
-    <h1>Complete your account</h1>
+    <p class="hello-eyebrow">@Text["Register.Eyebrow"]</p>
+    <h1>@Text["ExternalRegister.Title"]</h1>
     @if (Model.Provider is not null)
     {
         <p class="hello-muted">
-            Continue with the identity validated by
+            @Text["ExternalRegister.ProviderIntroduction"]
             <strong>@Model.Provider.DisplayName</strong>.
-            A provider-verified email is only used as a form hint;
-            Skopka.Hello keeps its own email-confirmation status.
+            @Text["ExternalRegister.ProviderEmailHint"]
         </p>
     }
 
@@ -22,33 +21,33 @@
              class="hello-validation"
              role="alert"></div>
 
-        <label asp-for="Input.DisplayName"></label>
+        <label asp-for="Input.DisplayName">@Text["Field.DisplayName"]</label>
         <input asp-for="Input.DisplayName" autocomplete="name" />
         <span asp-validation-for="Input.DisplayName"
               class="hello-field-error"></span>
 
-        <label asp-for="Input.Email"></label>
+        <label asp-for="Input.Email">@Text["Field.Email"]</label>
         <input asp-for="Input.Email" autocomplete="email" />
         <span asp-validation-for="Input.Email"
               class="hello-field-error"></span>
 
-        <label asp-for="Input.UserName"></label>
+        <label asp-for="Input.UserName">@Text["Field.UserName"]</label>
         <input asp-for="Input.UserName" autocomplete="username" />
         <span asp-validation-for="Input.UserName"
               class="hello-field-error"></span>
 
-        <label asp-for="Input.Phone"></label>
+        <label asp-for="Input.Phone">@Text["Field.Phone"]</label>
         <input asp-for="Input.Phone" autocomplete="tel" />
         <span asp-validation-for="Input.Phone"
               class="hello-field-error"></span>
 
-        <label asp-for="Input.Locale"></label>
+        <label asp-for="Input.Locale">@Text["Field.Locale"]</label>
         <input asp-for="Input.Locale" autocomplete="language" />
         <span asp-validation-for="Input.Locale"
               class="hello-field-error"></span>
 
         <button class="hello-button" type="submit">
-            Create account and sign in
+            @Text["ExternalRegister.Action"]
         </button>
     </form>
 
@@ -56,7 +55,7 @@
           asp-page-handler="Cancel"
           class="hello-card-footer">
         <button class="hello-link-button" type="submit">
-            Cancel and return to sign in
+            @Text["Common.CancelToSignIn"]
         </button>
     </form>
 </section>

@@ -10,4 +10,9 @@
     <ProjectReference Include="..\Skopka.Hello\Skopka.Hello.csproj" />
     <ProjectReference Include="..\Skopka.Hello.Oidc\Skopka.Hello.Oidc.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Localization\Resources\*.json"
+                      LogicalName="Skopka.Hello.UI.Localization.%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

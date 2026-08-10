@@ -19,5 +19,7 @@ internal sealed class HelloUiRazorPagesOptionsSetup(
                 routes,
                 helloOptions.SelfRegistrationEnabled,
                 uiOptions.EnabledPages));
+        options.Conventions.Add(
+            new HelloUiPageApplicationModelConvention());
     }
 }

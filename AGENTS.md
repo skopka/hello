@@ -32,6 +32,13 @@ Disabled pages stay in the UI package but receive no selectors, links or
 reachable handlers. Login-only hosts must provide a safe local authenticated
 redirect; the default remains the complete UI surface.
 
+Optional Razor localization is owned by `Skopka.Hello.UI`, keeps culture out
+of the immutable UI routes and resolves a supported preference cookie before
+`Accept-Language` and the configured default. English and Russian are packaged;
+explicit server-side JSON dictionaries may add or override cultures. Admin UI
+contributes to the same catalog. Dictionary files are startup inputs, never
+static content.
+
 Self-registration is a startup policy owned by `SkopkaHelloOptions`. When it is
 disabled, password and external application operations fail before calling
 Identity and the built-in registration API/Razor selectors are not mapped.

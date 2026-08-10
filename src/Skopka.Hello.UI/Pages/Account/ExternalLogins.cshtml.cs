@@ -11,7 +11,8 @@ namespace Skopka.Hello.UI.Pages;
 [Authorize(Policy = HelloUiDefaults.AuthorizationPolicy)]
 public sealed class ExternalLoginsModel(
     IHelloUiExternalApplication application,
-    IHelloSessionCookieManager sessionCookies)
+    IHelloSessionCookieManager sessionCookies,
+    IHelloUiLocalizer text)
     : PageModel
 {
     [BindProperty]
@@ -68,7 +69,7 @@ public sealed class ExternalLoginsModel(
         var transport = sessionCookies.ValidateTransport(HttpContext);
         if (!transport.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, transport.Errors);
+            HelloUiModelState.AddErrors(ModelState, transport.Errors, text);
             await LoadAsync(cancellationToken);
             return Page();
         }
@@ -78,7 +79,7 @@ public sealed class ExternalLoginsModel(
             HttpContext);
         if (!challenge.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, challenge.Errors);
+            HelloUiModelState.AddErrors(ModelState, challenge.Errors, text);
             await LoadAsync(cancellationToken);
             return Page();
         }
@@ -99,7 +100,7 @@ public sealed class ExternalLoginsModel(
         var transport = sessionCookies.ValidateTransport(HttpContext);
         if (!transport.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, transport.Errors);
+            HelloUiModelState.AddErrors(ModelState, transport.Errors, text);
             await LoadAsync(cancellationToken);
             return Page();
         }
@@ -109,7 +110,7 @@ public sealed class ExternalLoginsModel(
             cancellationToken);
         if (!result.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
             await LoadAsync(cancellationToken);
             await LoadPendingLinkAsync(cancellationToken);
             return Page();
@@ -136,7 +137,7 @@ public sealed class ExternalLoginsModel(
         var transport = sessionCookies.ValidateTransport(HttpContext);
         if (!transport.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, transport.Errors);
+            HelloUiModelState.AddErrors(ModelState, transport.Errors, text);
             await LoadAsync(cancellationToken);
             await LoadPendingLinkAsync(cancellationToken);
             return Page();
@@ -175,7 +176,7 @@ public sealed class ExternalLoginsModel(
         if (!transport.IsSuccess)
         {
             PendingOperation = null;
-            HelloUiModelState.AddErrors(ModelState, transport.Errors);
+            HelloUiModelState.AddErrors(ModelState, transport.Errors, text);
             return Page();
         }
 
@@ -186,7 +187,7 @@ public sealed class ExternalLoginsModel(
         if (!result.IsSuccess)
         {
             PendingOperation = null;
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
             return Page();
         }
 
@@ -208,7 +209,7 @@ public sealed class ExternalLoginsModel(
         var transport = sessionCookies.ValidateTransport(HttpContext);
         if (!transport.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, transport.Errors);
+            HelloUiModelState.AddErrors(ModelState, transport.Errors, text);
             await LoadAsync(cancellationToken);
             return Page();
         }
@@ -280,7 +281,7 @@ public sealed class ExternalLoginsModel(
                     new { accountChangeRestarted = true });
             }
 
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
             CodeRequested = true;
             await LoadAsync(cancellationToken);
             if (loadPendingLink)
@@ -324,7 +325,7 @@ public sealed class ExternalLoginsModel(
         }
         else
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
         }
     }
 
@@ -341,15 +342,18 @@ public sealed class ExternalLoginsModel(
         }
         else
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
         }
     }
 
     public sealed class CodeInput
     {
-        [Required]
-        [StringLength(8, MinimumLength = 6)]
-        [Display(Name = "Verification code")]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(
+            8,
+            MinimumLength = 6,
+            ErrorMessage = "Validation.StringLengthRange")]
+        [Display(Name = "Field.VerificationCode")]
         public string VerificationCode { get; set; } = string.Empty;
     }
 }

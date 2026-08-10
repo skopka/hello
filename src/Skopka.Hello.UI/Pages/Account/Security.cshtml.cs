@@ -9,7 +9,8 @@ namespace Skopka.Hello.UI.Pages;
 [Authorize(Policy = HelloUiDefaults.AuthorizationPolicy)]
 public sealed class AccountSecurityModel(
     IHelloUiApplication application,
-    IHelloSessionCookieManager sessionCookies)
+    IHelloSessionCookieManager sessionCookies,
+    IHelloUiLocalizer text)
     : PageModel
 {
     public HelloCredentialState? Credentials { get; private set; }
@@ -155,7 +156,10 @@ public sealed class AccountSecurityModel(
         }
         else
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors,
+                text);
         }
 
         var loaded = await LoadStateAsync(cancellationToken);
@@ -201,7 +205,10 @@ public sealed class AccountSecurityModel(
                     null);
             }
 
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors,
+                text);
             var loaded = await LoadStateAsync(cancellationToken);
             return loaded ? Page() : Challenge();
         }
@@ -233,7 +240,10 @@ public sealed class AccountSecurityModel(
             return true;
         }
 
-        HelloUiModelState.AddErrors(ModelState, result.Errors);
+        HelloUiModelState.AddErrors(
+            ModelState,
+            result.Errors,
+            text);
         return !result.Errors.Any(
             error => error.Type == Skopka.Abstraction.OperationResult
                 .ErrorType.Unauthorized);
@@ -248,23 +258,23 @@ public sealed class AccountSecurityModel(
     {
         public Guid ChallengeId { get; set; }
 
-        [Required]
-        [StringLength(256)]
-        [Display(Name = "Verification code")]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(256, ErrorMessage = "Validation.StringLength")]
+        [Display(Name = "Field.VerificationCode")]
         public string VerificationCode { get; set; } = string.Empty;
 
-        [Required]
-        [StringLength(128)]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(128, ErrorMessage = "Validation.StringLength")]
         [DataType(DataType.Password)]
-        [Display(Name = "New password")]
+        [Display(Name = "Field.NewPassword")]
         public string NewPassword { get; set; } = string.Empty;
 
-        [Required]
+        [Required(ErrorMessage = "Validation.Required")]
         [DataType(DataType.Password)]
         [Compare(
             nameof(NewPassword),
-            ErrorMessage = "The passwords do not match.")]
-        [Display(Name = "Confirm password")]
+            ErrorMessage = "Validation.PasswordsDoNotMatch")]
+        [Display(Name = "Field.ConfirmPassword")]
         public string ConfirmPassword { get; set; } = string.Empty;
     }
 
@@ -272,9 +282,9 @@ public sealed class AccountSecurityModel(
     {
         public Guid ChallengeId { get; set; }
 
-        [Required]
-        [StringLength(256)]
-        [Display(Name = "Verification code")]
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(256, ErrorMessage = "Validation.StringLength")]
+        [Display(Name = "Field.VerificationCode")]
         public string VerificationCode { get; set; } = string.Empty;
     }
 }

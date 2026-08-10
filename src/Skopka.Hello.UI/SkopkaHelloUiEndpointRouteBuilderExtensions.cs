@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,6 +15,7 @@ public static class SkopkaHelloUiEndpointRouteBuilderExtensions
 
         endpoints.MapRazorPages();
         endpoints.MapSkopkaHelloCustomCss();
+        MapSkopkaHelloCulture(endpoints);
         return endpoints;
     }
 
@@ -53,6 +55,85 @@ public static class SkopkaHelloUiEndpointRouteBuilderExtensions
                     .Trim('/'),
                 requestPath,
                 StringComparison.OrdinalIgnoreCase));
+
+    private static void MapSkopkaHelloCulture(
+        IEndpointRouteBuilder endpoints)
+    {
+        var options = endpoints.ServiceProvider
+            .GetRequiredService<SkopkaHelloUiOptions>();
+        if (!options.Localization.Enabled)
+        {
+            return;
+        }
+
+        var routes = endpoints.ServiceProvider
+            .GetRequiredService<HelloUiRoutePaths>();
+        if (HasRouteCollision(endpoints, routes.CulturePath))
+        {
+            throw new InvalidOperationException(
+                "The UI culture path collides with an existing endpoint.");
+        }
+
+        endpoints.MapPost(
+                routes.CulturePath,
+                ChangeCultureAsync)
+            .AllowAnonymous()
+            .WithName("SkopkaHelloCulture");
+    }
+
+    private static async Task<IResult> ChangeCultureAsync(
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        SkopkaHelloUiOptions options,
+        HelloUiRoutePaths routes,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await antiforgery.ValidateRequestAsync(httpContext);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return TypedResults.BadRequest();
+        }
+
+        var form = await httpContext.Request.ReadFormAsync(
+            cancellationToken);
+        var requestedCulture = form["culture"].ToString();
+        if (!options.Localization.TryGetSupportedCulture(
+                requestedCulture,
+                out var culture))
+        {
+            return TypedResults.BadRequest();
+        }
+
+        httpContext.Response.Cookies.Append(
+            options.Localization.CultureCookieName,
+            culture.Name,
+            new CookieOptions
+            {
+                HttpOnly = true,
+                IsEssential = true,
+                MaxAge = TimeSpan.FromDays(365),
+                Path = "/",
+                SameSite = options.CookieSameSite,
+                Secure = options.SecureCookies,
+            });
+
+        var returnUrl = form["returnUrl"].ToString();
+        return TypedResults.LocalRedirect(
+            IsSafeLocalUrl(returnUrl)
+                ? returnUrl
+                : routes.RootPath);
+    }
+
+    private static bool IsSafeLocalUrl(string? url)
+        => !String.IsNullOrEmpty(url)
+            && url[0] == '/'
+            && (url.Length == 1
+                || url[1] is not '/' and not '\\')
+            && !url.Contains('\\')
+            && !url.Any(character => Char.IsControl(character));
 
     private static IResult ServeCustomCss(
         SkopkaHelloUiOptions options,

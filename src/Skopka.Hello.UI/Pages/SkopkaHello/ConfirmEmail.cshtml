@@ -1,33 +1,33 @@
 @page
 @model ConfirmEmailModel
 @{
-    ViewData["Title"] = "Confirm email";
+    ViewData["Title"] = Text["ConfirmEmail.Title"];
 }
 
 <section class="hello-card hello-auth-card">
-    <p class="hello-eyebrow">Email confirmation</p>
-    <h1>Confirm your email</h1>
+    <p class="hello-eyebrow">@Text["ConfirmEmail.Eyebrow"]</p>
+    <h1>@Text["ConfirmEmail.Title"]</h1>
 
     @if (Model.Confirmed)
     {
         <p class="hello-status" role="status">
-            Your email address is confirmed.
+            @Text["ConfirmEmail.Confirmed"]
         </p>
         <p class="hello-card-footer">
             @if ((UiOptions.EnabledPages & HelloUiPages.Account) != 0)
             {
-                <a asp-page="/SkopkaHello/Account/Index">Continue to account</a>
+                <a asp-page="/SkopkaHello/Account/Index">@Text["Common.ContinueToAccount"]</a>
             }
             else
             {
-                <a asp-page="/SkopkaHello/Login">Continue to sign in</a>
+                <a asp-page="/SkopkaHello/Login">@Text["Common.ContinueToSignIn"]</a>
             }
         </p>
     }
     else if (!Model.LinkValid)
     {
         <p class="hello-validation" role="alert">
-            This email confirmation link is incomplete or invalid.
+            @Text["ConfirmEmail.InvalidLink"]
         </p>
     }
     else
@@ -35,9 +35,9 @@
         <p class="hello-muted"
            role="status"
            aria-live="polite"
-           data-hello-confirmation-status>
-            Confirming your email automatically. If confirmation does not
-            continue, use the button below.
+           data-hello-confirmation-status
+           data-hello-confirmation-error="@Text["ConfirmEmail.AutomaticFailed"]">
+            @Text["ConfirmEmail.AutomaticProgress"]
         </p>
 
         <form method="post"
@@ -53,13 +53,12 @@
                  role="alert"></div>
 
             <button class="hello-button" type="submit">
-                Confirm email
+                @Text["ConfirmEmail.Action"]
             </button>
 
             <noscript>
                 <p class="hello-muted">
-                    Automatic confirmation requires JavaScript. Use the
-                    button above to confirm your email.
+                    @Text["ConfirmEmail.RequiresJavaScript"]
                 </p>
             </noscript>
         </form>

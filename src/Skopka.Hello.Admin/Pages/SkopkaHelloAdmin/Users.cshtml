@@ -1,18 +1,16 @@
 @page
 @model UsersModel
 @{
-    ViewData["Title"] = "User administration";
+    ViewData["Title"] = Text["Admin.Users.PageTitle"];
 }
 
 <section class="hello-page-heading">
-    <p class="hello-eyebrow">Administration</p>
-    <h1>Users</h1>
+    <p class="hello-eyebrow">@Text["Admin.Common.Administration"]</p>
+    <h1>@Text["Admin.Users.Title"]</h1>
     <p class="hello-muted">
-        Search accounts and perform security-sensitive actions. Every
-        mutation requires a fresh verification code sent to your confirmed
-        contact.
+        @Text["Admin.Users.Instructions"]
     </p>
-    <p><a asp-page="/SkopkaHelloAdmin/Roles">Manage roles</a></p>
+    <p><a asp-page="/SkopkaHelloAdmin/Roles">@Text["Admin.Users.ManageRoles"]</a></p>
 </section>
 
 @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
@@ -28,38 +26,41 @@
 
 <section class="hello-card">
     <form method="get" class="hello-form">
-        <label for="admin-search">Search</label>
+        <label for="admin-search">@Text["Admin.Common.Search"]</label>
         <input id="admin-search"
                asp-for="Search"
                autocomplete="off"
-               placeholder="User name, email or phone" />
+               placeholder="@Text["Admin.Users.SearchPlaceholder"]" />
 
-        <label for="admin-status">Status</label>
+        <label for="admin-status">@Text["Admin.Users.Status"]</label>
         <select id="admin-status" asp-for="Status">
             @foreach (var value in Enum.GetValues<IdentityUserStatus>())
             {
-                <option value="@value">@value</option>
+                <option value="@value">@Text[$"Admin.Users.Status.{value}"]</option>
             }
         </select>
 
-        <button class="hello-button" type="submit">Apply filters</button>
+        <button class="hello-button" type="submit">@Text["Admin.Common.ApplyFilters"]</button>
     </form>
 </section>
 
 @if (Model.PendingAction is { } pending)
 {
     <section class="hello-card" aria-labelledby="admin-verification-title">
-        <p class="hello-eyebrow">Step-up verification</p>
+        <p class="hello-eyebrow">@Text["Admin.Common.StepUp"]</p>
         <h2 id="admin-verification-title">
-            @UsersModel.GetActionLabel(pending.Action)
+            @Text[UsersModel.GetActionTextKey(pending.Action)]
         </h2>
         <p>
-            Enter the one-time code sent to your confirmed
-            @(pending.DeliveryChannel?.ToString().ToLowerInvariant()
-              ?? "contact").
+            @Text["Admin.Common.EnterCode",
+                pending.DeliveryChannel == HelloDeliveryChannel.Sms
+                    ? Text["Field.PhoneNumber"]
+                    : pending.DeliveryChannel == HelloDeliveryChannel.Email
+                        ? Text["Field.EmailAddress"]
+                        : Text["Admin.Common.Contact"]]
             @if (pending.ExpiresAt is { } expiresAt)
             {
-                <span>It expires at @expiresAt.ToLocalTime().</span>
+                <span>@Text["Admin.Common.ExpiresAt", expiresAt.ToLocalTime()]</span>
             }
         </p>
 
@@ -85,14 +86,15 @@
             <input type="hidden" asp-for="Search" />
             <input type="hidden" asp-for="Status" />
 
-            <label for="admin-verification-code">Verification code</label>
+            <label for="admin-verification-code">@Text["Field.VerificationCode"]</label>
             <input id="admin-verification-code"
                    name="verificationCode"
                    inputmode="numeric"
                    autocomplete="one-time-code"
                    required />
             <button class="hello-button hello-button-danger" type="submit">
-                Confirm @UsersModel.GetActionLabel(pending.Action).ToLowerInvariant()
+                @Text["Admin.Common.ConfirmAction",
+                    Text[UsersModel.GetActionTextKey(pending.Action)]]
             </button>
         </form>
     </section>
@@ -101,17 +103,20 @@
 @if (Model.PendingRoleAction is { } pendingRole)
 {
     <section class="hello-card" aria-labelledby="admin-role-verification-title">
-        <p class="hello-eyebrow">Step-up verification</p>
+        <p class="hello-eyebrow">@Text["Admin.Common.StepUp"]</p>
         <h2 id="admin-role-verification-title">
-            @UsersModel.GetRoleActionLabel(pendingRole.Action)
+            @Text[UsersModel.GetRoleActionTextKey(pendingRole.Action)]
         </h2>
         <p>
-            Enter the one-time code sent to your confirmed
-            @(pendingRole.DeliveryChannel?.ToString().ToLowerInvariant()
-              ?? "contact").
+            @Text["Admin.Common.EnterCode",
+                pendingRole.DeliveryChannel == HelloDeliveryChannel.Sms
+                    ? Text["Field.PhoneNumber"]
+                    : pendingRole.DeliveryChannel == HelloDeliveryChannel.Email
+                        ? Text["Field.EmailAddress"]
+                        : Text["Admin.Common.Contact"]]
             @if (pendingRole.ExpiresAt is { } expiresAt)
             {
-                <span>It expires at @expiresAt.ToLocalTime().</span>
+                <span>@Text["Admin.Common.ExpiresAt", expiresAt.ToLocalTime()]</span>
             }
         </p>
 
@@ -133,14 +138,15 @@
             <input type="hidden" asp-for="Search" />
             <input type="hidden" asp-for="Status" />
 
-            <label for="admin-role-verification-code">Verification code</label>
+            <label for="admin-role-verification-code">@Text["Field.VerificationCode"]</label>
             <input id="admin-role-verification-code"
                    name="verificationCode"
                    inputmode="numeric"
                    autocomplete="one-time-code"
                    required />
             <button class="hello-button hello-button-danger" type="submit">
-                Confirm @UsersModel.GetRoleActionLabel(pendingRole.Action).ToLowerInvariant()
+                @Text["Admin.Common.ConfirmAction",
+                    Text[UsersModel.GetRoleActionTextKey(pendingRole.Action)]]
             </button>
         </form>
     </section>
@@ -149,7 +155,7 @@
 @if (Model.Users.Count == 0)
 {
     <section class="hello-card">
-        <p>No users matched the current filters.</p>
+        <p>@Text["Admin.Users.None"]</p>
     </section>
 }
 else
@@ -165,17 +171,17 @@ else
                     <p class="hello-eyebrow">
                         @if (user.DeletedAt is not null)
                         {
-                            <span>Deleted</span>
+                            <span>@Text["Admin.Users.Deleted"]</span>
                         }
                         else if (isBlocked)
                         {
-                            <span>Blocked</span>
+                            <span>@Text["Admin.Users.Blocked"]</span>
                         }
                         else
                         {
-                            <span>Active</span>
+                            <span>@Text["Admin.Users.Active"]</span>
                         }
-                        · version @user.Version
+                        · @Text["Admin.Common.Version", user.Version]
                     </p>
                     <h2>
                         @(user.UserName
@@ -185,30 +191,34 @@ else
                     </h2>
                     <dl class="hello-session-meta">
                         <div>
-                            <dt>User id</dt>
+                            <dt>@Text["Admin.Users.UserId"]</dt>
                             <dd>@user.Id</dd>
                         </div>
                         <div>
-                            <dt>Flags</dt>
+                            <dt>@Text["Admin.Users.Flags"]</dt>
                             <dd>@user.Flags</dd>
                         </div>
                         @if (!string.IsNullOrWhiteSpace(user.Email))
                         {
                             <div>
-                                <dt>Email</dt>
+                                <dt>@Text["Field.Email"]</dt>
                                 <dd>
                                     @user.Email
-                                    @(user.EmailConfirmed ? "(confirmed)" : "(unconfirmed)")
+                                    @(user.EmailConfirmed
+                                        ? Text["Admin.Users.ConfirmedParenthetical"]
+                                        : Text["Admin.Users.UnconfirmedParenthetical"])
                                 </dd>
                             </div>
                         }
                         @if (!string.IsNullOrWhiteSpace(user.Phone))
                         {
                             <div>
-                                <dt>Phone</dt>
+                                <dt>@Text["Field.Phone"]</dt>
                                 <dd>
                                     @user.Phone
-                                    @(user.PhoneConfirmed ? "(confirmed)" : "(unconfirmed)")
+                                    @(user.PhoneConfirmed
+                                        ? Text["Admin.Users.ConfirmedParenthetical"]
+                                        : Text["Admin.Users.UnconfirmedParenthetical"])
                                 </dd>
                             </div>
                         }
@@ -220,13 +230,13 @@ else
                             </div>
                         }
                         <div>
-                            <dt>Created</dt>
+                            <dt>@Text["Admin.Users.Created"]</dt>
                             <dd>@user.CreatedAt.ToLocalTime()</dd>
                         </div>
                     </dl>
 
                     <section>
-                        <h3>Roles</h3>
+                        <h3>@Text["Admin.Roles.Title"]</h3>
                         @if (Model.UserRoles.TryGetValue(
                                 user.Id,
                                 out var assignedRoles)
@@ -252,7 +262,7 @@ else
                                             <input type="hidden" asp-for="Status" />
                                             <button class="hello-button hello-button-danger"
                                                     type="submit">
-                                                Remove
+                                                @Text["Common.Remove"]
                                             </button>
                                         </form>
                                     </li>
@@ -261,7 +271,7 @@ else
                         }
                         else
                         {
-                            <p class="hello-muted">No roles assigned.</p>
+                            <p class="hello-muted">@Text["Admin.Users.NoRoles"]</p>
                         }
 
                         <form method="post"
@@ -274,11 +284,11 @@ else
                             <input type="hidden" asp-for="Search" />
                             <input type="hidden" asp-for="Status" />
                             <label>
-                                Role id
+                                @Text["Admin.Roles.RoleId"]
                                 <input name="roleId" required />
                             </label>
                             <button class="hello-button" type="submit">
-                                Assign role
+                                @Text["Admin.Roles.Assign"]
                             </button>
                         </form>
                     </section>
@@ -296,7 +306,7 @@ else
                             <input type="hidden" asp-for="Search" />
                             <input type="hidden" asp-for="Status" />
                             <button class="hello-button" type="submit">
-                                Restore
+                                @Text["Admin.Users.Restore"]
                             </button>
                         </form>
                     }
@@ -313,7 +323,7 @@ else
                                 <input type="hidden" asp-for="Search" />
                                 <input type="hidden" asp-for="Status" />
                                 <button class="hello-button" type="submit">
-                                    Unblock
+                                    @Text["Admin.Users.Unblock"]
                                 </button>
                             </form>
                         }
@@ -330,16 +340,16 @@ else
                                 <input type="hidden" asp-for="Search" />
                                 <input type="hidden" asp-for="Status" />
                                 <label>
-                                    Block until (optional)
+                                    @Text["Admin.Users.BlockUntilOptional"]
                                     <input type="datetime-local" name="blockedUntil" />
                                 </label>
                                 <label>
-                                    Reason (optional)
+                                    @Text["Admin.Users.ReasonOptional"]
                                     <input name="reason" maxlength="512" />
                                 </label>
                                 <button class="hello-button hello-button-danger"
                                         type="submit">
-                                    Block
+                                    @Text["Admin.Users.Block"]
                                 </button>
                             </form>
                         }
@@ -353,7 +363,7 @@ else
                             <input type="hidden" asp-for="Status" />
                             <button class="hello-button hello-button-danger"
                                     type="submit">
-                                Revoke sessions
+                                @Text["Admin.Users.RevokeSessions"]
                             </button>
                         </form>
 
@@ -368,12 +378,12 @@ else
                             <input type="hidden" asp-for="Search" />
                             <input type="hidden" asp-for="Status" />
                             <label>
-                                Deletion reason (optional)
+                                @Text["Admin.Users.DeletionReasonOptional"]
                                 <input name="reason" maxlength="512" />
                             </label>
                             <button class="hello-button hello-button-danger"
                                     type="submit">
-                                Delete
+                                @Text["Admin.Common.Delete"]
                             </button>
                         </form>
                     }
@@ -392,7 +402,7 @@ else
            asp-route-Status="@Model.Status"
            asp-route-CursorCreatedAt="@nextCursor.CreatedAt.ToString("O")"
            asp-route-CursorId="@nextCursor.Id">
-            Next page
+            @Text["Admin.Common.NextPage"]
         </a>
     </p>
 }

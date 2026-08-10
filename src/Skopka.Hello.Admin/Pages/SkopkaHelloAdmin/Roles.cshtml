@@ -1,17 +1,16 @@
 @page
 @model RolesModel
 @{
-    ViewData["Title"] = "Role administration";
+    ViewData["Title"] = Text["Admin.Roles.PageTitle"];
 }
 
 <section class="hello-page-heading">
-    <p class="hello-eyebrow">Administration</p>
-    <h1>Roles</h1>
+    <p class="hello-eyebrow">@Text["Admin.Common.Administration"]</p>
+    <h1>@Text["Admin.Roles.Title"]</h1>
     <p class="hello-muted">
-        Browse the bounded role catalog and manage roles. Every mutation
-        requires a fresh verification code sent to your confirmed contact.
+        @Text["Admin.Roles.Instructions"]
     </p>
-    <p><a asp-page="/SkopkaHelloAdmin/Users">Manage users</a></p>
+    <p><a asp-page="/SkopkaHelloAdmin/Users">@Text["Admin.Roles.ManageUsers"]</a></p>
 </section>
 
 @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
@@ -27,50 +26,53 @@
 
 <section class="hello-card">
     <form method="get" class="hello-form">
-        <label for="admin-role-search">Search</label>
+        <label for="admin-role-search">@Text["Admin.Common.Search"]</label>
         <input id="admin-role-search"
                asp-for="Search"
                autocomplete="off"
-               placeholder="Role name" />
-        <button class="hello-button" type="submit">Apply filter</button>
+               placeholder="@Text["Admin.Roles.RoleName"]" />
+        <button class="hello-button" type="submit">@Text["Admin.Common.ApplyFilter"]</button>
     </form>
 </section>
 
 <section class="hello-card">
-    <p class="hello-eyebrow">New role</p>
+    <p class="hello-eyebrow">@Text["Admin.Roles.NewRole"]</p>
     <form method="post" asp-page-handler="BeginAction" class="hello-form">
         <input type="hidden" name="action" value="create" />
         <input type="hidden" asp-for="Search" />
         <label>
-            Name
+            @Text["Admin.Common.Name"]
             <input name="name" maxlength="256" required />
         </label>
         <label>
-            Description
+            @Text["Admin.Common.Description"]
             <textarea name="description" maxlength="1024"></textarea>
         </label>
         <label>
-            Parent role id (optional)
+            @Text["Admin.Roles.ParentRoleIdOptional"]
             <input name="parentId" inputmode="text" />
         </label>
-        <button class="hello-button" type="submit">Create role</button>
+        <button class="hello-button" type="submit">@Text["Admin.Roles.Create"]</button>
     </form>
 </section>
 
 @if (Model.PendingAction is { } pending)
 {
     <section class="hello-card" aria-labelledby="admin-role-verification-title">
-        <p class="hello-eyebrow">Step-up verification</p>
+        <p class="hello-eyebrow">@Text["Admin.Common.StepUp"]</p>
         <h2 id="admin-role-verification-title">
-            @RolesModel.GetActionLabel(pending.Action)
+            @Text[RolesModel.GetActionTextKey(pending.Action)]
         </h2>
         <p>
-            Enter the one-time code sent to your confirmed
-            @(pending.DeliveryChannel?.ToString().ToLowerInvariant()
-              ?? "contact").
+            @Text["Admin.Common.EnterCode",
+                pending.DeliveryChannel == HelloDeliveryChannel.Sms
+                    ? Text["Field.PhoneNumber"]
+                    : pending.DeliveryChannel == HelloDeliveryChannel.Email
+                        ? Text["Field.EmailAddress"]
+                        : Text["Admin.Common.Contact"]]
             @if (pending.ExpiresAt is { } expiresAt)
             {
-                <span>It expires at @expiresAt.ToLocalTime().</span>
+                <span>@Text["Admin.Common.ExpiresAt", expiresAt.ToLocalTime()]</span>
             }
         </p>
 
@@ -99,14 +101,15 @@
                    value="@pending.Parameters.ParentId" />
             <input type="hidden" asp-for="Search" />
 
-            <label for="admin-role-verification-code">Verification code</label>
+            <label for="admin-role-verification-code">@Text["Field.VerificationCode"]</label>
             <input id="admin-role-verification-code"
                    name="verificationCode"
                    inputmode="numeric"
                    autocomplete="one-time-code"
                    required />
             <button class="hello-button hello-button-danger" type="submit">
-                Confirm @RolesModel.GetActionLabel(pending.Action).ToLowerInvariant()
+                @Text["Admin.Common.ConfirmAction",
+                    Text[RolesModel.GetActionTextKey(pending.Action)]]
             </button>
         </form>
     </section>
@@ -115,7 +118,7 @@
 @if (Model.Roles.Count == 0)
 {
     <section class="hello-card">
-        <p>No roles matched the current filter.</p>
+        <p>@Text["Admin.Roles.None"]</p>
     </section>
 }
 else
@@ -125,19 +128,19 @@ else
         {
             <article class="hello-card">
                 <div>
-                    <p class="hello-eyebrow">Version @role.Version</p>
+                    <p class="hello-eyebrow">@Text["Admin.Common.Version", role.Version]</p>
                     <h2>@role.Name</h2>
                     <dl class="hello-session-meta">
                         <div>
-                            <dt>Role id</dt>
+                            <dt>@Text["Admin.Roles.RoleId"]</dt>
                             <dd>@role.Id</dd>
                         </div>
                         <div>
-                            <dt>Description</dt>
+                            <dt>@Text["Admin.Common.Description"]</dt>
                             <dd>@(role.Description ?? "—")</dd>
                         </div>
                         <div>
-                            <dt>Parent role id</dt>
+                            <dt>@Text["Admin.Roles.ParentRoleId"]</dt>
                             <dd>@(role.ParentId?.ToString("D") ?? "—")</dd>
                         </div>
                     </dl>
@@ -153,22 +156,22 @@ else
                            value="@role.Version" />
                     <input type="hidden" asp-for="Search" />
                     <label>
-                        Name
+                        @Text["Admin.Common.Name"]
                         <input name="name"
                                value="@role.Name"
                                maxlength="256"
                                required />
                     </label>
                     <label>
-                        Description
+                        @Text["Admin.Common.Description"]
                         <textarea name="description"
                                   maxlength="1024">@role.Description</textarea>
                     </label>
                     <label>
-                        Parent role id (optional)
+                        @Text["Admin.Roles.ParentRoleIdOptional"]
                         <input name="parentId" value="@role.ParentId" />
                     </label>
-                    <button class="hello-button" type="submit">Update</button>
+                    <button class="hello-button" type="submit">@Text["Admin.Common.Update"]</button>
                 </form>
 
                 <form method="post" asp-page-handler="BeginAction">
@@ -180,7 +183,7 @@ else
                     <input type="hidden" asp-for="Search" />
                     <button class="hello-button hello-button-danger"
                             type="submit">
-                        Delete
+                        @Text["Admin.Common.Delete"]
                     </button>
                 </form>
             </article>
@@ -195,7 +198,7 @@ else
            asp-route-search="@Model.Search"
            asp-route-cursorCreatedAt="@next.CreatedAt.ToString("O")"
            asp-route-cursorId="@next.Id">
-            Next page
+            @Text["Admin.Common.NextPage"]
         </a>
     </p>
 }

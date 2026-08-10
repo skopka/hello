@@ -1,14 +1,14 @@
 @page
 @model ExternalCompleteModel
 @{
-    ViewData["Title"] = "Complete external sign-in";
+    ViewData["Title"] = Text["ExternalComplete.PageTitle"];
 }
 
 <section class="hello-card hello-auth-card">
-    <p class="hello-eyebrow">External identity</p>
-    <h1>Complete sign-in</h1>
+    <p class="hello-eyebrow">@Text["ExternalComplete.Eyebrow"]</p>
+    <h1>@Text["ExternalComplete.Title"]</h1>
     <p class="hello-muted">
-        Continue on this site to finish the validated provider response.
+        @Text["ExternalComplete.Instructions"]
     </p>
 
     <div asp-validation-summary="ModelOnly"
@@ -17,7 +17,7 @@
 
     <form method="post" class="hello-form">
         <button class="hello-button" type="submit" autofocus>
-            Continue securely
+            @Text["ExternalComplete.Action"]
         </button>
     </form>
 
@@ -25,7 +25,7 @@
           asp-page-handler="Cancel"
           class="hello-card-footer">
         <button class="hello-link-button" type="submit">
-            Cancel and return to sign in
+            @Text["Common.CancelToSignIn"]
         </button>
     </form>
 </section>

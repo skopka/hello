@@ -6,7 +6,8 @@ namespace Skopka.Hello.UI.Pages;
 
 public sealed class ConfirmPhoneModel(
     IHelloUiApplication application,
-    IIdentityNormalizer normalizer)
+    IIdentityNormalizer normalizer,
+    IHelloUiLocalizer text)
     : PageModel
 {
     [BindProperty(SupportsGet = true)]
@@ -37,7 +38,7 @@ public sealed class ConfirmPhoneModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "This phone confirmation link is incomplete or invalid.");
+                text["ConfirmPhone.InvalidLink"]);
         }
 
         if (!ModelState.IsValid)
@@ -53,7 +54,10 @@ public sealed class ConfirmPhoneModel(
             cancellationToken);
         if (!result.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors,
+                text);
             return Page();
         }
 

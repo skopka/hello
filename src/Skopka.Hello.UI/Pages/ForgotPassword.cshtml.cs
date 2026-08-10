@@ -5,7 +5,8 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace Skopka.Hello.UI.Pages;
 
 public sealed class ForgotPasswordModel(
-    IHelloUiApplication application)
+    IHelloUiApplication application,
+    IHelloUiLocalizer text)
     : PageModel
 {
     [BindProperty]
@@ -31,7 +32,10 @@ public sealed class ForgotPasswordModel(
             cancellationToken);
         if (!result.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors);
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors,
+                text);
             return Page();
         }
 
@@ -41,9 +45,9 @@ public sealed class ForgotPasswordModel(
 
     public sealed class InputModel
     {
-        [Required]
-        [EmailAddress]
-        [StringLength(320)]
+        [Required(ErrorMessage = "Validation.Required")]
+        [EmailAddress(ErrorMessage = "Validation.EmailAddress")]
+        [StringLength(320, ErrorMessage = "Validation.StringLength")]
         public string Email { get; set; } = string.Empty;
     }
 }

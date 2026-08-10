@@ -12,6 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Remove="Localization\Resources\*.json" />
     <EmbeddedResource Include="Localization\Resources\*.json"
                       LogicalName="Skopka.Hello.UI.Localization.%(Filename)%(Extension)" />
   </ItemGroup>

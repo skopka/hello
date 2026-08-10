@@ -16,5 +16,8 @@
     <Content Remove="Localization\Resources\*.json" />
     <EmbeddedResource Include="Localization\Resources\*.json"
                       LogicalName="Skopka.Hello.Admin.Localization.%(Filename)%(Extension)" />
+    <None Update="THIRD-PARTY-NOTICES.md"
+          Pack="true"
+          PackagePath="\" />
   </ItemGroup>
 </Project>

@@ -18,6 +18,7 @@ public sealed class SkopkaHelloUiOptionsTests
 
         Assert.Equal(HelloUiPages.All, options.EnabledPages);
         Assert.Null(options.AuthenticatedRedirectPath);
+        Assert.Null(options.ApplicationHomeUrl);
     }
 
     [Fact]
@@ -113,6 +114,40 @@ public sealed class SkopkaHelloUiOptionsTests
                 options.AuthenticatedRedirectPath =
                     "https://example.test/admin";
             }));
+    }
+
+    [Theory]
+    [InlineData("home")]
+    [InlineData("http://example.test/")]
+    [InlineData("https://user:password@example.test/")]
+    [InlineData("https://example.test/?source=account")]
+    [InlineData("https://example.test/#account")]
+    [InlineData("https://example.test/../account")]
+    [InlineData("javascript:alert(1)")]
+    public void ValidateRejectsUnsafeApplicationHomeUrl(string homeUrl)
+    {
+        var options = new SkopkaHelloUiOptions
+        {
+            ApplicationHomeUrl = homeUrl,
+        };
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Theory]
+    [InlineData("/app")]
+    [InlineData("https://home.example.test/")]
+    [InlineData("https://home.example.test:8443/account")]
+    public void ValidateAllowsSafeApplicationHomeUrl(string homeUrl)
+    {
+        var options = new SkopkaHelloUiOptions
+        {
+            ApplicationHomeUrl = homeUrl,
+        };
+
+        options.Validate();
+
+        Assert.Equal(homeUrl, options.ApplicationHomeUrl);
     }
 
     [Fact]

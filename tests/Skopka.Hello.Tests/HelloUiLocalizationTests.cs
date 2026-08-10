@@ -24,6 +24,7 @@ public sealed class HelloUiLocalizationTests
 
         Assert.False(options.Localization.Enabled);
         Assert.Equal("en", options.Localization.DefaultCulture);
+        Assert.True(options.Localization.UseAcceptLanguageHeader);
         Assert.Equal(
             ["en", "ru"],
             options.Localization.SupportedCultures
@@ -144,6 +145,29 @@ public sealed class HelloUiLocalizationTests
         var fallback = await filter.ResolveCultureAsync(context);
 
         Assert.Equal("en", fallback.Name);
+    }
+
+    [Fact]
+    public async Task CultureResolutionCanIgnoreAcceptLanguageHeader()
+    {
+        var options = new SkopkaHelloUiOptions();
+        options.Localization.Enabled = true;
+        options.Localization.DefaultCulture = "ru";
+        options.Localization.UseAcceptLanguageHeader = false;
+        options.Validate();
+        var filter = new HelloUiRequestCultureFilter(options);
+        var context = new DefaultHttpContext();
+        context.Request.Headers.AcceptLanguage = "en-US, en;q=0.8";
+
+        var fromDefault = await filter.ResolveCultureAsync(context);
+
+        Assert.Equal("ru", fromDefault.Name);
+
+        context.Request.Headers.Cookie =
+            $"{options.Localization.CultureCookieName}=en";
+        var fromCookie = await filter.ResolveCultureAsync(context);
+
+        Assert.Equal("en", fromCookie.Name);
     }
 
     [Fact]

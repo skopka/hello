@@ -27,6 +27,8 @@ public sealed class SkopkaHelloUiOptions
 
     public string? AuthenticatedRedirectPath { get; set; }
 
+    public string? ApplicationHomeUrl { get; set; }
+
     public SkopkaHelloUiLocalizationOptions Localization { get; } =
         new();
 
@@ -72,6 +74,13 @@ public sealed class SkopkaHelloUiOptions
         {
             throw new InvalidOperationException(
                 "AuthenticatedRedirectPath must be a local absolute path without an authority, query, fragment, escaping, whitespace or dot segments.");
+        }
+
+        if (ApplicationHomeUrl is not null
+            && !IsSafeApplicationHomeUrl(ApplicationHomeUrl))
+        {
+            throw new InvalidOperationException(
+                "ApplicationHomeUrl must be a local absolute path or an absolute HTTPS URL without credentials, a query, a fragment or unsafe path segments.");
         }
 
         ArgumentException.ThrowIfNullOrWhiteSpace(
@@ -192,6 +201,39 @@ public sealed class SkopkaHelloUiOptions
             && !path.Any(character =>
                 Char.IsWhiteSpace(character)
                 || Char.IsControl(character));
+
+    private static bool IsSafeApplicationHomeUrl(string value)
+    {
+        if (IsLocalAbsolutePath(value))
+        {
+            return true;
+        }
+
+        if (value.Length > 2048
+            || value.Any(character =>
+                Char.IsWhiteSpace(character)
+                || Char.IsControl(character))
+            || value.Contains('\\')
+            || value.Contains('%')
+            || value.Contains("/./", StringComparison.Ordinal)
+            || value.Contains("/../", StringComparison.Ordinal)
+            || value.EndsWith("/.", StringComparison.Ordinal)
+            || value.EndsWith("/..", StringComparison.Ordinal)
+            || !Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || !String.Equals(
+                uri.Scheme,
+                Uri.UriSchemeHttps,
+                StringComparison.OrdinalIgnoreCase)
+            || String.IsNullOrWhiteSpace(uri.Host)
+            || !String.IsNullOrEmpty(uri.UserInfo)
+            || !String.IsNullOrEmpty(uri.Query)
+            || !String.IsNullOrEmpty(uri.Fragment))
+        {
+            return false;
+        }
+
+        return IsLocalAbsolutePath(uri.AbsolutePath);
+    }
 
     private static string[] GetUiRoutes(
         Skopka.Hello.HelloUiRoutePaths routes)

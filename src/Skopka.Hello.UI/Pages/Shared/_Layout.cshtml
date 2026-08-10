@@ -35,6 +35,12 @@
             <span class="hello-brand">Skopka.Hello</span>
         }
         <nav aria-label="@Text["Layout.AccountNavigation"]">
+            @if (UiOptions.ApplicationHomeUrl is not null)
+            {
+                <a href="@UiOptions.ApplicationHomeUrl">
+                    @Text["Layout.ReturnToApplication"]
+                </a>
+            }
             @if (User.Identity?.IsAuthenticated == true)
             {
                 @if ((UiOptions.EnabledPages & HelloUiPages.Account) != 0)

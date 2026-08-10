@@ -1,0 +1,139 @@
+@inject SkopkaHelloUiOptions UiOptions
+@inject HelloUiRoutePaths HelloRoutes
+@{
+    var adminSection = ViewData["AdminSection"] as string;
+}
+<!doctype html>
+<html lang="@System.Globalization.CultureInfo.CurrentUICulture.Name">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] - Skopka.Hello</title>
+    @if (UiOptions.BuiltInStylesEnabled)
+    {
+        <link rel="stylesheet"
+              href="@(Context.Request.PathBase
+                  + "/_content/Skopka.Hello.Admin/lib/bootstrap/css/bootstrap.min.css")"
+              asp-append-version="true" />
+        <link rel="stylesheet"
+              href="@(Context.Request.PathBase
+                  + "/_content/Skopka.Hello.Admin/css/admin.css")"
+              asp-append-version="true" />
+    }
+    @if (UiOptions.CustomCssFilePath is not null)
+    {
+        <link rel="stylesheet"
+              href="@UiOptions.CustomCssRequestPath" />
+    }
+</head>
+<body class="admin-body">
+    <header class="admin-topbar sticky-top">
+        <div class="container-fluid px-3 px-lg-4">
+            <div class="admin-topbar-content">
+                <a class="admin-brand"
+                   asp-page="/SkopkaHelloAdmin/Users">
+                    <span>Skopka.Hello</span>
+                    <span class="admin-brand-badge">
+                        @Text["Admin.Common.Administration"]
+                    </span>
+                </a>
+
+                <nav class="admin-navigation"
+                     aria-label="@Text["Admin.Common.Administration"]">
+                    <a class="admin-nav-link @(adminSection == "users" ? "active" : null)"
+                       asp-page="/SkopkaHelloAdmin/Users">
+                        @Text["Admin.Users.Title"]
+                    </a>
+                    <a class="admin-nav-link @(adminSection == "roles" ? "active" : null)"
+                       asp-page="/SkopkaHelloAdmin/Roles">
+                        @Text["Admin.Roles.Title"]
+                    </a>
+                    @if (UiOptions.ApplicationHomeUrl is not null)
+                    {
+                        <a class="admin-nav-link"
+                           href="@UiOptions.ApplicationHomeUrl">
+                            @Text["Layout.ReturnToApplication"]
+                        </a>
+                    }
+                    @if ((UiOptions.EnabledPages & HelloUiPages.Account) != 0)
+                    {
+                        <a class="admin-nav-link"
+                           asp-page="/SkopkaHello/Account/Index">
+                            @Text["Layout.Account"]
+                        </a>
+                        <form method="post"
+                              asp-page="/SkopkaHello/Account/Index"
+                              asp-page-handler="Logout">
+                            <button class="btn btn-outline-secondary btn-sm"
+                                    type="submit">
+                                @Text["Layout.SignOut"]
+                            </button>
+                        </form>
+                    }
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <main class="admin-main container-fluid px-3 px-lg-4 py-4">
+        @RenderBody()
+    </main>
+
+    @if (UiOptions.Localization.Enabled
+        && UiOptions.Localization.SupportedCultures.Count > 1)
+    {
+        <footer class="admin-footer">
+            <div class="container-fluid px-3 px-lg-4">
+                <form method="post"
+                      action="@(Context.Request.PathBase
+                          + HelloRoutes.CulturePath)"
+                      asp-antiforgery="true"
+                      class="admin-language-form">
+                    <label class="form-label mb-0"
+                           for="admin-culture">
+                        @Text["Layout.Language"]
+                    </label>
+                    <select class="form-select form-select-sm"
+                            id="admin-culture"
+                            name="culture">
+                        @foreach (var culture in
+                            UiOptions.Localization.SupportedCultures)
+                        {
+                            if (String.Equals(
+                                culture.Name,
+                                System.Globalization.CultureInfo
+                                    .CurrentUICulture.Name,
+                                StringComparison.OrdinalIgnoreCase))
+                            {
+                                <option value="@culture.Name" selected>
+                                    @culture.DisplayName
+                                </option>
+                            }
+                            else
+                            {
+                                <option value="@culture.Name">
+                                    @culture.DisplayName
+                                </option>
+                            }
+                        }
+                    </select>
+                    <input type="hidden"
+                           name="returnUrl"
+                           value="@(Context.Request.PathBase
+                               + Context.Request.Path
+                               + Context.Request.QueryString)" />
+                    <button class="btn btn-outline-secondary btn-sm"
+                            type="submit">
+                        @Text["Layout.ChangeLanguage"]
+                    </button>
+                </form>
+            </div>
+        </footer>
+    }
+
+    <script src="@(Context.Request.PathBase
+        + "/_content/Skopka.Hello.Admin/lib/bootstrap/js/bootstrap.bundle.min.js")"
+            asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

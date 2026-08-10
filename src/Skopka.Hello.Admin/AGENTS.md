@@ -19,3 +19,9 @@ admin policy, protected policy roles cannot be renamed or deleted, and an
 actor cannot remove their own protected role. Membership changes revoke the
 target user's sessions and must report a committed-mutation cleanup failure
 without inviting a replay.
+
+The Admin Razor UI owns a separate full-width layout and locally packaged
+Bootstrap assets. Keep third-party assets versioned with their license, never
+load them from a CDN, and link host custom CSS after the built-in Admin styles.
+Security-sensitive forms remain server-rendered and antiforgery-protected;
+visual collapsing must not change their authorization or step-up boundaries.

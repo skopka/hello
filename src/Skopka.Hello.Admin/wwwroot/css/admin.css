@@ -1,0 +1,387 @@
+:root {
+  --skopka-admin-background:
+    var(--skopka-hello-color-background, #f4f6f9);
+  --skopka-admin-surface:
+    var(--skopka-hello-color-surface, #ffffff);
+  --skopka-admin-border:
+    var(--skopka-hello-color-border, #e3e7ee);
+  --skopka-admin-text:
+    var(--skopka-hello-color-text, #202938);
+  --skopka-admin-muted:
+    var(--skopka-hello-color-muted, #697386);
+  --skopka-admin-primary:
+    var(--skopka-hello-color-primary, #5b5bd6);
+  --skopka-admin-primary-dark:
+    var(--skopka-hello-color-primary-hover, #4747bd);
+  --skopka-admin-radius:
+    var(--skopka-hello-radius, 0.75rem);
+  --skopka-admin-shadow: 0 0.25rem 1.25rem rgb(26 38 61 / 7%);
+}
+
+.admin-body {
+  min-width: 20rem;
+  min-height: 100vh;
+  background: var(--skopka-admin-background);
+  color: var(--skopka-admin-text);
+}
+
+.admin-topbar {
+  z-index: 1020;
+  border-bottom: 1px solid var(--skopka-admin-border);
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 0.125rem 0.75rem rgb(26 38 61 / 4%);
+  backdrop-filter: blur(0.75rem);
+}
+
+.admin-topbar-content {
+  display: flex;
+  min-height: 3.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.admin-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--skopka-admin-text);
+  font-size: 1rem;
+  font-weight: 750;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.admin-brand:hover {
+  color: var(--skopka-admin-primary);
+}
+
+.admin-brand-badge {
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: #ededff;
+  color: var(--skopka-admin-primary-dark);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-navigation {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.admin-navigation form {
+  margin-left: 0.35rem;
+}
+
+.admin-nav-link {
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.5rem;
+  color: var(--skopka-admin-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.admin-nav-link:hover,
+.admin-nav-link.active {
+  background: #ededff;
+  color: var(--skopka-admin-primary-dark);
+}
+
+.admin-main {
+  width: 100%;
+  max-width: none;
+  min-height: calc(100vh - 7.5rem);
+}
+
+.min-w-0 {
+  min-width: 0;
+}
+
+.admin-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-page-header h1 {
+  margin-bottom: 0.35rem;
+  font-size: clamp(1.65rem, 2.5vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.admin-page-header p {
+  max-width: 65rem;
+  margin: 0;
+  color: var(--skopka-admin-muted);
+}
+
+.admin-eyebrow {
+  margin-bottom: 0.35rem;
+  color: var(--skopka-admin-primary);
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.admin-card {
+  border: 1px solid var(--skopka-admin-border);
+  border-radius: var(--skopka-admin-radius);
+  background: var(--skopka-admin-surface);
+  box-shadow: var(--skopka-admin-shadow);
+}
+
+.admin-filter-card .card-body,
+.admin-create-card .card-body {
+  padding: 1rem;
+}
+
+.admin-user-card,
+.admin-role-card {
+  overflow: hidden;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.admin-user-card:hover,
+.admin-role-card:hover {
+  border-color: #cfd5df;
+  box-shadow: 0 0.45rem 1.5rem rgb(26 38 61 / 10%);
+}
+
+.admin-user-title,
+.admin-role-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.admin-subtitle {
+  color: var(--skopka-admin-muted);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.admin-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.admin-meta-item {
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #edf0f4;
+  border-radius: 0.55rem;
+  background: #fafbfc;
+}
+
+.admin-meta-label {
+  margin-bottom: 0.2rem;
+  color: var(--skopka-admin-muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.admin-meta-value {
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.admin-manage-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--skopka-admin-border);
+}
+
+.admin-panel-section {
+  height: 100%;
+  padding: 1rem;
+  border: 1px solid var(--skopka-admin-border);
+  border-radius: 0.65rem;
+  background: #fcfcfd;
+}
+
+.admin-panel-title {
+  margin-bottom: 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.admin-detail-list {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.admin-detail-list > div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.4fr) minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.admin-detail-list > div:last-child {
+  border-bottom: 0;
+}
+
+.admin-detail-list dt {
+  color: var(--skopka-admin-muted);
+  font-weight: 600;
+}
+
+.admin-detail-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-role-membership-list {
+  margin-bottom: 0.85rem;
+}
+
+.admin-role-membership-list .list-group-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.65rem;
+  background: transparent;
+  font-size: 0.8rem;
+}
+
+.admin-action-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-action-block {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.admin-action-block:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.admin-danger-panel {
+  border-color: #f2c7c7;
+  background: #fffafa;
+}
+
+.admin-role-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.admin-role-card .card-body {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+}
+
+.admin-role-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 1rem;
+}
+
+.admin-validation.validation-summary-valid {
+  display: none;
+}
+
+.admin-language-form {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.admin-language-form .form-select {
+  width: auto;
+  min-width: 9rem;
+}
+
+.admin-footer {
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--skopka-admin-border);
+  background: var(--skopka-admin-surface);
+  color: var(--skopka-admin-muted);
+  font-size: 0.8rem;
+}
+
+.admin-body .btn-primary {
+  --bs-btn-bg: var(--skopka-admin-primary);
+  --bs-btn-border-color: var(--skopka-admin-primary);
+  --bs-btn-hover-bg: var(--skopka-admin-primary-dark);
+  --bs-btn-hover-border-color: var(--skopka-admin-primary-dark);
+}
+
+.admin-body .form-control:focus,
+.admin-body .form-select:focus {
+  border-color: #9898e9;
+  box-shadow: 0 0 0 0.2rem rgb(91 91 214 / 15%);
+}
+
+@media (max-width: 74rem) {
+  .admin-meta-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-role-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 48rem) {
+  .admin-topbar-content,
+  .admin-page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-topbar-content {
+    gap: 0.65rem;
+    padding: 0.75rem 0;
+  }
+
+  .admin-navigation {
+    flex-wrap: wrap;
+  }
+
+  .admin-page-header {
+    gap: 0.85rem;
+  }
+
+  .admin-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-detail-list > div {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+
+  .admin-language-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-language-form .form-select {
+    width: 100%;
+  }
+}

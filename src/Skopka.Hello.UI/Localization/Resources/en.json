@@ -2,6 +2,7 @@
   "culture": "en",
   "texts": {
     "Layout.AccountNavigation": "Account navigation",
+    "Layout.ReturnToApplication": "Return to application",
     "Layout.Account": "Account",
     "Layout.Sessions": "Sessions",
     "Layout.SignInMethods": "Sign-in methods",

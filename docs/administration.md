@@ -100,6 +100,7 @@ Use different role names when read, state-management and deletion privileges
 must be separated. Policy names must be distinct. The Razor route is composed
 from the Hello UI prefix plus the admin API prefix, so the defaults expose API
 under `/admin` and UI under `/hello/admin/users` and `/hello/admin/roles`.
+The protected `/hello/admin` entry route redirects to the user list.
 Every role mutation, including membership assignment and removal, requires the
 highest `DeletePolicyName`. This prevents an administrator limited to ordinary
 user management from granting themselves a higher authorization role.

@@ -17,6 +17,7 @@
     "Admin.Common.ActionCompleted": "Действие «{0}» выполнено.",
     "Admin.Common.Version": "Версия {0}",
     "Admin.Common.NextPage": "Следующая страница",
+    "Admin.Common.Manage": "Управление",
 
     "Admin.Roles.PageTitle": "Администрирование ролей",
     "Admin.Roles.Title": "Роли",
@@ -32,6 +33,7 @@
     "Admin.Roles.Delete": "Удалить роль",
     "Admin.Roles.Assign": "Назначить роль",
     "Admin.Roles.Remove": "Снять роль",
+    "Admin.Roles.Edit": "Изменить роль",
     "Admin.Roles.None": "Роли, соответствующие текущему фильтру, не найдены.",
 
     "Admin.Users.PageTitle": "Администрирование пользователей",
@@ -54,6 +56,9 @@
     "Admin.Users.UnconfirmedParenthetical": "(не подтверждено)",
     "Admin.Users.Created": "Создан",
     "Admin.Users.NoRoles": "Роли не назначены.",
+    "Admin.Users.ProfileDetails": "Данные профиля",
+    "Admin.Users.RoleMembership": "Назначенные роли",
+    "Admin.Users.AccountActions": "Действия с аккаунтом",
     "Admin.Users.Restore": "Восстановить",
     "Admin.Users.Unblock": "Разблокировать",
     "Admin.Users.Block": "Заблокировать",

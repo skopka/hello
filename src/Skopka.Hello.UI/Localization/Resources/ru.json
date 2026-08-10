@@ -2,6 +2,7 @@
   "culture": "ru",
   "texts": {
     "Layout.AccountNavigation": "Навигация по аккаунту",
+    "Layout.ReturnToApplication": "Вернуться в приложение",
     "Layout.Account": "Аккаунт",
     "Layout.Sessions": "Сессии",
     "Layout.SignInMethods": "Способы входа",

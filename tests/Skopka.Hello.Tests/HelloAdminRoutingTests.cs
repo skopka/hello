@@ -43,6 +43,7 @@ public sealed class HelloAdminRoutingTests
         Assert.Contains(
             "/management/users/{userId:guid}/actions/{action}/challenge",
             routes);
+        Assert.Contains("/identity/management", routes);
         Assert.Contains("/identity/management/users", routes);
         Assert.DoesNotContain("/hello/admin/users", routes);
 
@@ -147,6 +148,7 @@ public sealed class HelloAdminRoutingTests
 
         Assert.DoesNotContain("/hello/admin/users", routes);
         Assert.DoesNotContain("/hello/admin/roles", routes);
+        Assert.DoesNotContain("/hello/admin", routes);
         Assert.DoesNotContain("/SkopkaHelloAdmin/Users", routes);
         Assert.DoesNotContain("/SkopkaHelloAdmin/Roles", routes);
         Assert.DoesNotContain("/Users", routes);

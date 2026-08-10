@@ -62,7 +62,8 @@ internal sealed class HelloUiRequestCultureFilter(
             return selected;
         }
 
-        if (localization.Enabled)
+        if (localization.Enabled
+            && localization.UseAcceptLanguageHeader)
         {
             var headerResult = await AcceptLanguageProvider
                 .DetermineProviderCultureResult(httpContext);

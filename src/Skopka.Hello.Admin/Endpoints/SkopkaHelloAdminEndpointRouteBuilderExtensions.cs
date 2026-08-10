@@ -31,6 +31,24 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
                 "An admin API query route collides with an existing endpoint.");
         }
 
+        if (options.RazorUiEnabled)
+        {
+            var uiRoutes = endpoints.ServiceProvider
+                .GetRequiredService<HelloAdminRoutePaths>();
+            if (HasRouteCollision(endpoints, uiRoutes.RootPath))
+            {
+                throw new InvalidOperationException(
+                    "The admin UI root route collides with an existing endpoint.");
+            }
+
+            endpoints.MapGet(
+                    uiRoutes.RootPath,
+                    () => Results.Redirect(uiRoutes.UsersPath))
+                .RequireAuthorization(
+                    Skopka.Hello.UI.HelloUiDefaults.AuthorizationPolicy)
+                .ExcludeFromDescription();
+        }
+
         var group = endpoints
             .MapGroup(options.ApiPathPrefix)
             .RequireAuthorization()

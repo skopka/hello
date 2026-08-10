@@ -102,14 +102,16 @@ outside Razor page models.
 
 Localization is opt-in for package consumers. The package includes complete
 English and Russian catalogs. Culture selection uses a protected UI preference
-cookie, then `Accept-Language`, then the configured default; it does not add a
-culture segment to the stable Hello routes.
+cookie, then (when enabled) `Accept-Language`, then the configured default; it
+does not add a culture segment to the stable Hello routes.
 
 ```csharp
 services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
 {
+    options.ApplicationHomeUrl = "https://app.example.com/";
     options.Localization.Enabled = true;
     options.Localization.DefaultCulture = "ru";
+    options.Localization.UseAcceptLanguageHeader = false;
 
     options.Localization.AddCulture("en", "English");
     options.Localization.AddCulture("ru", "Русский");
@@ -122,6 +124,16 @@ services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
         "Localization/skopka-hello.ru.override.json");
 });
 ```
+
+`UseAcceptLanguageHeader` defaults to `true` for compatibility. Set it to
+`false` when the configured default must be used for first-time visitors and
+language changes should happen only through the packaged selector. The culture
+preference cookie continues to take priority in both modes.
+
+Set `ApplicationHomeUrl` to render the localized return link in the packaged
+header. A local absolute path is accepted for same-host applications; a
+cross-origin application must use an absolute HTTPS URL without credentials,
+query or fragment.
 
 Dictionary paths are absolute or relative to the host content root. Files are
 read once at startup, are never served as static content and can contain a

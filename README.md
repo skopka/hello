@@ -10,7 +10,7 @@ provider integration, host composition and policy-separated administration.
 Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
-The current `0.10.0` vertical slice contains:
+The current `0.10.2` vertical slice contains:
 
 - atomic password registration;
 - automatic email, phone or user-name password login without user
@@ -180,8 +180,10 @@ route paths:
 ```csharp
 services.AddSkopkaHelloUi<Profile, ProfileFactory>(options =>
 {
+    options.ApplicationHomeUrl = "https://app.example.com/";
     options.Localization.Enabled = true;
     options.Localization.DefaultCulture = "ru";
+    options.Localization.UseAcceptLanguageHeader = false;
     options.Localization.AddDictionaryFile(
         "de",
         "Localization/skopka-hello.de.json",
@@ -189,9 +191,16 @@ services.AddSkopkaHelloUi<Profile, ProfileFactory>(options =>
 });
 ```
 
+`ApplicationHomeUrl` adds a localized "Return to application" link to the
+packaged header. It accepts a safe local absolute path or an absolute HTTPS URL
+without credentials, query or fragment; leave it unset when the identity UI is
+the application itself.
+
 The footer selector persists the supported culture in a secure preference
-cookie. Custom JSON files can add a culture or partially override stable text
-keys; details are in [UI localization](docs/customization.md#ui-localization).
+cookie. Set `UseAcceptLanguageHeader` to `false` when the configured default
+must be used until the user explicitly selects another culture. Custom JSON
+files can add a culture or partially override stable text keys; details are in
+[UI localization](docs/customization.md#ui-localization).
 
 With the default prefix, the ready server exposes:
 

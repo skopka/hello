@@ -17,6 +17,7 @@
     "Admin.Common.ActionCompleted": "{0} completed.",
     "Admin.Common.Version": "Version {0}",
     "Admin.Common.NextPage": "Next page",
+    "Admin.Common.Manage": "Manage",
 
     "Admin.Roles.PageTitle": "Role administration",
     "Admin.Roles.Title": "Roles",
@@ -32,6 +33,7 @@
     "Admin.Roles.Delete": "Delete role",
     "Admin.Roles.Assign": "Assign role",
     "Admin.Roles.Remove": "Remove role",
+    "Admin.Roles.Edit": "Edit role",
     "Admin.Roles.None": "No roles matched the current filter.",
 
     "Admin.Users.PageTitle": "User administration",
@@ -54,6 +56,9 @@
     "Admin.Users.UnconfirmedParenthetical": "(unconfirmed)",
     "Admin.Users.Created": "Created",
     "Admin.Users.NoRoles": "No roles assigned.",
+    "Admin.Users.ProfileDetails": "Profile details",
+    "Admin.Users.RoleMembership": "Role membership",
+    "Admin.Users.AccountActions": "Account actions",
     "Admin.Users.Restore": "Restore",
     "Admin.Users.Unblock": "Unblock",
     "Admin.Users.Block": "Block",

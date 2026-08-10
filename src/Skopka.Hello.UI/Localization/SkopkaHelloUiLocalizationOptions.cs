@@ -23,6 +23,8 @@ public sealed class SkopkaHelloUiLocalizationOptions
     public string CultureCookieName { get; set; } =
         DefaultCultureCookieName;
 
+    public bool UseAcceptLanguageHeader { get; set; } = true;
+
     public IReadOnlyList<HelloUiCulture> SupportedCultures =>
         cultures.Values
             .Select(registration => registration.Culture)

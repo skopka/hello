@@ -1011,6 +1011,14 @@ public sealed class AuthenticationFlowTests
             "/_content/Skopka.Hello.UI/css/hello.css",
             registerHtml,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "class=\"hello-header\"",
+            registerHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "class=\"admin-topbar",
+            registerHtml,
+            StringComparison.Ordinal);
         var registerToken = ReadInputValue(
             registerHtml,
             "__RequestVerificationToken");

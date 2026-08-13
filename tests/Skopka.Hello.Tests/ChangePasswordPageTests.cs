@@ -67,7 +67,7 @@ public sealed class ChangePasswordPageTests
             .ToArray();
         Assert.Contains("Request a new code.", messages);
         Assert.Contains(
-            "The new password does not satisfy policy.",
+            "Use a stronger password.",
             messages);
         Assert.Equal(challengeId, application.LastCommand?.ChallengeId);
     }

@@ -198,6 +198,8 @@
     "Errors.identity.login_identifier.duplicate": "That sign-in identifier is already in use.",
     "Errors.identity.password.invalid": "The password is invalid.",
     "Errors.identity.password.rejected": "The password does not satisfy the configured policy.",
+    "Errors.identity.password.rejected.minimum_length": "The password must contain at least {0} characters.",
+    "Errors.identity.password.rejected.maximum_length": "The password must not exceed {0} characters.",
     "Errors.identity.verification.challenge_invalid": "The verification challenge is invalid or expired.",
     "Errors.identity.verification.response_invalid": "The verification code is invalid.",
     "Errors.identity.verification.attempts_exceeded": "Too many verification attempts were made. Request a new code.",

@@ -63,7 +63,13 @@ public sealed class RegisterModel(
             HelloUiModelState.AddErrors(
                 ModelState,
                 result.Errors,
-                text);
+                text,
+                field => String.Equals(
+                        field,
+                        "newPassword",
+                        StringComparison.OrdinalIgnoreCase)
+                    ? "Input.Password"
+                    : $"Input.{field}");
             return Page();
         }
 

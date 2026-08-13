@@ -101,7 +101,13 @@ public sealed class ChangePasswordModel(
                 HelloUiModelState.AddErrors(
                     ModelState,
                     result.Errors,
-                    text);
+                    text,
+                    field => String.Equals(
+                            field,
+                            "newPassword",
+                            StringComparison.OrdinalIgnoreCase)
+                        ? "Input.NewPassword"
+                        : $"Input.{field}");
                 return Page();
             }
 
@@ -111,16 +117,21 @@ public sealed class ChangePasswordModel(
             ModelState.AddModelError(
                 string.Empty,
                 LocalizeError(restart));
-            foreach (var cause in result.Errors.Where(error =>
-                !string.Equals(
-                    error.Code,
-                    HelloPasswordChangeErrorCodes.RestartRequired,
-                    StringComparison.Ordinal)))
-            {
-                ModelState.AddModelError(
-                    string.Empty,
-                    LocalizeError(cause));
-            }
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors.Where(error =>
+                        !string.Equals(
+                            error.Code,
+                            HelloPasswordChangeErrorCodes.RestartRequired,
+                            StringComparison.Ordinal))
+                    .ToArray(),
+                text,
+                field => String.Equals(
+                        field,
+                        "newPassword",
+                        StringComparison.OrdinalIgnoreCase)
+                    ? "Input.NewPassword"
+                    : $"Input.{field}");
 
             return Page();
         }

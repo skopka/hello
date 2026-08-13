@@ -208,7 +208,13 @@ public sealed class AccountSecurityModel(
             HelloUiModelState.AddErrors(
                 ModelState,
                 result.Errors,
-                text);
+                text,
+                field => String.Equals(
+                        field,
+                        "newPassword",
+                        StringComparison.OrdinalIgnoreCase)
+                    ? "SetInput.NewPassword"
+                    : $"SetInput.{field}");
             var loaded = await LoadStateAsync(cancellationToken);
             return loaded ? Page() : Challenge();
         }

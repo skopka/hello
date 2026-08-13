@@ -56,7 +56,13 @@ public sealed class ResetPasswordModel(
             HelloUiModelState.AddErrors(
                 ModelState,
                 result.Errors,
-                text);
+                text,
+                field => String.Equals(
+                        field,
+                        "newPassword",
+                        StringComparison.OrdinalIgnoreCase)
+                    ? "Input.NewPassword"
+                    : $"Input.{field}");
             return Page();
         }
 

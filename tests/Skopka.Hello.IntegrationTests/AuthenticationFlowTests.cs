@@ -1108,6 +1108,34 @@ public sealed class AuthenticationFlowTests
             missingRequiredEmailHtml,
             "__RequestVerificationToken");
 
+        using var rejectedPassword = await SendFormAsync(
+            client,
+            "/hello/register",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["Input.DisplayName"] = "Browser Alice",
+                ["Input.Email"] = "browser-alice@example.test",
+                ["Input.Password"] = "too short",
+                ["Input.ConfirmPassword"] = "too short",
+                ["__RequestVerificationToken"] = registerToken,
+            });
+        Assert.Equal(HttpStatusCode.OK, rejectedPassword.StatusCode);
+        var rejectedPasswordHtml =
+            await rejectedPassword.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "The password must contain at least 15 characters.",
+            rejectedPasswordHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "The password does not satisfy the configured policy.",
+            rejectedPasswordHtml,
+            StringComparison.Ordinal);
+        MergeCookies(cookies, rejectedPassword);
+        registerToken = ReadInputValue(
+            rejectedPasswordHtml,
+            "__RequestVerificationToken");
+
         using var register = await SendFormAsync(
             client,
             "/hello/register",

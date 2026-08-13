@@ -198,6 +198,8 @@
     "Errors.identity.login_identifier.duplicate": "Этот идентификатор входа уже используется.",
     "Errors.identity.password.invalid": "Неверный пароль.",
     "Errors.identity.password.rejected": "Пароль не соответствует настроенной политике.",
+    "Errors.identity.password.rejected.minimum_length": "Пароль должен содержать не менее {0} символов.",
+    "Errors.identity.password.rejected.maximum_length": "Пароль должен содержать не более {0} символов.",
     "Errors.identity.verification.challenge_invalid": "Запрос подтверждения недействителен или истёк.",
     "Errors.identity.verification.response_invalid": "Неверный код подтверждения.",
     "Errors.identity.verification.attempts_exceeded": "Превышено число попыток подтверждения. Запросите новый код.",

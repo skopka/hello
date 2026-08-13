@@ -30,6 +30,49 @@ public sealed class SkopkaHelloUiLocalizationOptions
             .Select(registration => registration.Culture)
             .ToArray();
 
+    /// <summary>
+    /// Removes an exact supported culture registration.
+    /// </summary>
+    public bool RemoveCulture(string culture)
+        => cultures.Remove(NormalizeCulture(culture));
+
+    /// <summary>
+    /// Replaces the supported selection. Dictionary-file registrations for
+    /// the previous selection are discarded.
+    /// </summary>
+    public void SetSupportedCultures(
+        params HelloUiCulture[] supportedCultures)
+    {
+        ArgumentNullException.ThrowIfNull(supportedCultures);
+        if (supportedCultures.Length == 0)
+        {
+            throw new ArgumentException(
+                "At least one UI culture must be configured.",
+                nameof(supportedCultures));
+        }
+
+        var replacements = new Dictionary<
+            string,
+            CultureRegistration>(StringComparer.OrdinalIgnoreCase);
+        foreach (var culture in supportedCultures)
+        {
+            ArgumentNullException.ThrowIfNull(culture);
+            var normalizedCulture = NormalizeCulture(culture.Name);
+            ArgumentException.ThrowIfNullOrWhiteSpace(
+                culture.DisplayName);
+            replacements[normalizedCulture] = new CultureRegistration(
+                new HelloUiCulture(
+                    normalizedCulture,
+                    culture.DisplayName.Trim()));
+        }
+
+        cultures.Clear();
+        foreach (var replacement in replacements)
+        {
+            cultures.Add(replacement.Key, replacement.Value);
+        }
+    }
+
     public void AddCulture(string culture, string displayName)
     {
         var normalizedCulture = NormalizeCulture(culture);
@@ -135,16 +178,16 @@ public sealed class SkopkaHelloUiLocalizationOptions
         }
 
         DefaultCulture = NormalizeCulture(DefaultCulture);
-        if (!cultures.ContainsKey(DefaultCulture))
-        {
-            throw new InvalidOperationException(
-                "The default UI culture must be one of the supported cultures.");
-        }
-
         if (cultures.Count == 0)
         {
             throw new InvalidOperationException(
                 "At least one UI culture must be configured.");
+        }
+
+        if (!cultures.ContainsKey(DefaultCulture))
+        {
+            throw new InvalidOperationException(
+                "The default UI culture must be one of the supported cultures.");
         }
 
         foreach (var registration in cultures.Values)

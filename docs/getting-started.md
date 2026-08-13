@@ -127,7 +127,11 @@ routes.
 selector. `Ui:Localization:DefaultCulture` supplies the fallback. Additional
 cultures and server-side JSON dictionaries can be configured through
 `Ui:Localization:Cultures`; see [customization](customization.md#ui-localization).
-Culture selection does not change the Razor route paths.
+In-process hosts can remove a built-in culture with `RemoveCulture` or replace
+the selection with `SetSupportedCultures`; a one-culture selection suppresses
+the selector. When localization is disabled, Hello still applies the default
+culture and `Content-Language` to its Razor requests. Culture selection does
+not change the Razor route paths.
 
 `Ui:Registration` configures the built-in password and external registration
 forms with `Hidden`, `Optional` or `Required` modes. `DisplayName` is required

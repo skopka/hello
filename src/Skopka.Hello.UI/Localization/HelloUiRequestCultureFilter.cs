@@ -19,12 +19,6 @@ internal sealed class HelloUiRequestCultureFilter(
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(next);
 
-        if (!options.Localization.Enabled)
-        {
-            await next();
-            return;
-        }
-
         var previousCulture = CultureInfo.CurrentCulture;
         var previousUiCulture = CultureInfo.CurrentUICulture;
         var selectedCulture = await ResolveCultureAsync(

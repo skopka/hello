@@ -6,6 +6,10 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Skopka.Hello.Admin;
@@ -44,6 +48,46 @@ public sealed class HelloUiLocalizationTests
             "supported",
             exception.Message,
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RemoveCultureSupportsSingleLanguageUi()
+    {
+        var options = new SkopkaHelloUiOptions();
+        options.Localization.Enabled = true;
+        options.Localization.DefaultCulture = "ru";
+
+        Assert.True(options.Localization.RemoveCulture("EN"));
+        options.Validate();
+
+        var culture = Assert.Single(
+            options.Localization.SupportedCultures);
+        Assert.Equal("ru", culture.Name);
+    }
+
+    [Fact]
+    public void SetSupportedCulturesReplacesBuiltInSelection()
+    {
+        var options = new SkopkaHelloUiOptions();
+
+        options.Localization.SetSupportedCultures(
+            new HelloUiCulture("ru-RU", "Русский"));
+        options.Localization.DefaultCulture = "ru-RU";
+        options.Validate();
+
+        var culture = Assert.Single(
+            options.Localization.SupportedCultures);
+        Assert.Equal("ru-RU", culture.Name);
+        Assert.Equal("Русский", culture.DisplayName);
+    }
+
+    [Fact]
+    public void SetSupportedCulturesRejectsEmptySelection()
+    {
+        var options = new SkopkaHelloUiOptions();
+
+        Assert.Throws<ArgumentException>(
+            () => options.Localization.SetSupportedCultures());
     }
 
     [Fact]
@@ -168,6 +212,53 @@ public sealed class HelloUiLocalizationTests
         var fromCookie = await filter.ResolveCultureAsync(context);
 
         Assert.Equal("en", fromCookie.Name);
+    }
+
+    [Fact]
+    public async Task DisabledLocalizationStillAppliesDefaultCulture()
+    {
+        var options = new SkopkaHelloUiOptions();
+        options.Localization.Enabled = false;
+        options.Localization.DefaultCulture = "ru";
+        options.Validate();
+        var filter = new HelloUiRequestCultureFilter(options);
+        var httpContext = new DefaultHttpContext();
+        var actionContext = new ActionContext(
+            httpContext,
+            new RouteData(),
+            new ActionDescriptor(),
+            new ModelStateDictionary());
+        List<IFilterMetadata> filters = [];
+        var context = new ResourceExecutingContext(
+            actionContext,
+            filters,
+            []);
+        var previousCulture = CultureInfo.CurrentCulture;
+        var previousUiCulture = CultureInfo.CurrentUICulture;
+        var nextCalled = false;
+
+        await filter.OnResourceExecutionAsync(
+            context,
+            () =>
+            {
+                nextCalled = true;
+                Assert.Equal("ru", CultureInfo.CurrentCulture.Name);
+                Assert.Equal("ru", CultureInfo.CurrentUICulture.Name);
+                Assert.Equal(
+                    "ru",
+                    httpContext.Response.Headers.ContentLanguage);
+                return Task.FromResult(
+                    new ResourceExecutedContext(
+                        actionContext,
+                        filters));
+            });
+
+        Assert.True(nextCalled);
+        Assert.Equal(previousCulture, CultureInfo.CurrentCulture);
+        Assert.Equal(previousUiCulture, CultureInfo.CurrentUICulture);
+        Assert.Equal(
+            "ru",
+            httpContext.Response.Headers.ContentLanguage);
     }
 
     [Fact]

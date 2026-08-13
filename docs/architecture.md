@@ -310,15 +310,19 @@ no-referrer response headers.
 `HelloIdentitySecurityEventObserver` enriches committed Skopka.Identity events
 with actor and correlation context and sends them to
 `IHelloSecurityEventSink`. The default sink is a no-op and this callback is not
-a durable audit.
+a durable audit. Every envelope exposes
+`DeliveryStage = AfterIdentityCommit`; `identity.user.deleted` is emitted by
+Identity for both self-service and admin deletion because both paths use the
+same `IIdentityUserService.DeleteAsync` operation.
 
 `HelloAuditOutboxRecord` and `IHelloAuditOutbox` define the host-owned durable
 shape: event type, subject, actor, resource, correlation id, timestamp and safe
 metadata. A post-commit identity observer cannot make an outbox write atomic
-with an already committed identity mutation. A consuming application that
-requires that guarantee must write the outbox record inside the transaction
-that owns its protected application operation. No cross-store atomicity is
-claimed.
+with an already committed identity mutation. Required follow-up work should
+therefore be durably and idempotently queued by event id. A consuming
+application that requires one transaction must own an outer transaction/store
+integration that includes both mutations; the observer is not that boundary.
+No cross-store atomicity is claimed.
 
 The ready Server persists these post-commit observer records in
 `skopka_hello.audit_outbox`. A failed audit insert is logged and metered but

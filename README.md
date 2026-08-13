@@ -191,10 +191,10 @@ services.AddSkopkaHelloUi<Profile, ProfileFactory>(options =>
     options.Localization.Enabled = true;
     options.Localization.DefaultCulture = "ru";
     options.Localization.UseAcceptLanguageHeader = false;
+    options.Localization.RemoveCulture("en");
     options.Localization.AddDictionaryFile(
-        "de",
-        "Localization/skopka-hello.de.json",
-        displayName: "Deutsch");
+        "ru",
+        "Localization/skopka-hello.ru.override.json");
 });
 ```
 
@@ -204,9 +204,12 @@ without credentials, query or fragment; leave it unset when the identity UI is
 the application itself.
 
 The footer selector persists the supported culture in a secure preference
-cookie. Set `UseAcceptLanguageHeader` to `false` when the configured default
-must be used until the user explicitly selects another culture. Custom JSON
-files can add a culture or partially override stable text keys; details are in
+cookie and is omitted when only one culture remains. Use `RemoveCulture` or
+`SetSupportedCultures` for a single-language host. Even with localization
+disabled, Hello applies `DefaultCulture` to its Razor requests and emits the
+matching `Content-Language`, so the document `lang` never depends on the
+machine culture. Custom JSON files can add a culture or partially override
+stable text keys; details are in
 [UI localization](docs/customization.md#ui-localization).
 
 With the default prefix, the ready server exposes:

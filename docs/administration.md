@@ -200,3 +200,8 @@ through `IHelloSecurityEventSink`, including actor and role ids but no role
 description or other free-form input. The ready Server copies them to its
 durable audit outbox. An audit sink failure is logged and cannot roll back or
 misreport an already committed Identity mutation.
+
+Admin user deletion, like self-service deletion, emits Identity's
+`identity.user.deleted` through the same sink. `SubjectUserId` identifies the
+deleted account, `ActorUserId` identifies the administrator when request
+context is available, and `DeliveryStage` is `AfterIdentityCommit`.

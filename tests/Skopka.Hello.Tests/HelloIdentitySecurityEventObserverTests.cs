@@ -40,6 +40,35 @@ public sealed class HelloIdentitySecurityEventObserverTests
         Assert.Equal(actorId, sink.Value.ActorUserId);
         Assert.Equal("trace-123", sink.Value.CorrelationId);
         Assert.Empty(sink.Value.Metadata);
+        Assert.Equal(
+            HelloSecurityEventDeliveryStage.AfterIdentityCommit,
+            sink.Value.DeliveryStage);
+    }
+
+    [Fact]
+    public void UserDeletedEventIsPubliclyObservableAfterCommit()
+    {
+        var userId = Guid.NewGuid();
+        var sink = new CapturingSink();
+        var observer = new HelloIdentitySecurityEventObserver(
+            new HttpContextAccessor(),
+            sink);
+
+        observer.OnEvent(
+            new IdentitySecurityEvent(
+                Guid.NewGuid(),
+                IdentitySecurityEventTypes.UserDeleted,
+                DateTimeOffset.UtcNow,
+                userId));
+
+        Assert.NotNull(sink.Value);
+        Assert.Equal(
+            IdentitySecurityEventTypes.UserDeleted,
+            sink.Value.EventType);
+        Assert.Equal(userId, sink.Value.SubjectUserId);
+        Assert.Equal(
+            HelloSecurityEventDeliveryStage.AfterIdentityCommit,
+            sink.Value.DeliveryStage);
     }
 
     [Fact]

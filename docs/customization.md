@@ -50,10 +50,36 @@ services.AddSingleton<IHelloSecurityEventSink, MyEventSink>();
 services.AddSkopkaHello<MyProfile>();
 ```
 
-The sink returns `OperationResult`, must return quickly and must not throw. It is
-observability, not durable audit. Use `IHelloAuditOutbox` and
-`HelloAuditOutboxRecord` inside an application-owned transaction when durability
-and atomicity are required.
+Both self-service and admin user deletion produce
+`IdentitySecurityEventTypes.UserDeleted`; the deleted user id is
+`SubjectUserId`. `DeliveryStage` is explicitly
+`AfterIdentityCommit`, so a sink failure cannot roll the deletion back. Use
+`EventId` as an idempotency key and synchronously write a small record to the
+host's durable queue/outbox; anonymize the platform data in a worker.
+
+```csharp
+public OperationResult Write(HelloSecurityEventEnvelope securityEvent)
+{
+    if (securityEvent.EventType
+            != IdentitySecurityEventTypes.UserDeleted
+        || securityEvent.SubjectUserId is not { } userId)
+    {
+        return OperationResultFactory.Success();
+    }
+
+    Debug.Assert(
+        securityEvent.DeliveryStage
+            == HelloSecurityEventDeliveryStage.AfterIdentityCommit);
+    return deletionOutbox.Enqueue(
+        securityEvent.EventId,
+        userId);
+}
+```
+
+The sink returns `OperationResult`, must return quickly and must not throw. It
+is a post-commit notification, not a transactional participant. A common
+transaction with platform tables can only be provided by a host-owned outer
+transaction/store integration; Hello does not claim that boundary.
 
 The ready Server replaces the no-op sink with a PostgreSQL post-commit audit
 outbox when `SkopkaHello:Persistence:AuditEnabled` is true. That makes each
@@ -179,22 +205,34 @@ services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
     options.Localization.DefaultCulture = "ru";
     options.Localization.UseAcceptLanguageHeader = false;
 
-    options.Localization.AddCulture("en", "English");
-    options.Localization.AddCulture("ru", "Русский");
-    options.Localization.AddDictionaryFile(
-        "de",
-        "Localization/skopka-hello.de.json",
-        displayName: "Deutsch");
+    options.Localization.RemoveCulture("en");
     options.Localization.AddDictionaryFile(
         "ru",
         "Localization/skopka-hello.ru.override.json");
 });
 ```
 
+For a single-language Russian host, keeping localization enabled and removing
+English leaves one supported culture, applies `ru` to every Hello/Admin Razor
+request and suppresses the footer selector. The equivalent replacement API is:
+
+```csharp
+options.Localization.SetSupportedCultures(
+    new HelloUiCulture("ru", "Русский"));
+```
+
+Call `AddDictionaryFile` after `SetSupportedCultures`, because replacement
+also clears dictionary-file registrations for the previous selection.
+
 `UseAcceptLanguageHeader` defaults to `true` for compatibility. Set it to
 `false` when the configured default must be used for first-time visitors and
 language changes should happen only through the packaged selector. The culture
 preference cookie continues to take priority in both modes.
+
+When `Enabled` is `false`, cookie/header selection and the culture endpoint
+remain disabled, but Hello still applies `DefaultCulture` to the request and
+sets `Content-Language`. Consequently the packaged layouts render the matching
+`<html lang>` without changing process-wide culture defaults.
 
 Set `ApplicationHomeUrl` to render the localized return link in the packaged
 header. A local absolute path is accepted for same-host applications; a

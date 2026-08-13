@@ -3,18 +3,18 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Skopka.Identity.Roles;
 
-namespace Skopka.Hello.Admin;
+namespace Skopka.Hello;
 
-internal sealed record HelloAdminCurrentRoleRequirement(string RoleName)
+internal sealed record HelloCurrentRoleRequirement(string RoleName)
     : IAuthorizationRequirement;
 
-internal sealed class HelloAdminCurrentRoleHandler<TProfile>(
+internal sealed class HelloCurrentRoleHandler<TProfile>(
     IIdentityRoleService<TProfile> roles)
-    : AuthorizationHandler<HelloAdminCurrentRoleRequirement>
+    : AuthorizationHandler<HelloCurrentRoleRequirement>
 {
     protected override async Task HandleRequirementAsync(
         AuthorizationHandlerContext context,
-        HelloAdminCurrentRoleRequirement requirement)
+        HelloCurrentRoleRequirement requirement)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(requirement);
@@ -32,7 +32,6 @@ internal sealed class HelloAdminCurrentRoleHandler<TProfile>(
         var cancellationToken = context.Resource is HttpContext httpContext
             ? httpContext.RequestAborted
             : CancellationToken.None;
-
         var role = await roles.FindByNameAsync(
             requirement.RoleName,
             cancellationToken);

@@ -74,6 +74,14 @@ app.MapStaticAssets();
 app.MapSkopkaHelloUi();
 ```
 
+The packaged pages set their layout from
+`Pages/SkopkaHello/_ViewStart.cshtml` and use the absolute path
+`/Pages/Shared/_SkopkaHelloLayout.cshtml`. A host's ordinary
+`Pages/_ViewStart.cshtml` and `Pages/Shared/_Layout.cshtml` therefore do not
+replace the Hello shell. To replace it deliberately, add
+`Pages/Shared/_SkopkaHelloLayout.cshtml` to the host with the same path and
+provide the required body, navigation, logout and localization UI there.
+
 Select only the page groups the host needs. For example, a host-owned account
 area can keep only the packaged login page:
 
@@ -183,9 +191,15 @@ public sealed class MyProfileUiFactory
         return string.IsNullOrWhiteSpace(displayName)
             ? OperationResultFactory.Fail<MyProfile>(
                 new Error(
-                    "profile.display_name_required",
-                    "Display name is required.",
-                    ErrorType.Validation))
+                    "profile.validation",
+                    "Profile validation failed.",
+                    ErrorType.Validation,
+                    new ValidationDetails(
+                        new Dictionary<string, string[]>
+                        {
+                            ["displayName"] =
+                            ["Display name is required."],
+                        })))
             : OperationResultFactory.Success(
                 new MyProfile(displayName.Trim(), locale?.Trim()));
     }
@@ -197,6 +211,53 @@ and mapping. The update is sent to Skopka.Identity with the user's current
 optimistic version. If the factory does not implement the editor, generic
 profile editing is simply omitted from the built-in UI; the typed
 `PUT /account/profile` API remains available.
+
+`ValidationDetails` keys are the names passed to `HelloUiProfileField`; Hello
+maps them to the dynamic `ProfileValues[<name>]` inputs. A detail whose key does
+not match a rendered field falls back to the page validation summary, so a
+message is never silently discarded. Flat errors without details also appear
+in that summary.
+
+### Host pages and the current UI user
+
+Host-owned Razor pages can read the online-validated Hello cookie without
+depending on private claim names. `AddSkopkaHelloUi<TProfile, TProfileFactory>`
+registers `IHelloUiUserAccessor`; it returns `null` when the UI ticket is absent
+or no longer valid:
+
+```csharp
+public sealed class HeaderModel(IHelloUiUserAccessor users)
+{
+    public Task<HelloUiUser?> GetUserAsync(
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => users.GetAsync(httpContext, cancellationToken);
+}
+```
+
+`HelloUiUser` exposes only `UserId`, `SessionId` and `DisplayName`. The accessor
+authenticates with `HelloUiDefaults.AuthenticationScheme`, whose cookie events
+validate the logical session online.
+
+For host role-gated pages, register a policy backed by the current Identity
+membership rather than a role claim in the cookie:
+
+```csharp
+services.AddSkopkaHelloCurrentRolePolicy<MyProfile>(
+    "Host.Billing",
+    "Billing",
+    HelloUiDefaults.AuthenticationScheme);
+
+services.AddRazorPages(options =>
+    options.Conventions.AuthorizePage("/Billing", "Host.Billing"));
+```
+
+Pass the UI authentication scheme for browser pages because a Hello host may
+use bearer authentication as its default scheme. The optional scheme argument
+can be omitted when the surrounding policy composition already selects the
+correct authenticated principal. Every authorization check queries the current
+role and membership through `IIdentityRoleService<TProfile>`; the UI ticket
+does not gain stale role claims.
 
 The built-in pages are derived from `SkopkaHelloOptions.UiPathPrefix`. With the
 default `/hello` prefix they are:

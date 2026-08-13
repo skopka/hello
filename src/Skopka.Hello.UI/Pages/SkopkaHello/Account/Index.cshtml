@@ -119,14 +119,26 @@
             @foreach (var field in Model.ProfileFields)
             {
                 var fieldId = $"hello-profile-{field.Name}";
+                var fieldKey = $"ProfileValues[{field.Name}]";
                 <label for="@fieldId">@field.Label</label>
                 <input id="@fieldId"
-                       name="ProfileValues[@field.Name]"
+                       name="@fieldKey"
                        value="@field.Value"
                        type="@field.InputType"
                        autocomplete="@field.AutoComplete"
                        maxlength="@field.MaximumLength"
                        required="@field.Required" />
+                @if (ViewData.ModelState.TryGetValue(
+                    fieldKey,
+                    out var fieldState))
+                {
+                    foreach (var error in fieldState.Errors)
+                    {
+                        <span class="hello-field-error">
+                            @error.ErrorMessage
+                        </span>
+                    }
+                }
             }
             <button class="hello-button hello-button-secondary"
                     type="submit">

@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -37,23 +36,13 @@ public static class SkopkaHelloAdminServiceCollectionExtensions
                 Skopka.Hello.IHelloStepUpRequirementProvider<TProfile>,
                 Skopka.Hello.Admin
                     .HelloAdminStepUpRequirementProvider<TProfile>>());
-        services.TryAddEnumerable(
-            ServiceDescriptor.Scoped<
-                IAuthorizationHandler,
-                Skopka.Hello.Admin
-                    .HelloAdminCurrentRoleHandler<TProfile>>());
-
-        var authorization = services.AddAuthorizationBuilder();
-        AddRolePolicy(
-            authorization,
+        services.AddSkopkaHelloCurrentRolePolicy<TProfile>(
             options.ReadPolicyName,
             options.ReadRoleName);
-        AddRolePolicy(
-            authorization,
+        services.AddSkopkaHelloCurrentRolePolicy<TProfile>(
             options.ManagePolicyName,
             options.ManageRoleName);
-        AddRolePolicy(
-            authorization,
+        services.AddSkopkaHelloCurrentRolePolicy<TProfile>(
             options.DeletePolicyName,
             options.DeleteRoleName);
 
@@ -98,18 +87,4 @@ public static class SkopkaHelloAdminServiceCollectionExtensions
 
         return services;
     }
-
-    private static void AddRolePolicy(
-        AuthorizationBuilder authorization,
-        string policyName,
-        string roleName)
-        => authorization.AddPolicy(
-            policyName,
-            policy =>
-            {
-                policy.RequireAuthenticatedUser();
-                policy.AddRequirements(
-                    new Skopka.Hello.Admin
-                        .HelloAdminCurrentRoleRequirement(roleName));
-            });
 }

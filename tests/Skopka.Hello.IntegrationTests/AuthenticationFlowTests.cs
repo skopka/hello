@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,6 +38,8 @@ public sealed class AuthenticationFlowTests
         "__Host-Skopka.Hello.XSRF-TOKEN";
     private const string AntiforgeryHeaderName = "X-CSRF-TOKEN";
     private const string UiCookieName = "__Host-Skopka.Hello.UI";
+    private const string UiAdministratorPolicy =
+        "Integration.Ui.Administrator";
 
     [Fact]
     public async Task AdministratorCanQueryAndOtpBlockUser()
@@ -992,7 +995,15 @@ public sealed class AuthenticationFlowTests
         await postgres.StartAsync();
 
         await using var app = await TestApplication.CreateAsync(
-            postgres.GetConnectionString());
+            postgres.GetConnectionString(),
+            configureUi: options =>
+            {
+                options.ApplicationHomeUrl = "/app";
+                options.CustomCssFilePath = Path.Combine(
+                    AppContext.BaseDirectory,
+                    "integration-custom.css");
+                options.Localization.Enabled = true;
+            });
         using var client = app.CreateClient(
             allowAutoRedirect: false);
         Dictionary<string, string> cookies =
@@ -1012,11 +1023,27 @@ public sealed class AuthenticationFlowTests
             registerHtml,
             StringComparison.Ordinal);
         Assert.Contains(
+            SkopkaHelloUiOptions.DefaultCustomCssRequestPath,
+            registerHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "class=\"hello-header\"",
+            registerHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "href=\"/app\"",
+            registerHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "id=\"hello-culture\"",
             registerHtml,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
             "class=\"admin-topbar",
+            registerHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "integration-host-layout",
             registerHtml,
             StringComparison.Ordinal);
         var registerToken = ReadInputValue(
@@ -1114,6 +1141,36 @@ public sealed class AuthenticationFlowTests
         Assert.True(cookies.ContainsKey(UiCookieName));
         Assert.True(cookies.ContainsKey(RefreshCookieName));
 
+        using var currentUiUser = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/integration/current-ui-user",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, currentUiUser.StatusCode);
+        var uiUser = await currentUiUser.Content
+            .ReadFromJsonAsync<HelloUiUser>();
+        Assert.NotNull(uiUser);
+        Assert.NotEqual(Guid.Empty, uiUser.UserId);
+        Assert.NotEqual(Guid.Empty, uiUser.SessionId);
+        Assert.Equal("Browser Alice", uiUser.DisplayName);
+
+        using var deniedUiAdministrator = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/integration/ui-administrator",
+            cookies);
+        Assert.Equal(
+            HttpStatusCode.Redirect,
+            deniedUiAdministrator.StatusCode);
+
+        await app.GrantAdministratorAsync(uiUser.UserId);
+        using var allowedUiAdministrator = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/integration/ui-administrator",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, allowedUiAdministrator.StatusCode);
+
         using var account = await SendAsync(
             client,
             HttpMethod.Get,
@@ -1129,6 +1186,18 @@ public sealed class AuthenticationFlowTests
             "Browser Alice",
             accountHtml,
             StringComparison.Ordinal);
+        var headerEnd = accountHtml.IndexOf(
+            "</header>",
+            StringComparison.Ordinal);
+        Assert.True(headerEnd >= 0);
+        Assert.Contains(
+            "handler=Logout",
+            accountHtml[..headerEnd],
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "integration-host-layout",
+            accountHtml,
+            StringComparison.Ordinal);
         MergeCookies(cookies, account);
 
         var profileVersion = ReadInputValue(
@@ -1136,6 +1205,67 @@ public sealed class AuthenticationFlowTests
             "ProfileExpectedVersion");
         var profileToken = ReadInputValue(
             accountHtml,
+            "__RequestVerificationToken");
+        using var invalidProfile = await SendFormAsync(
+            client,
+            "/hello/account?handler=UpdateProfile",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["ProfileExpectedVersion"] = profileVersion,
+                ["ProfileValues[displayName]"] = string.Empty,
+                ["ProfileValues[locale]"] = "en",
+                ["__RequestVerificationToken"] = profileToken,
+            });
+        Assert.Equal(HttpStatusCode.OK, invalidProfile.StatusCode);
+        var invalidProfileHtml =
+            await invalidProfile.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "Display name is required.",
+            invalidProfileHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "class=\"hello-field-error\"",
+            invalidProfileHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Unmatched profile error.",
+            invalidProfileHtml,
+            StringComparison.Ordinal);
+        MergeCookies(cookies, invalidProfile);
+
+        profileVersion = ReadInputValue(
+            invalidProfileHtml,
+            "ProfileExpectedVersion");
+        profileToken = ReadInputValue(
+            invalidProfileHtml,
+            "__RequestVerificationToken");
+        using var rejectedProfile = await SendFormAsync(
+            client,
+            "/hello/account?handler=UpdateProfile",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["ProfileExpectedVersion"] = profileVersion,
+                ["ProfileValues[displayName]"] =
+                    "flat-profile-error",
+                ["ProfileValues[locale]"] = "en",
+                ["__RequestVerificationToken"] = profileToken,
+            });
+        Assert.Equal(HttpStatusCode.OK, rejectedProfile.StatusCode);
+        var rejectedProfileHtml =
+            await rejectedProfile.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "Profile update failed.",
+            rejectedProfileHtml,
+            StringComparison.Ordinal);
+        MergeCookies(cookies, rejectedProfile);
+
+        profileVersion = ReadInputValue(
+            rejectedProfileHtml,
+            "ProfileExpectedVersion");
+        profileToken = ReadInputValue(
+            rejectedProfileHtml,
             "__RequestVerificationToken");
         using var updateProfile = await SendFormAsync(
             client,
@@ -2302,9 +2432,38 @@ public sealed class AuthenticationFlowTests
         {
             values.TryGetValue("displayName", out var displayName);
             values.TryGetValue("locale", out var locale);
+            if (string.IsNullOrWhiteSpace(displayName))
+            {
+                return OperationResultFactory.Fail<IntegrationProfile>(
+                    new Error(
+                        "integration.profile.invalid",
+                        "Profile validation failed.",
+                        ErrorType.Validation,
+                        new ValidationDetails(
+                            new Dictionary<string, string[]>
+                            {
+                                ["displayName"] =
+                                ["Display name is required."],
+                                ["notRendered"] =
+                                ["Unmatched profile error."],
+                            })));
+            }
+
+            if (string.Equals(
+                    displayName,
+                    "flat-profile-error",
+                    StringComparison.Ordinal))
+            {
+                return OperationResultFactory.Fail<IntegrationProfile>(
+                    new Error(
+                        "integration.profile.rejected",
+                        "Profile update failed.",
+                        ErrorType.Validation));
+            }
+
             return OperationResultFactory.Success(
                 new IntegrationProfile(
-                    displayName ?? current.DisplayName,
+                    displayName,
                     locale));
         }
     }
@@ -2488,6 +2647,8 @@ public sealed class AuthenticationFlowTests
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions
                 {
+                    ApplicationName = typeof(AuthenticationFlowTests)
+                        .Assembly.GetName().Name,
                     EnvironmentName = "IntegrationTests",
                 });
             builder.WebHost.ConfigureKestrel(options =>
@@ -2604,6 +2765,11 @@ public sealed class AuthenticationFlowTests
             builder.Services.AddSkopkaHelloAdmin<
                 IntegrationProfile,
                 IntegrationAdminProfileProjector>();
+            builder.Services.AddSkopkaHelloCurrentRolePolicy<
+                IntegrationProfile>(
+                UiAdministratorPolicy,
+                HelloAdminDefaults.AdministratorRole,
+                HelloUiDefaults.AuthenticationScheme);
 
             var application = builder.Build();
             application.UseExceptionHandler();
@@ -2619,6 +2785,26 @@ public sealed class AuthenticationFlowTests
             application.MapSkopkaHello<IntegrationProfile>();
             application.MapSkopkaHelloAdmin<IntegrationProfile>();
             application.MapSkopkaHelloUi();
+            application.MapGet(
+                    "/integration/current-ui-user",
+                    async (
+                        HttpContext httpContext,
+                        IHelloUiUserAccessor accessor,
+                        CancellationToken cancellationToken) =>
+                    {
+                        var user = await accessor.GetAsync(
+                            httpContext,
+                            cancellationToken);
+                        return user is null
+                            ? Results.Unauthorized()
+                            : Results.Ok(user);
+                    })
+                .RequireAuthorization(
+                    HelloUiDefaults.AuthorizationPolicy);
+            application.MapGet(
+                    "/integration/ui-administrator",
+                    static () => Results.Ok())
+                .RequireAuthorization(UiAdministratorPolicy);
 
             await using (var scope =
                 application.Services.CreateAsyncScope())

@@ -60,6 +60,9 @@ public static class SkopkaHelloUiServiceCollectionExtensions
             Skopka.Hello.UI.HelloUiExternalApplication<TProfile>>();
         services.TryAddScoped<
             Skopka.Hello.UI.HelloUiCookieAuthenticationEvents<TProfile>>();
+        services.TryAddScoped<
+            Skopka.Hello.UI.IHelloUiUserAccessor,
+            Skopka.Hello.UI.HelloUiUserAccessor>();
 
         services
             .AddAuthentication()

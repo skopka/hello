@@ -139,7 +139,10 @@ public sealed class AccountModel(
                 ProfileValues),
             HttpContext,
             cancellationToken);
-        return await FinishMutationAsync(result, cancellationToken);
+        return await FinishMutationAsync(
+            result,
+            cancellationToken,
+            ToProfileValueKey);
     }
 
     public async Task<IActionResult>
@@ -281,7 +284,8 @@ public sealed class AccountModel(
     private async Task<IActionResult> FinishMutationAsync(
         Skopka.Abstraction.OperationResult
             .OperationResult<HelloUiAccount> result,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<string, string>? fieldKeyMapper = null)
     {
         if (result.IsSuccess)
         {
@@ -291,10 +295,32 @@ public sealed class AccountModel(
         HelloUiModelState.AddErrors(
             ModelState,
             result.Errors,
-            text);
+            text,
+            fieldKeyMapper);
         return await LoadAccountAsync(
             preserveSubmittedValues: true,
             cancellationToken);
+    }
+
+    private static string ToProfileValueKey(string key)
+    {
+        const string inputPrefix = "Input.";
+        const string dictionaryPrefix = $"{nameof(ProfileValues)}[";
+
+        if (key.StartsWith(
+                dictionaryPrefix,
+                StringComparison.OrdinalIgnoreCase)
+            && key.EndsWith(']'))
+        {
+            return key;
+        }
+
+        var normalized = key.StartsWith(
+                inputPrefix,
+                StringComparison.OrdinalIgnoreCase)
+            ? key[inputPrefix.Length..]
+            : key;
+        return $"{dictionaryPrefix}{normalized}]";
     }
 
     private void ApplyAccount(

@@ -29,11 +29,14 @@ public sealed class SkopkaHelloUiOptions
 
     public string? ApplicationHomeUrl { get; set; }
 
+    public HelloUiRegistrationOptions Registration { get; } = new();
+
     public SkopkaHelloUiLocalizationOptions Localization { get; } =
         new();
 
     public void Validate()
     {
+        Registration.Validate();
         Localization.Validate();
 
         if ((EnabledPages & ~HelloUiPages.All) != 0)

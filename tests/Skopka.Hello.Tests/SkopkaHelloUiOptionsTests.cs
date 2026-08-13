@@ -19,6 +19,12 @@ public sealed class SkopkaHelloUiOptionsTests
         Assert.Equal(HelloUiPages.All, options.EnabledPages);
         Assert.Null(options.AuthenticatedRedirectPath);
         Assert.Null(options.ApplicationHomeUrl);
+        Assert.Equal(
+            HelloUiRegistrationFieldMode.Hidden,
+            options.Registration.Locale);
+        Assert.Equal(
+            HelloUiRegistrationFieldMode.Required,
+            options.Registration.DisplayName);
     }
 
     [Fact]
@@ -114,6 +120,33 @@ public sealed class SkopkaHelloUiOptionsTests
                 options.AuthenticatedRedirectPath =
                     "https://example.test/admin";
             }));
+    }
+
+    [Fact]
+    public void RegistrationRequiresOneVisibleLoginIdentifier()
+    {
+        var options = new SkopkaHelloUiOptions();
+        options.Registration.Email =
+            HelloUiRegistrationFieldMode.Hidden;
+        options.Registration.UserName =
+            HelloUiRegistrationFieldMode.Hidden;
+        options.Registration.Phone =
+            HelloUiRegistrationFieldMode.Hidden;
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            options.Validate);
+
+        Assert.Contains("login handle", exception.Message);
+    }
+
+    [Fact]
+    public void RegistrationRejectsUnsupportedFieldMode()
+    {
+        var options = new SkopkaHelloUiOptions();
+        options.Registration.Email =
+            (HelloUiRegistrationFieldMode)42;
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
     }
 
     [Theory]

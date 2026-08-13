@@ -174,6 +174,13 @@ if `HelloUiPages.Registration` is selected. A login-only configuration must set
 `AuthenticatedRedirectPath` to a local absolute path; a valid local
 `ReturnUrl` still takes priority after sign-in.
 
+Built-in password and external registration fields can independently be
+`Hidden`, `Optional` or `Required` through `options.Registration`. Display
+name is required by default, email/user name/phone are optional, and the
+profile locale is hidden. Hidden values are also discarded from crafted form
+posts. See [UI customization](docs/customization.md#registration-fields) for
+email-only, phone-only and user-name-only configurations.
+
 The optional UI localizer ships English and Russian catalogs without changing
 route paths:
 

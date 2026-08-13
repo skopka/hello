@@ -2,19 +2,37 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.DependencyInjection;
 using Skopka.Identity.Authentication;
 using Skopka.Hello.Oidc;
 
 namespace Skopka.Hello.UI.Pages;
 
+[method: ActivatorUtilitiesConstructor]
 public sealed class ExternalRegisterModel(
     IHelloUiExternalApplication application,
     IHelloSessionCookieManager sessionCookies,
-    IHelloUiLocalizer text)
+    IHelloUiLocalizer text,
+    SkopkaHelloUiOptions uiOptions)
     : PageModel
 {
+    public ExternalRegisterModel(
+        IHelloUiExternalApplication application,
+        IHelloSessionCookieManager sessionCookies,
+        IHelloUiLocalizer text)
+        : this(
+            application,
+            sessionCookies,
+            text,
+            new SkopkaHelloUiOptions())
+    {
+    }
+
     [BindProperty]
     public InputModel Input { get; set; } = new();
+
+    public HelloUiRegistrationOptions Registration =>
+        uiOptions.Registration;
 
     public HelloOidcProvider? Provider { get; private set; }
 
@@ -42,6 +60,21 @@ public sealed class ExternalRegisterModel(
                 "/SkopkaHello/Account/ExternalLogins");
         }
 
+        var values = HelloUiRegistrationFormValidator.Validate(
+            Registration,
+            ModelState,
+            text,
+            Input.DisplayName,
+            Input.Email,
+            Input.UserName,
+            Input.Phone,
+            Input.Locale,
+            requireLoginIdentifier: false);
+        Input.DisplayName = values.DisplayName;
+        Input.Email = values.Email;
+        Input.UserName = values.UserName;
+        Input.Phone = values.Phone;
+        Input.Locale = values.Locale;
         if (!ModelState.IsValid)
         {
             await LoadHintsAsync(prefill: false, cancellationToken);
@@ -119,9 +152,21 @@ public sealed class ExternalRegisterModel(
             return;
         }
 
-        Input.DisplayName = hints.Value.DisplayName ?? string.Empty;
-        Input.Email = hints.Value.VerifiedEmail ?? string.Empty;
-        Input.Locale = hints.Value.Locale;
+        if (Registration.IsVisible(
+                HelloUiRegistrationField.DisplayName))
+        {
+            Input.DisplayName = hints.Value.DisplayName ?? string.Empty;
+        }
+
+        if (Registration.IsVisible(HelloUiRegistrationField.Email))
+        {
+            Input.Email = hints.Value.VerifiedEmail ?? string.Empty;
+        }
+
+        if (Registration.IsVisible(HelloUiRegistrationField.Locale))
+        {
+            Input.Locale = hints.Value.Locale;
+        }
     }
 
     private async Task<bool> IsUiAuthenticatedAsync()
@@ -130,7 +175,6 @@ public sealed class ExternalRegisterModel(
 
     public sealed class InputModel
     {
-        [Required(ErrorMessage = "Validation.Required")]
         [StringLength(200, ErrorMessage = "Validation.StringLength")]
         [Display(Name = "Field.DisplayName")]
         public string DisplayName { get; set; } = string.Empty;

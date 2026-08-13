@@ -1,21 +1,49 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.DependencyInjection;
 using Skopka.Identity.Authentication;
 
 namespace Skopka.Hello.UI.Pages;
 
+[method: ActivatorUtilitiesConstructor]
 public sealed class RegisterModel(
     IHelloUiApplication application,
-    IHelloUiLocalizer text)
+    IHelloUiLocalizer text,
+    SkopkaHelloUiOptions uiOptions)
     : PageModel
 {
+    public RegisterModel(
+        IHelloUiApplication application,
+        IHelloUiLocalizer text)
+        : this(application, text, new SkopkaHelloUiOptions())
+    {
+    }
+
     [BindProperty]
     public InputModel Input { get; set; } = new();
+
+    public HelloUiRegistrationOptions Registration =>
+        uiOptions.Registration;
 
     public async Task<IActionResult> OnPostAsync(
         CancellationToken cancellationToken)
     {
+        var values = HelloUiRegistrationFormValidator.Validate(
+            Registration,
+            ModelState,
+            text,
+            Input.DisplayName,
+            Input.Email,
+            Input.UserName,
+            Input.Phone,
+            Input.Locale,
+            requireLoginIdentifier: true);
+        Input.DisplayName = values.DisplayName;
+        Input.Email = values.Email;
+        Input.UserName = values.UserName;
+        Input.Phone = values.Phone;
+        Input.Locale = values.Locale;
         if (!ModelState.IsValid)
         {
             return Page();
@@ -44,9 +72,8 @@ public sealed class RegisterModel(
             new { registered = true });
     }
 
-    public sealed class InputModel : IValidatableObject
+    public sealed class InputModel
     {
-        [Required(ErrorMessage = "Validation.Required")]
         [StringLength(200, ErrorMessage = "Validation.StringLength")]
         [Display(Name = "Field.DisplayName")]
         public string DisplayName { get; set; } = string.Empty;
@@ -79,22 +106,5 @@ public sealed class RegisterModel(
             ErrorMessage = "Validation.PasswordsDoNotMatch")]
         [Display(Name = "Field.ConfirmPassword")]
         public string ConfirmPassword { get; set; } = string.Empty;
-
-        public IEnumerable<ValidationResult> Validate(
-            ValidationContext validationContext)
-        {
-            if (string.IsNullOrWhiteSpace(UserName)
-                && string.IsNullOrWhiteSpace(Email)
-                && string.IsNullOrWhiteSpace(Phone))
-            {
-                var localizer = validationContext.GetService(
-                    typeof(IHelloUiLocalizer)) as IHelloUiLocalizer;
-                yield return new ValidationResult(
-                    localizer?["Validation.LoginIdentifierRequired"]
-                        .Value
-                    ?? "Enter a user name, email address or phone number.",
-                    [nameof(UserName), nameof(Email), nameof(Phone)]);
-            }
-        }
     }
 }

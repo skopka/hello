@@ -185,7 +185,8 @@ public sealed class ExternalLoginsPageTests
         var model = new ExternalRegisterModel(
             application,
             new FakeSessionCookieManager(),
-            TestHelloUiLocalizer.Instance)
+            TestHelloUiLocalizer.Instance,
+            new SkopkaHelloUiOptions())
         {
             PageContext = new PageContext
             {

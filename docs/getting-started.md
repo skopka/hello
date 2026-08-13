@@ -78,6 +78,10 @@ SkopkaHello__Jwt__ValidateSessionOnEveryRequest=false
 SkopkaHello__Jwt__CurrentVersion=v1
 SkopkaHello__SelfRegistration__Enabled=true
 SkopkaHello__Ui__PathPrefix=/hello
+SkopkaHello__Ui__Registration__Email=Optional
+SkopkaHello__Ui__Registration__UserName=Optional
+SkopkaHello__Ui__Registration__Phone=Optional
+SkopkaHello__Ui__Registration__Locale=Hidden
 SkopkaHello__Ui__Localization__Enabled=true
 SkopkaHello__Ui__Localization__DefaultCulture=en
 SkopkaHello__Admin__ApiPathPrefix=/admin
@@ -124,6 +128,13 @@ selector. `Ui:Localization:DefaultCulture` supplies the fallback. Additional
 cultures and server-side JSON dictionaries can be configured through
 `Ui:Localization:Cultures`; see [customization](customization.md#ui-localization).
 Culture selection does not change the Razor route paths.
+
+`Ui:Registration` configures the built-in password and external registration
+forms with `Hidden`, `Optional` or `Required` modes. `DisplayName` is required
+by default, `Email`/`UserName`/`Phone` are optional, and `Locale` is hidden.
+At least one login identifier must remain visible. See
+[customization](customization.md#registration-fields) for phone-only,
+email-only and user-name-only examples and validation behavior.
 
 The user/role administration API uses `Admin:ApiPathPrefix`; its Razor pages
 are composed under `{UiPathPrefix}{AdminApiPathPrefix}/users` and `/roles`.

@@ -89,6 +89,10 @@ public sealed class ExternalOidcFlowTests
         Assert.Equal(
             "external@example.test",
             ReadInputValue(registrationHtml, "Input.Email"));
+        Assert.DoesNotContain(
+            "name=\"Input.Locale\"",
+            registrationHtml,
+            StringComparison.Ordinal);
         var registrationToken = ReadInputValue(
             registrationHtml,
             "__RequestVerificationToken");

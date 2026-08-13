@@ -1003,6 +1003,12 @@ public sealed class AuthenticationFlowTests
                     AppContext.BaseDirectory,
                     "integration-custom.css");
                 options.Localization.Enabled = true;
+                options.Registration.Email =
+                    HelloUiRegistrationFieldMode.Required;
+                options.Registration.UserName =
+                    HelloUiRegistrationFieldMode.Hidden;
+                options.Registration.Phone =
+                    HelloUiRegistrationFieldMode.Hidden;
             });
         using var client = app.CreateClient(
             allowAutoRedirect: false);
@@ -1046,8 +1052,60 @@ public sealed class AuthenticationFlowTests
             "integration-host-layout",
             registerHtml,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "name=\"Input.Email\"",
+            registerHtml,
+            StringComparison.Ordinal);
+        var emailInput = Regex.Match(
+            registerHtml,
+            "<input[^>]*name=\"Input.Email\"[^>]*>",
+            RegexOptions.CultureInvariant).Value;
+        Assert.Contains(
+            "required",
+            emailInput,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "name=\"Input.UserName\"",
+            registerHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "name=\"Input.Phone\"",
+            registerHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "name=\"Input.Locale\"",
+            registerHtml,
+            StringComparison.Ordinal);
         var registerToken = ReadInputValue(
             registerHtml,
+            "__RequestVerificationToken");
+
+        using var missingRequiredEmail = await SendFormAsync(
+            client,
+            "/hello/register",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["Input.DisplayName"] = "Browser Alice",
+                ["Input.UserName"] = "injected-user",
+                ["Input.Phone"] = "+1 555 010 4242",
+                ["Input.Locale"] = "ru",
+                ["Input.Password"] =
+                    "correct horse battery staple",
+                ["Input.ConfirmPassword"] =
+                    "correct horse battery staple",
+                ["__RequestVerificationToken"] = registerToken,
+            });
+        Assert.Equal(HttpStatusCode.OK, missingRequiredEmail.StatusCode);
+        var missingRequiredEmailHtml =
+            await missingRequiredEmail.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "The Email field is required.",
+            missingRequiredEmailHtml,
+            StringComparison.Ordinal);
+        MergeCookies(cookies, missingRequiredEmail);
+        registerToken = ReadInputValue(
+            missingRequiredEmailHtml,
             "__RequestVerificationToken");
 
         using var register = await SendFormAsync(
@@ -1185,6 +1243,20 @@ public sealed class AuthenticationFlowTests
         Assert.Contains(
             "Browser Alice",
             accountHtml,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            string.Empty,
+            ReadInputValue(
+                accountHtml,
+                "UserNameInput.UserName"));
+        var localeInput = Regex.Match(
+            accountHtml,
+            "<input[^>]*name=\"ProfileValues\\[locale\\]\"[^>]*>",
+            RegexOptions.CultureInvariant).Value;
+        Assert.NotEmpty(localeInput);
+        Assert.DoesNotContain(
+            "value=\"ru\"",
+            localeInput,
             StringComparison.Ordinal);
         var headerEnd = accountHtml.IndexOf(
             "</header>",
@@ -2262,7 +2334,7 @@ public sealed class AuthenticationFlowTests
     {
         var match = Regex.Match(
             html,
-            $"<input[^>]*name=\"{Regex.Escape(name)}\"[^>]*value=\"([^\"]+)\"",
+            $"<input[^>]*name=\"{Regex.Escape(name)}\"[^>]*value=\"([^\"]*)\"",
             RegexOptions.CultureInvariant);
         Assert.True(
             match.Success,

@@ -68,6 +68,12 @@ Register the Razor Class Library with an application-specific profile factory:
 services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
 {
     options.CustomCssFilePath = "/themes/custom.css";
+    options.Registration.Email =
+        HelloUiRegistrationFieldMode.Required;
+    options.Registration.UserName =
+        HelloUiRegistrationFieldMode.Hidden;
+    options.Registration.Phone =
+        HelloUiRegistrationFieldMode.Hidden;
 });
 
 app.MapStaticAssets();
@@ -81,6 +87,58 @@ The packaged pages set their layout from
 replace the Hello shell. To replace it deliberately, add
 `Pages/Shared/_SkopkaHelloLayout.cshtml` to the host with the same path and
 provide the required body, navigation, logout and localization UI there.
+
+### Registration fields
+
+Each built-in registration field has one of three modes:
+`Hidden`, `Optional` or `Required`. The setting controls both password and
+external Razor registration, including server-side validation. Hidden fields
+are removed from the submitted model, so a caller cannot add them by crafting
+a POST request.
+
+```csharp
+services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
+{
+    // Phone-only local identity. Display name and password remain required.
+    options.Registration.Email =
+        HelloUiRegistrationFieldMode.Hidden;
+    options.Registration.UserName =
+        HelloUiRegistrationFieldMode.Hidden;
+    options.Registration.Phone =
+        HelloUiRegistrationFieldMode.Required;
+});
+```
+
+`DisplayName` defaults to `Required`; `Email`, `UserName` and `Phone` default
+to `Optional`. At least one of those three login identifiers must remain
+visible. Password registration additionally requires the user to fill at least
+one visible identifier even when every visible identifier is optional.
+External registration may leave optional local identifiers empty because the
+validated provider binding is itself a sign-in method, but fields configured
+as `Required` are still enforced.
+
+`Locale` defaults to `Hidden`. The selected UI language belongs to the
+protected UI preference cookie and is intentionally separate from profile
+data. A host that really stores a profile locale can opt in with
+`HelloUiRegistrationFieldMode.Optional` or `Required`. If `DisplayName` is
+hidden, the profile factory receives an empty value and must define the host's
+own display-name fallback.
+
+The ready Server exposes the same modes under
+`SkopkaHello:Ui:Registration:{DisplayName|Email|UserName|Phone|Locale}`. For
+example, environment variables for email-only registration are:
+
+```text
+SkopkaHello__Ui__Registration__Email=Required
+SkopkaHello__Ui__Registration__UserName=Hidden
+SkopkaHello__Ui__Registration__Phone=Hidden
+```
+
+These options intentionally govern the packaged Razor forms. The typed
+headless `POST /auth/register` contract remains host-facing and accepts the
+three optional identifiers subject to the shared Identity rule that at least
+one usable login handle is present. A host that exposes that API to its own
+clients can apply a stricter API-specific admission policy independently.
 
 Select only the page groups the host needs. For example, a host-owned account
 area can keep only the packaged login page:

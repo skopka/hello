@@ -486,6 +486,9 @@ builder.Services.AddSkopkaHelloUi<
     options.BuiltInStylesEnabled = configuration.GetValue(
         "SkopkaHello:Customization:BuiltInStylesEnabled",
         true);
+    configuration
+        .GetSection("SkopkaHello:Ui:Registration")
+        .Bind(options.Registration);
     var localization = configuration.GetSection(
         "SkopkaHello:Ui:Localization");
     options.Localization.Enabled = localization.GetValue(

@@ -357,6 +357,7 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
         string action,
         HelloAdminCompleteRoleActionRequest request,
         IHelloAdminRoleApplication application,
+        IHelloRequestContext requestContext,
         IAuthorizationService authorization,
         SkopkaHelloAdminOptions options,
         HttpContext httpContext,
@@ -399,7 +400,8 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
                     request.Description,
                     request.ParentId),
                 request.ChallengeId,
-                request.VerificationCode),
+                request.VerificationCode,
+                requestContext.CreateClientKey(httpContext)),
             cancellationToken);
         return result.IsSuccess
             ? TypedResults.Ok(result.Value)
@@ -413,6 +415,7 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
         string action,
         HelloAdminCompleteActionRequest request,
         IHelloAdminApplication application,
+        IHelloRequestContext requestContext,
         IAuthorizationService authorization,
         SkopkaHelloAdminOptions options,
         HttpContext httpContext,
@@ -454,7 +457,8 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
                     request.BlockedUntil,
                     request.Reason),
                 request.ChallengeId,
-                request.VerificationCode),
+                request.VerificationCode,
+                requestContext.CreateClientKey(httpContext)),
             cancellationToken);
         return result.IsSuccess
             ? TypedResults.Ok(result.Value)
@@ -466,7 +470,8 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
     private static string GetPolicy(
         SkopkaHelloAdminOptions options,
         HelloAdminUserAction action)
-        => action == HelloAdminUserAction.Delete
+        => action is HelloAdminUserAction.Delete
+            or HelloAdminUserAction.ResetAuthenticator
             ? options.DeletePolicyName
             : options.ManagePolicyName;
 

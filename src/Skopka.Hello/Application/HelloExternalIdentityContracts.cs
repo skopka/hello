@@ -37,7 +37,8 @@ public sealed record HelloCompleteExternalLoginMutationCommand(
     long ExpectedVersion,
     Guid ChallengeId,
     string VerificationCode,
-    IdentitySessionMetadata SessionMetadata);
+    IdentitySessionMetadata SessionMetadata,
+    string? ClientKey = null);
 
 public interface IHelloExternalIdentityApplication<TProfile>
 {

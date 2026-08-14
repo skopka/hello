@@ -89,6 +89,9 @@ public sealed class HelloAdminSecurityTests
         HelloAdminSecurity.RevokeSessionsAction,
         "hello:admin.user.sessions.revoke")]
     [InlineData(
+        HelloAdminSecurity.ResetAuthenticatorAction,
+        "hello:admin.user.authenticator.reset")]
+    [InlineData(
         HelloAdminSecurity.CreateRoleAction,
         "hello:admin.role.create")]
     [InlineData(
@@ -131,6 +134,23 @@ public sealed class HelloAdminSecurityTests
             Guid.NewGuid(),
             HelloAdminUserAction.RevokeSessions,
             new HelloAdminUserActionParameters(ExpectedVersion: 1));
+
+        Assert.NotNull(error);
+        Assert.Equal("identity.validation.failed", error.Code);
+    }
+
+    [Fact]
+    public void ResetAuthenticatorRequiresNoTargetVersionOrReason()
+    {
+        Assert.Null(HelloAdminSecurity.Validate(
+            Guid.NewGuid(),
+            HelloAdminUserAction.ResetAuthenticator,
+            new HelloAdminUserActionParameters()));
+
+        var error = HelloAdminSecurity.Validate(
+            Guid.NewGuid(),
+            HelloAdminUserAction.ResetAuthenticator,
+            new HelloAdminUserActionParameters(Reason: "manual"));
 
         Assert.NotNull(error);
         Assert.Equal("identity.validation.failed", error.Code);

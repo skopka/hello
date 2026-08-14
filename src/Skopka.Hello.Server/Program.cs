@@ -16,6 +16,7 @@ using Skopka.Identity.Ef.PostgreSql;
 using Skopka.Identity.Roles;
 using Skopka.Identity.Roles.Commands;
 using Skopka.Identity.Sessions;
+using Skopka.Identity.Totp;
 using Skopka.Identity.Verification;
 
 if (args is ["--health-check"])
@@ -259,6 +260,12 @@ var identity = builder.Services
             registrationGlobalPermitLimit;
         options.RegistrationGlobalWindow = registrationGlobalWindow;
         options.UiPathPrefix = uiPathPrefix;
+        options.Totp.Enabled = configuration.GetValue(
+            "SkopkaHello:Totp:Enabled",
+            true);
+        options.Totp.Issuer = configuration[
+                "SkopkaHello:Totp:Issuer"]
+            ?? "Skopka.Hello";
         if (!secureCookies)
         {
             options.RefreshCookieName =
@@ -276,7 +283,8 @@ var identity = builder.Services
     })
     .UsePostgreSql(connectionString)
     .UsePbkdf2PasswordHasher()
-    .UseDataProtectionActionTokens();
+    .UseDataProtectionActionTokens()
+    .UseDataProtectionTotp();
 
 using (var jwtKeys = VersionedSecretKeySet.Load(
     configuration.GetSection("SkopkaHello:Jwt")))
@@ -413,6 +421,24 @@ if (!string.IsNullOrWhiteSpace(smtpSection["Host"]))
     builder.Services.AddSkopkaHelloSmtpProvider(options =>
     {
         smtpSection.Bind(options);
+        var localization = smtpSection.GetSection("Localization");
+        options.Localization.DefaultCulture =
+            localization["DefaultCulture"] ?? "en";
+        foreach (var dictionary in localization
+                     .GetSection("Dictionaries")
+                     .GetChildren())
+        {
+            var culture = dictionary["Culture"]
+                ?? throw new InvalidOperationException(
+                    "SkopkaHello:Delivery:Smtp:Localization:Dictionaries entries require Culture.");
+            var filePath = dictionary["FilePath"]
+                ?? throw new InvalidOperationException(
+                    "SkopkaHello:Delivery:Smtp:Localization:Dictionaries entries require FilePath.");
+            options.Localization.AddDictionaryFile(
+                culture,
+                filePath);
+        }
+
         options.UseBackgroundQueue = !durableEmailEnabled;
     });
 }

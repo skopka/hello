@@ -180,7 +180,8 @@ public sealed class RolesModel(
                 targetUserId,
                 parameters,
                 challengeId,
-                verificationCode),
+                verificationCode,
+                requestContext.CreateClientKey(HttpContext)),
             cancellationToken);
         if (result.IsSuccess)
         {

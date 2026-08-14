@@ -32,6 +32,8 @@ public sealed class ExternalLoginsModel(
 
     public DateTimeOffset? CodeExpiresAt { get; private set; }
 
+    public HelloDeliveryChannel? VerificationChannel { get; private set; }
+
     public string? Changed { get; private set; }
 
     public bool ExternalError { get; private set; }
@@ -117,6 +119,8 @@ public sealed class ExternalLoginsModel(
         }
 
         CodeRequested = true;
+        Input.DeliveryChannel = result.Value.DeliveryChannel;
+        VerificationChannel = result.Value.DeliveryChannel;
         CodeExpiresAt = result.Value.ExpiresAt;
         await LoadAsync(cancellationToken);
         await LoadPendingLinkAsync(cancellationToken);
@@ -127,6 +131,7 @@ public sealed class ExternalLoginsModel(
         CancellationToken cancellationToken)
     {
         PrepareMutation("link", clearModelState: false);
+        RestoreVerificationChannel();
         if (!ModelState.IsValid)
         {
             await LoadAsync(cancellationToken);
@@ -192,6 +197,8 @@ public sealed class ExternalLoginsModel(
         }
 
         CodeRequested = true;
+        Input.DeliveryChannel = result.Value.DeliveryChannel;
+        VerificationChannel = result.Value.DeliveryChannel;
         CodeExpiresAt = result.Value.ExpiresAt;
         return Page();
     }
@@ -200,6 +207,7 @@ public sealed class ExternalLoginsModel(
         CancellationToken cancellationToken)
     {
         PrepareMutation("unlink", clearModelState: false);
+        RestoreVerificationChannel();
         if (!ModelState.IsValid)
         {
             await LoadAsync(cancellationToken);
@@ -314,6 +322,11 @@ public sealed class ExternalLoginsModel(
         PendingOperation = operation;
     }
 
+    private void RestoreVerificationChannel()
+        => VerificationChannel = Enum.IsDefined(Input.DeliveryChannel)
+            ? Input.DeliveryChannel
+            : null;
+
     private async Task LoadAsync(CancellationToken cancellationToken)
     {
         var result = await application.ListLinkedProvidersAsync(
@@ -348,9 +361,11 @@ public sealed class ExternalLoginsModel(
 
     public sealed class CodeInput
     {
+        public HelloDeliveryChannel DeliveryChannel { get; set; }
+
         [Required(ErrorMessage = "Validation.Required")]
         [StringLength(
-            8,
+            64,
             MinimumLength = 6,
             ErrorMessage = "Validation.StringLengthRange")]
         [Display(Name = "Field.VerificationCode")]

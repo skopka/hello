@@ -12,6 +12,7 @@
     "Admin.Common.StepUp": "Step-up verification",
     "Admin.Common.Contact": "contact",
     "Admin.Common.EnterCode": "Enter the one-time code sent to your confirmed {0}.",
+    "Admin.Common.EnterAuthenticatorCode": "Enter a current authenticator code or an unused recovery code.",
     "Admin.Common.ExpiresAt": "It expires at {0}.",
     "Admin.Common.ConfirmAction": "Confirm: {0}",
     "Admin.Common.ActionCompleted": "{0} completed.",
@@ -70,6 +71,7 @@
     "Admin.Users.DeleteUser": "Delete user",
     "Admin.Users.RestoreUser": "Restore user",
     "Admin.Users.RevokeSessions": "Revoke sessions",
+    "Admin.Users.ResetAuthenticator": "Reset authenticator",
 
     "Admin.Errors.IncompleteCursor": "The paging cursor is incomplete.",
     "Admin.Errors.InvalidRoleAction": "The role action is invalid.",

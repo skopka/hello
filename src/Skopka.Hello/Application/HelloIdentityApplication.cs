@@ -8,9 +8,11 @@ using Skopka.Identity.Sessions;
 using Skopka.Identity.SignInMethods;
 using Skopka.Identity.StepUp;
 using Skopka.Identity.StepUp.Commands;
+using Skopka.Identity.Totp;
 using Skopka.Identity.Users;
 using Skopka.Identity.Users.Commands;
 using Skopka.Identity.Verification;
+using QRCoder;
 
 namespace Skopka.Hello;
 
@@ -30,9 +32,17 @@ internal sealed class HelloIdentityApplication<TProfile>(
     HelloRegistrationAdmission<TProfile>? registrationAdmission = null,
     IIdentitySignInMethodQueryService<TProfile>? signInMethods = null,
     IEnumerable<IHelloAccessTokenValidator<TProfile>>?
-        accessTokenValidators = null)
+        accessTokenValidators = null,
+    IIdentityTotpService<TProfile>? totp = null,
+    HelloStepUpMethodResolver<TProfile>? stepUpMethodResolver = null)
     : IHelloIdentityApplication<TProfile>
 {
+    private readonly HelloStepUpMethodResolver<TProfile> stepUpMethods =
+        stepUpMethodResolver
+        ?? new HelloStepUpMethodResolver<TProfile>(
+            deliveryOptions,
+            messageSender);
+
     public async Task<OperationResult<HelloAccount<TProfile>>> RegisterAsync(
         HelloRegisterCommand<TProfile> command,
         CancellationToken cancellationToken)
@@ -317,6 +327,173 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 snapshot.Errors);
     }
 
+    public async Task<OperationResult<HelloTotpState>> GetTotpStateAsync(
+        string accessToken,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        var validated = await ValidateTokenAsync(
+            accessToken,
+            cancellationToken);
+        if (!validated.IsSuccess)
+        {
+            return OperationResultFactory.Fail<HelloTotpState>(
+                validated.Errors);
+        }
+
+        if (!options.Totp.Enabled || totp is null)
+        {
+            return OperationResultFactory.Success(
+                new HelloTotpState(
+                    IsAvailable: false,
+                    IsEnabled: false,
+                    RecoveryCodesRemaining: 0,
+                    EnabledAt: null));
+        }
+
+        var status = await totp.GetStatusAsync(
+            validated.Value.Id,
+            cancellationToken);
+        return status.IsSuccess
+            ? OperationResultFactory.Success(ToTotpState(status.Value))
+            : OperationResultFactory.Fail<HelloTotpState>(status.Errors);
+    }
+
+    public async Task<OperationResult<HelloTotpEnrollment>>
+        BeginTotpEnrollmentAsync(
+            HelloBeginTotpEnrollmentCommand command,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var available = RequireTotpService<HelloTotpEnrollment>();
+        if (available is not null)
+        {
+            return available;
+        }
+
+        var validated = await ValidateTokenAsync(
+            command.AccessToken,
+            cancellationToken);
+        if (!validated.IsSuccess)
+        {
+            return OperationResultFactory.Fail<HelloTotpEnrollment>(
+                validated.Errors);
+        }
+
+        var begun = await totp!.BeginEnrollmentAsync(
+            new BeginTotpEnrollmentCommand(
+                validated.Value.Id,
+                command.ClientKey),
+            cancellationToken);
+        if (!begun.IsSuccess)
+        {
+            return OperationResultFactory.Fail<HelloTotpEnrollment>(
+                begun.Errors);
+        }
+
+        var account = FirstNonEmpty(
+            validated.Value.Email,
+            validated.Value.UserName,
+            validated.Value.Phone)
+            ?? validated.Value.Id.ToString("D");
+        var uri = CreateProvisioningUri(
+            options.Totp.Issuer,
+            account,
+            begun.Value.Secret);
+        return OperationResultFactory.Success(
+            new HelloTotpEnrollment(
+                begun.Value.EnrollmentId,
+                begun.Value.Secret,
+                uri,
+                CreateQrCodeSvg(uri),
+                begun.Value.ExpiresAt));
+    }
+
+    public async Task<OperationResult<HelloConfirmedTotpEnrollment>>
+        ConfirmTotpEnrollmentAsync(
+            HelloConfirmTotpEnrollmentCommand command,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var available = RequireTotpService<
+            HelloConfirmedTotpEnrollment>();
+        if (available is not null)
+        {
+            return available;
+        }
+
+        var validated = await ValidateTokenAsync(
+            command.AccessToken,
+            cancellationToken);
+        if (!validated.IsSuccess)
+        {
+            return OperationResultFactory.Fail<
+                HelloConfirmedTotpEnrollment>(validated.Errors);
+        }
+
+        var confirmed = await totp!.ConfirmEnrollmentAsync(
+            new ConfirmTotpEnrollmentCommand(
+                validated.Value.Id,
+                command.EnrollmentId,
+                command.Code,
+                command.ClientKey),
+            cancellationToken);
+        return confirmed.IsSuccess
+            ? OperationResultFactory.Success(
+                new HelloConfirmedTotpEnrollment(
+                    ToTotpState(confirmed.Value.Status),
+                    confirmed.Value.RecoveryCodes))
+            : OperationResultFactory.Fail<
+                HelloConfirmedTotpEnrollment>(confirmed.Errors);
+    }
+
+    public Task<OperationResult<HelloStepUpChallenge>> BeginTotpDisableAsync(
+        HelloBeginTotpDisableCommand command,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        if (!options.Totp.Enabled || totp is null)
+        {
+            return Task.FromResult(
+                OperationResultFactory.Fail<HelloStepUpChallenge>(
+                    TotpUnavailable()));
+        }
+
+        return BeginAccountSecurityActionAsync(
+            command.AccessToken,
+            command.ClientKey,
+            HelloAccountSecurity.AuthenticatorDisableAction,
+            RequireTotpEnabledAsync,
+            cancellationToken);
+    }
+
+    public Task<OperationResult> CompleteTotpDisableAsync(
+        HelloCompleteTotpDisableCommand command,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        if (!options.Totp.Enabled || totp is null)
+        {
+            return Task.FromResult(
+                OperationResultFactory.Fail(TotpUnavailable()));
+        }
+
+        return CompleteAccountSecurityActionAsync(
+            command.AccessToken,
+            command.ChallengeId,
+            command.VerificationCode,
+            command.ClientKey,
+            HelloAccountSecurity.AuthenticatorDisableAction,
+            async (user, ct) =>
+            {
+                var enabled = await RequireTotpEnabledAsync(user, ct);
+                return enabled.IsSuccess
+                    ? await totp.DisableAsync(user.Id, ct)
+                    : enabled;
+            },
+            cancellationToken);
+    }
+
     public Task<OperationResult> LogoutAsync(
         string refreshToken,
         CancellationToken cancellationToken)
@@ -457,22 +634,13 @@ internal sealed class HelloIdentityApplication<TProfile>(
         }
 
         var user = validated.Value;
-        if (!HelloAccountSecurity.TryGetConfirmedDestination(
-                user,
-                deliveryOptions.VerificationChannel,
-                out var destination))
+        var selected = await stepUpMethods.SelectAsync(
+            user,
+            cancellationToken);
+        if (!selected.IsSuccess)
         {
             return OperationResultFactory.Fail<HelloStepUpChallenge>(
-                HelloAccountSecurity.ConfirmedDestinationRequired(
-                    deliveryOptions.VerificationChannel));
-        }
-
-        var deliveryAvailable = messageSender.CheckAvailability(
-            deliveryOptions.VerificationChannel);
-        if (!deliveryAvailable.IsSuccess)
-        {
-            return OperationResultFactory.Fail<HelloStepUpChallenge>(
-                deliveryAvailable.Errors);
+                selected.Errors);
         }
 
         var issued = await stepUp.BeginAsync(
@@ -481,9 +649,9 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 HelloAccountSecurity.PasswordChangeAction,
                 HelloAccountSecurity.CreateBinding(
                     user.Id,
-                    deliveryOptions.VerificationChannel,
-                    destination!),
-                VerificationMethods.OneTimeCode,
+                    selected.Value,
+                    HelloAccountSecurity.PasswordChangeAction),
+                selected.Value.Method,
                 command.ClientKey),
             cancellationToken);
         if (!issued.IsSuccess)
@@ -492,31 +660,18 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 issued.Errors);
         }
 
-        if (string.IsNullOrWhiteSpace(issued.Value.DeliveryCode))
-        {
-            return OperationResultFactory.Fail<HelloStepUpChallenge>(
-                new Error(
-                    IdentityErrorCodes.VerificationMethodUnavailable,
-                    "The verification code could not be delivered.",
-                    ErrorType.Failure));
-        }
-
-        var delivered = await messageSender.SendAsync(
-            new HelloAccountMessage(
-                Guid.NewGuid(),
-                HelloAccountMessageKind.PasswordChangeVerification,
-                deliveryOptions.VerificationChannel,
-                destination!,
-                null,
-                issued.Value.ExpiresAt,
-                issued.Value.DeliveryCode),
+        var delivered = await DeliverStepUpAsync(
+            HelloAccountMessageKind.PasswordChangeVerification,
+            selected.Value,
+            issued.Value,
+            null,
             cancellationToken);
         return delivered.IsSuccess
             ? OperationResultFactory.Success(
                 new HelloStepUpChallenge(
                     issued.Value.ChallengeId,
                     issued.Value.ExpiresAt,
-                    deliveryOptions.VerificationChannel))
+                    selected.Value.Channel))
             : OperationResultFactory.Fail<HelloStepUpChallenge>(
                 delivered.Errors);
     }
@@ -536,21 +691,12 @@ internal sealed class HelloIdentityApplication<TProfile>(
         }
 
         var user = validated.Value;
-        if (!HelloAccountSecurity.TryGetConfirmedDestination(
-                user,
-                deliveryOptions.VerificationChannel,
-                out var destination))
-        {
-            return OperationResultFactory.Fail(
-                HelloAccountSecurity.ConfirmedDestinationRequired(
-                    deliveryOptions.VerificationChannel));
-        }
-
         var verified = await verification.VerifyAsync(
             new VerifyVerificationChallengeCommand(
                 command.ChallengeId,
                 user.Id,
-                command.VerificationCode),
+                command.VerificationCode,
+                command.ClientKey),
             cancellationToken);
         if (!verified.IsSuccess)
         {
@@ -560,14 +706,23 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 : PasswordChangeRestartRequired(verified.Errors);
         }
 
+        var selected = stepUpMethods.Resolve(
+            user,
+            verified.Value.Method,
+            requireDelivery: false);
+        if (!selected.IsSuccess)
+        {
+            return PasswordChangeRestartRequired(selected.Errors);
+        }
+
         var authorized = await stepUp.AuthorizeAsync(
             new AuthorizeStepUpCommand(
                 user.Id,
                 HelloAccountSecurity.PasswordChangeAction,
                 HelloAccountSecurity.CreateBinding(
                     user.Id,
-                    deliveryOptions.VerificationChannel,
-                    destination!),
+                    selected.Value,
+                    HelloAccountSecurity.PasswordChangeAction),
                 command.ChallengeId,
                 verified.Value.Token),
             cancellationToken);
@@ -618,6 +773,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
             command.AccessToken,
             command.ChallengeId,
             command.VerificationCode,
+            command.ClientKey,
             HelloAccountSecurity.PasswordSetAction,
             async (user, ct) =>
             {
@@ -657,6 +813,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
             command.AccessToken,
             command.ChallengeId,
             command.VerificationCode,
+            command.ClientKey,
             HelloAccountSecurity.PasswordRemoveAction,
             async (user, ct) =>
             {
@@ -695,6 +852,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
             command.AccessToken,
             command.ChallengeId,
             command.VerificationCode,
+            command.ClientKey,
             HelloAccountSecurity.AccountDeleteAction,
             (user, ct) => users.DeleteAsync(
                 new DeleteUserCommand(
@@ -734,22 +892,13 @@ internal sealed class HelloIdentityApplication<TProfile>(
             }
         }
 
-        if (!HelloAccountSecurity.TryGetConfirmedDestination(
-                user,
-                deliveryOptions.VerificationChannel,
-                out var destination))
+        var selected = await stepUpMethods.SelectAsync(
+            user,
+            cancellationToken);
+        if (!selected.IsSuccess)
         {
             return OperationResultFactory.Fail<HelloStepUpChallenge>(
-                HelloAccountSecurity.ConfirmedDestinationRequired(
-                    deliveryOptions.VerificationChannel));
-        }
-
-        var deliveryAvailable = messageSender.CheckAvailability(
-            deliveryOptions.VerificationChannel);
-        if (!deliveryAvailable.IsSuccess)
-        {
-            return OperationResultFactory.Fail<HelloStepUpChallenge>(
-                deliveryAvailable.Errors);
+                selected.Errors);
         }
 
         var issued = await stepUp.BeginAsync(
@@ -758,10 +907,9 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 action,
                 HelloAccountSecurity.CreateBinding(
                     user.Id,
-                    deliveryOptions.VerificationChannel,
-                    destination!,
+                    selected.Value,
                     action),
-                VerificationMethods.OneTimeCode,
+                selected.Value.Method,
                 clientKey),
             cancellationToken);
         if (!issued.IsSuccess)
@@ -770,31 +918,18 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 issued.Errors);
         }
 
-        if (string.IsNullOrWhiteSpace(issued.Value.DeliveryCode))
-        {
-            return OperationResultFactory.Fail<HelloStepUpChallenge>(
-                new Error(
-                    IdentityErrorCodes.VerificationMethodUnavailable,
-                    "The verification code could not be delivered.",
-                    ErrorType.Failure));
-        }
-
-        var delivered = await messageSender.SendAsync(
-            new HelloAccountMessage(
-                Guid.NewGuid(),
-                HelloAccountMessageKind.AccountSecurityVerification,
-                deliveryOptions.VerificationChannel,
-                destination!,
-                null,
-                issued.Value.ExpiresAt,
-                issued.Value.DeliveryCode),
+        var delivered = await DeliverStepUpAsync(
+            HelloAccountMessageKind.AccountSecurityVerification,
+            selected.Value,
+            issued.Value,
+            action,
             cancellationToken);
         return delivered.IsSuccess
             ? OperationResultFactory.Success(
                 new HelloStepUpChallenge(
                     issued.Value.ChallengeId,
                     issued.Value.ExpiresAt,
-                    deliveryOptions.VerificationChannel))
+                    selected.Value.Channel))
             : OperationResultFactory.Fail<HelloStepUpChallenge>(
                 delivered.Errors);
     }
@@ -803,6 +938,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
         string accessToken,
         Guid challengeId,
         string verificationCode,
+        string? clientKey,
         string action,
         Func<IdentityUser<TProfile>, CancellationToken,
             Task<OperationResult>> mutation,
@@ -817,21 +953,12 @@ internal sealed class HelloIdentityApplication<TProfile>(
         }
 
         var user = validated.Value;
-        if (!HelloAccountSecurity.TryGetConfirmedDestination(
-                user,
-                deliveryOptions.VerificationChannel,
-                out var destination))
-        {
-            return OperationResultFactory.Fail(
-                HelloAccountSecurity.ConfirmedDestinationRequired(
-                    deliveryOptions.VerificationChannel));
-        }
-
         var verified = await verification.VerifyAsync(
             new VerifyVerificationChallengeCommand(
                 challengeId,
                 user.Id,
-                verificationCode),
+                verificationCode,
+                clientKey),
             cancellationToken);
         if (!verified.IsSuccess)
         {
@@ -841,14 +968,22 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 : AccountSecurityActionRestartRequired(verified.Errors);
         }
 
+        var selected = stepUpMethods.Resolve(
+            user,
+            verified.Value.Method,
+            requireDelivery: false);
+        if (!selected.IsSuccess)
+        {
+            return AccountSecurityActionRestartRequired(selected.Errors);
+        }
+
         var authorized = await stepUp.AuthorizeAsync(
             new AuthorizeStepUpCommand(
                 user.Id,
                 action,
                 HelloAccountSecurity.CreateBinding(
                     user.Id,
-                    deliveryOptions.VerificationChannel,
-                    destination!,
+                    selected.Value,
                     action),
                 challengeId,
                 verified.Value.Token),
@@ -872,6 +1007,50 @@ internal sealed class HelloIdentityApplication<TProfile>(
             ? revoked
             : AccountSecurityActionSessionCleanupRequired(
                 revoked.Errors);
+    }
+
+    private async Task<OperationResult> DeliverStepUpAsync(
+        HelloAccountMessageKind kind,
+        HelloStepUpMethodSelection selection,
+        IssuedVerificationChallenge issued,
+        string? templateVariant,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(
+                selection.Method,
+                VerificationMethods.TimeBasedOneTimePassword,
+                StringComparison.Ordinal))
+        {
+            return string.IsNullOrWhiteSpace(issued.DeliveryCode)
+                ? OperationResultFactory.Success()
+                : OperationResultFactory.Fail(
+                    new Error(
+                        IdentityErrorCodes.VerificationMethodUnavailable,
+                        "The authenticator method unexpectedly produced a delivery code.",
+                        ErrorType.Failure));
+        }
+
+        if (string.IsNullOrWhiteSpace(issued.DeliveryCode)
+            || string.IsNullOrWhiteSpace(selection.Destination))
+        {
+            return OperationResultFactory.Fail(
+                new Error(
+                    IdentityErrorCodes.VerificationMethodUnavailable,
+                    "The verification code could not be delivered.",
+                    ErrorType.Failure));
+        }
+
+        return await messageSender.SendAsync(
+            new HelloAccountMessage(
+                Guid.NewGuid(),
+                kind,
+                selection.Channel,
+                selection.Destination,
+                ActionUrl: null,
+                issued.ExpiresAt,
+                issued.DeliveryCode,
+                templateVariant),
+            cancellationToken);
     }
 
     private async Task<OperationResult> RequirePasswordAbsentAsync(
@@ -976,6 +1155,76 @@ internal sealed class HelloIdentityApplication<TProfile>(
                         "At least one user name, email address or phone number must remain while password sign-in is configured.",
                         ErrorType.Conflict))
                 : OperationResultFactory.Success();
+    }
+
+    private async Task<OperationResult> RequireTotpEnabledAsync(
+        IdentityUser<TProfile> user,
+        CancellationToken cancellationToken)
+    {
+        if (!options.Totp.Enabled || totp is null)
+        {
+            return OperationResultFactory.Fail(TotpUnavailable());
+        }
+
+        var status = await totp.GetStatusAsync(
+            user.Id,
+            cancellationToken);
+        if (!status.IsSuccess)
+        {
+            return OperationResultFactory.Fail(status.Errors);
+        }
+
+        return status.Value.IsEnabled
+            ? OperationResultFactory.Success()
+            : OperationResultFactory.Fail(
+                new Error(
+                    IdentityErrorCodes.TotpNotEnabled,
+                    "An authenticator is not enabled.",
+                    ErrorType.Conflict));
+    }
+
+    private OperationResult<T>? RequireTotpService<T>()
+        => options.Totp.Enabled && totp is not null
+            ? null
+            : OperationResultFactory.Fail<T>(TotpUnavailable());
+
+    private static Error TotpUnavailable()
+        => new(
+            IdentityErrorCodes.VerificationMethodUnavailable,
+            "Authenticator support is not configured.",
+            ErrorType.Failure);
+
+    private static HelloTotpState ToTotpState(TotpFactorStatus status)
+        => new(
+            IsAvailable: true,
+            status.IsEnabled,
+            status.RecoveryCodesRemaining,
+            status.EnabledAt);
+
+    private static string? FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?
+            .Trim();
+
+    internal static string CreateProvisioningUri(
+        string issuer,
+        string account,
+        string secret)
+    {
+        var escapedIssuer = Uri.EscapeDataString(issuer);
+        var escapedLabel = $"{Uri.EscapeDataString(issuer)}:"
+            + Uri.EscapeDataString(account);
+        return $"otpauth://totp/{escapedLabel}?secret={secret}"
+            + $"&issuer={escapedIssuer}";
+    }
+
+    private static string CreateQrCodeSvg(string provisioningUri)
+    {
+        using var generator = new QRCodeGenerator();
+        using var data = generator.CreateQrCode(
+            provisioningUri,
+            QRCodeGenerator.ECCLevel.M);
+        var qrCode = new SvgQRCode(data);
+        return qrCode.GetGraphic(4);
     }
 
     private static bool HasLocalHandle(IdentityUser<TProfile> user)

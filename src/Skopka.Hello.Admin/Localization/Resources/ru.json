@@ -12,6 +12,7 @@
     "Admin.Common.StepUp": "Дополнительное подтверждение",
     "Admin.Common.Contact": "контакт",
     "Admin.Common.EnterCode": "Введите одноразовый код, отправленный на подтверждённый {0}.",
+    "Admin.Common.EnterAuthenticatorCode": "Введите текущий код из приложения-аутентификатора или неиспользованный код восстановления.",
     "Admin.Common.ExpiresAt": "Срок действия истекает {0}.",
     "Admin.Common.ConfirmAction": "Подтвердить: {0}",
     "Admin.Common.ActionCompleted": "Действие «{0}» выполнено.",
@@ -70,6 +71,7 @@
     "Admin.Users.DeleteUser": "Удалить пользователя",
     "Admin.Users.RestoreUser": "Восстановить пользователя",
     "Admin.Users.RevokeSessions": "Отозвать сессии",
+    "Admin.Users.ResetAuthenticator": "Сбросить аутентификатор",
 
     "Admin.Errors.IncompleteCursor": "Курсор пагинации неполон.",
     "Admin.Errors.InvalidRoleAction": "Недействительное действие с ролью.",

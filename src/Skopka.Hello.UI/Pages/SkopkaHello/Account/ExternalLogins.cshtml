@@ -1,6 +1,5 @@
 @page
 @model ExternalLoginsModel
-@inject HelloDeliveryOptions DeliveryOptions
 @{
     ViewData["Title"] = Text["Account.ExternalSignInMethods"];
 }
@@ -125,11 +124,7 @@
                     @Text["ExternalLogins.IdentityFrom"]
                     <strong>@(Model.PendingProvider?.DisplayName
                         ?? Text["ExternalLogins.ProviderFallback"])</strong>
-                    @Text["ExternalLogins.SendCodeBeforeLink",
-                        DeliveryOptions.VerificationChannel
-                            == HelloDeliveryChannel.Sms
-                                ? Text["Field.PhoneNumber"]
-                                : Text["Field.EmailAddress"]]
+                    @Text["ExternalLogins.RequestVerificationBeforeLink"]
                 </p>
                 <form method="post"
                       asp-page-handler="RequestLinkCode"
@@ -142,11 +137,9 @@
             else
             {
                 <p class="hello-status" role="status">
-                    @Text["ExternalLogins.CodeAccepted",
-                        DeliveryOptions.VerificationChannel
-                            == HelloDeliveryChannel.Sms
-                                ? Text["Field.PhoneNumber"]
-                                : Text["Field.EmailAddress"]]
+                    @(Model.VerificationChannel == HelloDeliveryChannel.Authenticator
+                        ? Text["Security.AuthenticatorStepUp"]
+                        : Text["ExternalLogins.CodeSent"])
                     @if (Model.CodeExpiresAt is not null)
                     {
                         <span>
@@ -160,10 +153,11 @@
                 <form method="post"
                       asp-page-handler="@(Model.PendingOperation == "link" ? "CompleteLink" : "CompleteUnlink")"
                       class="hello-form">
+                    <input asp-for="Input.DeliveryChannel" type="hidden" />
                     <label asp-for="Input.VerificationCode">@Text["Field.VerificationCode"]</label>
                     <input asp-for="Input.VerificationCode"
                            autocomplete="one-time-code"
-                           inputmode="numeric" />
+                           inputmode="@(Model.VerificationChannel == HelloDeliveryChannel.Authenticator ? "text" : "numeric")" />
                     <span asp-validation-for="Input.VerificationCode"
                           class="hello-field-error"></span>
                     <button class="hello-button" type="submit">

@@ -24,9 +24,16 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
     SkopkaHelloOptions options,
     HelloRegistrationAdmission<TProfile>? registrationAdmission = null,
     IEnumerable<IHelloAccessTokenValidator<TProfile>>?
-        accessTokenValidators = null)
+        accessTokenValidators = null,
+    HelloStepUpMethodResolver<TProfile>? stepUpMethodResolver = null)
     : IHelloExternalIdentityApplication<TProfile>
 {
+    private readonly HelloStepUpMethodResolver<TProfile> stepUpMethods =
+        stepUpMethodResolver
+        ?? new HelloStepUpMethodResolver<TProfile>(
+            deliveryOptions,
+            messageSender);
+
     public async Task<OperationResult<HelloSignIn<TProfile>>> SignInAsync(
         HelloExternalSignInCommand command,
         CancellationToken cancellationToken)
@@ -161,22 +168,13 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
         }
 
         var user = validated.Value;
-        if (!HelloAccountSecurity.TryGetConfirmedDestination(
-                user,
-                deliveryOptions.VerificationChannel,
-                out var destination))
+        var selected = await stepUpMethods.SelectAsync(
+            user,
+            cancellationToken);
+        if (!selected.IsSuccess)
         {
             return OperationResultFactory.Fail<HelloStepUpChallenge>(
-                HelloAccountSecurity.ConfirmedDestinationRequired(
-                    deliveryOptions.VerificationChannel));
-        }
-
-        var deliveryAvailable = messageSender.CheckAvailability(
-            deliveryOptions.VerificationChannel);
-        if (!deliveryAvailable.IsSuccess)
-        {
-            return OperationResultFactory.Fail<HelloStepUpChallenge>(
-                deliveryAvailable.Errors);
+                selected.Errors);
         }
 
         var issued = await stepUp.BeginAsync(
@@ -186,9 +184,8 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
                 HelloAccountSecurity.CreateExternalLoginBinding(
                     command.Login,
                     user.Id,
-                    deliveryOptions.VerificationChannel,
-                    destination!),
-                VerificationMethods.OneTimeCode,
+                    selected.Value),
+                selected.Value.Method,
                 command.ClientKey),
             cancellationToken);
         if (!issued.IsSuccess)
@@ -197,39 +194,25 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
                 issued.Errors);
         }
 
-        if (string.IsNullOrWhiteSpace(issued.Value.DeliveryCode))
-        {
-            return OperationResultFactory.Fail<HelloStepUpChallenge>(
-                new Error(
-                    IdentityErrorCodes.VerificationMethodUnavailable,
-                    "The verification code could not be delivered.",
-                    ErrorType.Failure));
-        }
-
-        var delivered = await messageSender.SendAsync(
-            new HelloAccountMessage(
-                Guid.NewGuid(),
-                action switch
-                {
-                    HelloAccountSecurity.ExternalLinkAction =>
-                        HelloAccountMessageKind.ExternalLoginLinkVerification,
-                    HelloAccountSecurity.ExternalUnlinkAction =>
-                        HelloAccountMessageKind.ExternalLoginUnlinkVerification,
-                    _ => throw new InvalidOperationException(
-                        "The external account operation is unsupported."),
-                },
-                deliveryOptions.VerificationChannel,
-                destination!,
-                null,
-                issued.Value.ExpiresAt,
-                issued.Value.DeliveryCode),
+        var delivered = await DeliverStepUpAsync(
+            action switch
+            {
+                HelloAccountSecurity.ExternalLinkAction =>
+                    HelloAccountMessageKind.ExternalLoginLinkVerification,
+                HelloAccountSecurity.ExternalUnlinkAction =>
+                    HelloAccountMessageKind.ExternalLoginUnlinkVerification,
+                _ => throw new InvalidOperationException(
+                    "The external account operation is unsupported."),
+            },
+            selected.Value,
+            issued.Value,
             cancellationToken);
         return delivered.IsSuccess
             ? OperationResultFactory.Success(
                 new HelloStepUpChallenge(
                     issued.Value.ChallengeId,
                     issued.Value.ExpiresAt,
-                    deliveryOptions.VerificationChannel))
+                    selected.Value.Channel))
             : OperationResultFactory.Fail<HelloStepUpChallenge>(
                 delivered.Errors);
     }
@@ -253,16 +236,6 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
         }
 
         var user = validated.Value;
-        if (!HelloAccountSecurity.TryGetConfirmedDestination(
-                user,
-                deliveryOptions.VerificationChannel,
-                out var destination))
-        {
-            return OperationResultFactory.Fail<HelloSignIn<TProfile>>(
-                HelloAccountSecurity.ConfirmedDestinationRequired(
-                    deliveryOptions.VerificationChannel));
-        }
-
         if (user.Version != command.ExpectedVersion)
         {
             return OperationResultFactory.Fail<HelloSignIn<TProfile>>(
@@ -273,7 +246,8 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
             new VerifyVerificationChallengeCommand(
                 command.ChallengeId,
                 user.Id,
-                command.VerificationCode),
+                command.VerificationCode,
+                command.ClientKey),
             cancellationToken);
         if (!verified.IsSuccess)
         {
@@ -284,6 +258,15 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
                 : ChallengeRestartRequired<TProfile>(verified.Errors);
         }
 
+        var selected = stepUpMethods.Resolve(
+            user,
+            verified.Value.Method,
+            requireDelivery: false);
+        if (!selected.IsSuccess)
+        {
+            return ChallengeRestartRequired<TProfile>(selected.Errors);
+        }
+
         var authorized = await stepUp.AuthorizeAsync(
             new AuthorizeStepUpCommand(
                 user.Id,
@@ -291,8 +274,7 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
                 HelloAccountSecurity.CreateExternalLoginBinding(
                     command.Login,
                     user.Id,
-                    deliveryOptions.VerificationChannel,
-                    destination!),
+                    selected.Value),
                 command.ChallengeId,
                 verified.Value.Token),
             cancellationToken);
@@ -355,6 +337,48 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
                     ToSession(issued.Value)))
             : OperationResultFactory.Fail<HelloSignIn<TProfile>>(
                 issued.Errors);
+    }
+
+    private async Task<OperationResult> DeliverStepUpAsync(
+        HelloAccountMessageKind kind,
+        HelloStepUpMethodSelection selection,
+        IssuedVerificationChallenge issued,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(
+                selection.Method,
+                VerificationMethods.TimeBasedOneTimePassword,
+                StringComparison.Ordinal))
+        {
+            return string.IsNullOrWhiteSpace(issued.DeliveryCode)
+                ? OperationResultFactory.Success()
+                : OperationResultFactory.Fail(
+                    new Error(
+                        IdentityErrorCodes.VerificationMethodUnavailable,
+                        "The authenticator method unexpectedly produced a delivery code.",
+                        ErrorType.Failure));
+        }
+
+        if (string.IsNullOrWhiteSpace(issued.DeliveryCode)
+            || string.IsNullOrWhiteSpace(selection.Destination))
+        {
+            return OperationResultFactory.Fail(
+                new Error(
+                    IdentityErrorCodes.VerificationMethodUnavailable,
+                    "The verification code could not be delivered.",
+                    ErrorType.Failure));
+        }
+
+        return await messageSender.SendAsync(
+            new HelloAccountMessage(
+                Guid.NewGuid(),
+                kind,
+                selection.Channel,
+                selection.Destination,
+                null,
+                issued.ExpiresAt,
+                issued.DeliveryCode),
+            cancellationToken);
     }
 
     private async Task<OperationResult<IdentityUser<TProfile>>>

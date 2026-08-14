@@ -217,6 +217,39 @@ public static class HelloEndpointRouteBuilderExtensions
             .RequireAuthorization()
             .WithName("SkopkaHelloDeleteSession");
 
+        if (helloOptions.Totp.Enabled)
+        {
+            endpoints.MapGet(
+                    "/account/authenticator",
+                    GetTotpStateAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloGetAuthenticator");
+
+            endpoints.MapPost(
+                    "/account/authenticator/enrollment",
+                    BeginTotpEnrollmentAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloBeginAuthenticatorEnrollment");
+
+            endpoints.MapPost(
+                    "/account/authenticator/enrollment/confirm",
+                    ConfirmTotpEnrollmentAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloConfirmAuthenticatorEnrollment");
+
+            endpoints.MapPost(
+                    "/account/authenticator/remove/challenge",
+                    BeginTotpDisableAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloBeginAuthenticatorRemoval");
+
+            endpoints.MapDelete(
+                    "/account/authenticator",
+                    CompleteTotpDisableAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloCompleteAuthenticatorRemoval");
+        }
+
         endpoints.MapPost(
                 "/account/password/change/challenge",
                 BeginPasswordChangeAsync<TProfile>)
@@ -1191,10 +1224,135 @@ public static class HelloEndpointRouteBuilderExtensions
                 httpContext);
     }
 
+    private static async Task<IResult> GetTotpStateAsync<TProfile>(
+        IHelloIdentityApplication<TProfile> application,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.GetTotpStateAsync(
+            accessToken,
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Ok(ToTotpStateResponse(result.Value))
+            : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    private static async Task<IResult> BeginTotpEnrollmentAsync<TProfile>(
+        IHelloIdentityApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.BeginTotpEnrollmentAsync(
+            new HelloBeginTotpEnrollmentCommand(
+                accessToken,
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Ok(
+                new TotpEnrollmentResponse(
+                    result.Value.EnrollmentId,
+                    result.Value.Secret,
+                    result.Value.ProvisioningUri,
+                    result.Value.QrCodeSvg,
+                    result.Value.ExpiresAt))
+            : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    private static async Task<IResult> ConfirmTotpEnrollmentAsync<TProfile>(
+        ConfirmTotpEnrollmentRequest request,
+        IHelloIdentityApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.ConfirmTotpEnrollmentAsync(
+            new HelloConfirmTotpEnrollmentCommand(
+                accessToken,
+                request.EnrollmentId,
+                request.Code,
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Ok(
+                new ConfirmedTotpEnrollmentResponse(
+                    ToTotpStateResponse(result.Value.State),
+                    result.Value.RecoveryCodes))
+            : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    private static async Task<IResult> BeginTotpDisableAsync<TProfile>(
+        IHelloIdentityApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.BeginTotpDisableAsync(
+            new HelloBeginTotpDisableCommand(
+                accessToken,
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+        return ToStepUpResult(result, httpContext);
+    }
+
+    private static async Task<IResult> CompleteTotpDisableAsync<TProfile>(
+        [FromBody] CompleteAccountSecurityActionRequest request,
+        IHelloIdentityApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        IHelloSessionCookieManager cookies,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.CompleteTotpDisableAsync(
+            new HelloCompleteTotpDisableCommand(
+                accessToken,
+                request.ChallengeId,
+                request.VerificationCode,
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+        return FinishSessionEndingMutation(result, cookies, httpContext);
+    }
+
     private static async Task<IResult>
         CompletePasswordChangeAsync<TProfile>(
             ChangePasswordRequest request,
             IHelloIdentityApplication<TProfile> application,
+            IHelloRequestContext requestContext,
             IHelloSessionCookieManager cookies,
             HttpContext httpContext,
             CancellationToken cancellationToken)
@@ -1212,7 +1370,8 @@ public static class HelloEndpointRouteBuilderExtensions
                 request.ChallengeId,
                 request.VerificationCode,
                 request.CurrentPassword,
-                request.NewPassword),
+                request.NewPassword,
+                requestContext.CreateClientKey(httpContext)),
             cancellationToken);
         if (!result.IsSuccess)
         {
@@ -1249,6 +1408,7 @@ public static class HelloEndpointRouteBuilderExtensions
     private static async Task<IResult> CompletePasswordSetAsync<TProfile>(
         SetPasswordRequest request,
         IHelloIdentityApplication<TProfile> application,
+        IHelloRequestContext requestContext,
         IHelloSessionCookieManager cookies,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -1265,7 +1425,8 @@ public static class HelloEndpointRouteBuilderExtensions
                 accessToken,
                 request.ChallengeId,
                 request.VerificationCode,
-                request.NewPassword),
+                request.NewPassword,
+                requestContext.CreateClientKey(httpContext)),
             cancellationToken);
         return FinishSessionEndingMutation(
             result,
@@ -1299,6 +1460,7 @@ public static class HelloEndpointRouteBuilderExtensions
         CompletePasswordRemovalAsync<TProfile>(
             [FromBody] CompleteAccountSecurityActionRequest request,
             IHelloIdentityApplication<TProfile> application,
+            IHelloRequestContext requestContext,
             IHelloSessionCookieManager cookies,
             HttpContext httpContext,
             CancellationToken cancellationToken)
@@ -1314,7 +1476,8 @@ public static class HelloEndpointRouteBuilderExtensions
             new HelloCompletePasswordRemovalCommand(
                 accessToken,
                 request.ChallengeId,
-                request.VerificationCode),
+                request.VerificationCode,
+                requestContext.CreateClientKey(httpContext)),
             cancellationToken);
         return FinishSessionEndingMutation(
             result,
@@ -1347,6 +1510,7 @@ public static class HelloEndpointRouteBuilderExtensions
         CompleteAccountDeletionAsync<TProfile>(
             [FromBody] CompleteAccountSecurityActionRequest request,
             IHelloIdentityApplication<TProfile> application,
+            IHelloRequestContext requestContext,
             IHelloSessionCookieManager cookies,
             HttpContext httpContext,
             CancellationToken cancellationToken)
@@ -1362,7 +1526,8 @@ public static class HelloEndpointRouteBuilderExtensions
             new HelloCompleteAccountDeletionCommand(
                 accessToken,
                 request.ChallengeId,
-                request.VerificationCode),
+                request.VerificationCode,
+                requestContext.CreateClientKey(httpContext)),
             cancellationToken);
         return FinishSessionEndingMutation(
             result,
@@ -1705,6 +1870,13 @@ public static class HelloEndpointRouteBuilderExtensions
             user.Version,
             user.CreatedAt,
             user.ModifiedAt);
+
+    private static TotpStateResponse ToTotpStateResponse(
+        HelloTotpState state)
+        => new(
+            state.IsEnabled,
+            state.RecoveryCodesRemaining,
+            state.EnabledAt);
 
     private static SessionResponse ToSessionResponse(
         HelloSession session)

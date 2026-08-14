@@ -120,12 +120,12 @@
             @Text[RolesModel.GetActionTextKey(pending.Action)]
         </h2>
         <p class="small mb-3">
-            @Text["Admin.Common.EnterCode",
-                pending.DeliveryChannel == HelloDeliveryChannel.Sms
-                    ? Text["Field.PhoneNumber"]
-                    : pending.DeliveryChannel == HelloDeliveryChannel.Email
-                        ? Text["Field.EmailAddress"]
-                        : Text["Admin.Common.Contact"]]
+            @(pending.DeliveryChannel == HelloDeliveryChannel.Authenticator
+                ? Text["Admin.Common.EnterAuthenticatorCode"]
+                : Text["Admin.Common.EnterCode",
+                    pending.DeliveryChannel == HelloDeliveryChannel.Sms
+                        ? Text["Field.PhoneNumber"]
+                        : Text["Field.EmailAddress"]])
             @if (pending.ExpiresAt is { } expiresAt)
             {
                 <span>@Text["Admin.Common.ExpiresAt", expiresAt.ToLocalTime()]</span>
@@ -165,7 +165,7 @@
                 <input class="form-control form-control-sm"
                        id="admin-role-verification-code"
                        name="verificationCode"
-                       inputmode="numeric"
+                       inputmode="@(pending.DeliveryChannel == HelloDeliveryChannel.Authenticator ? "text" : "numeric")"
                        autocomplete="one-time-code"
                        required />
             </div>

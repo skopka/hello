@@ -18,6 +18,13 @@ public static class SkopkaHelloSmtpServiceCollectionExtensions
         services.AddSkopkaHelloDelivery();
         services.Replace(
             ServiceDescriptor.Singleton(options));
+        services.AddSingleton(serviceProvider =>
+            new Skopka.Hello.HelloAccountEmailTextCatalog(
+                options,
+                serviceProvider.GetService<
+                    Microsoft.Extensions.Hosting.IHostEnvironment>()));
+        services.AddSingleton<
+            Skopka.Hello.HelloAccountEmailTemplateRenderer>();
         services.AddSingleton<
             Skopka.Hello.SmtpHelloAccountMessageTransport>();
         if (options.UseBackgroundQueue)

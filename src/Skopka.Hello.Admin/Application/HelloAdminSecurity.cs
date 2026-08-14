@@ -19,6 +19,8 @@ internal static class HelloAdminSecurity
     public const string RestoreAction = "admin.user.restore";
     public const string RevokeSessionsAction =
         "admin.user.sessions.revoke";
+    public const string ResetAuthenticatorAction =
+        "admin.user.authenticator.reset";
 
     public const string CreateRoleAction = "admin.role.create";
     public const string UpdateRoleAction = "admin.role.update";
@@ -35,6 +37,8 @@ internal static class HelloAdminSecurity
             HelloAdminUserAction.Restore => RestoreAction,
             HelloAdminUserAction.RevokeSessions =>
                 RevokeSessionsAction,
+            HelloAdminUserAction.ResetAuthenticator =>
+                ResetAuthenticatorAction,
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
 
@@ -67,6 +71,8 @@ internal static class HelloAdminSecurity
             "restore" => HelloAdminUserAction.Restore,
             "revoke-sessions" =>
                 HelloAdminUserAction.RevokeSessions,
+            "reset-authenticator" =>
+                HelloAdminUserAction.ResetAuthenticator,
             _ => (HelloAdminUserAction)(-1),
         };
         return Enum.IsDefined(action);
@@ -80,6 +86,8 @@ internal static class HelloAdminSecurity
             HelloAdminUserAction.Delete => "delete",
             HelloAdminUserAction.Restore => "restore",
             HelloAdminUserAction.RevokeSessions => "revoke-sessions",
+            HelloAdminUserAction.ResetAuthenticator =>
+                "reset-authenticator",
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
 
@@ -154,6 +162,20 @@ internal static class HelloAdminSecurity
             SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     }
 
+    public static string CreateBinding(
+        Guid actorUserId,
+        Guid targetUserId,
+        HelloAdminUserAction action,
+        HelloAdminUserActionParameters parameters,
+        HelloStepUpMethodSelection selection)
+        => CreateBinding(
+            actorUserId,
+            targetUserId,
+            action,
+            parameters,
+            selection.Channel,
+            selection.Destination ?? "totp");
+
     public static Error? Validate(
         Guid targetUserId,
         HelloAdminUserAction action,
@@ -176,7 +198,8 @@ internal static class HelloAdminSecurity
                 $"Reason cannot exceed {MaximumReasonLength} characters.");
         }
 
-        var requiresVersion = action != HelloAdminUserAction.RevokeSessions;
+        var requiresVersion = action is not HelloAdminUserAction.RevokeSessions
+            and not HelloAdminUserAction.ResetAuthenticator;
         if (requiresVersion && parameters.ExpectedVersion is null)
         {
             return Validation(
@@ -188,7 +211,7 @@ internal static class HelloAdminSecurity
         {
             return Validation(
                 "expectedVersion",
-                "ExpectedVersion is not accepted for session revocation.");
+                "ExpectedVersion is not accepted for this action.");
         }
 
         if (action != HelloAdminUserAction.Block
@@ -210,6 +233,7 @@ internal static class HelloAdminSecurity
         if (action is HelloAdminUserAction.Unblock
             or HelloAdminUserAction.Restore
             or HelloAdminUserAction.RevokeSessions
+            or HelloAdminUserAction.ResetAuthenticator
             && !string.IsNullOrEmpty(parameters.Reason))
         {
             return Validation(
@@ -253,6 +277,22 @@ internal static class HelloAdminSecurity
             destinationHash);
         return Hash(value);
     }
+
+    public static string CreateBinding(
+        Guid actorUserId,
+        HelloAdminRoleAction action,
+        Guid? roleId,
+        Guid? targetUserId,
+        HelloAdminRoleActionParameters parameters,
+        HelloStepUpMethodSelection selection)
+        => CreateBinding(
+            actorUserId,
+            action,
+            roleId,
+            targetUserId,
+            parameters,
+            selection.Channel,
+            selection.Destination ?? "totp");
 
     public static Error? Validate(
         HelloAdminRoleAction action,
@@ -418,6 +458,8 @@ internal sealed class HelloAdminStepUpRequirementProvider<TProfile>
             [HelloAdminSecurity.RestoreAction] = Create("restore"),
             [HelloAdminSecurity.RevokeSessionsAction] =
                 Create("sessions.revoke"),
+            [HelloAdminSecurity.ResetAuthenticatorAction] =
+                Create("authenticator.reset"),
             [HelloAdminSecurity.CreateRoleAction] =
                 CreatePurpose("hello:admin.role.create"),
             [HelloAdminSecurity.UpdateRoleAction] =

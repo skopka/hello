@@ -22,8 +22,8 @@ The current `0.10.2` vertical slice contains:
 - atomic external registration without email-based account auto-linking;
 - same-origin browser/SPA OIDC APIs for sign-in, registration and one-use
   link/unlink flows without exposing provider tokens or subjects;
-- configurable confirmed-email or confirmed-phone OTP step-up for external
-  login link and unlink;
+- configurable confirmed-email, confirmed-phone or RFC 6238 authenticator
+  step-up for sensitive account and administrative actions;
 - enumeration-safe email/phone confirmation and password-reset requests;
 - bounded pre-lookup queuing with persistent client/target admission limits
   for anonymous account messages;
@@ -33,6 +33,7 @@ The current `0.10.2` vertical slice contains:
   confirmed-contact channel;
 - channel-aware account-message provider routing and optional bounded
   background SMTP email delivery;
+- host-overridable English/Russian SMTP account-message dictionaries;
 - short-lived JWT access tokens in JSON with versioned signing-key overlap;
 - rotating refresh tokens in `Secure`, `HttpOnly` cookies;
 - antiforgery protection for refresh and cookie logout;
@@ -119,6 +120,11 @@ The same client is covered by real Chromium tests.
 | `POST` | `/account/external-logins/{providerId}/unlink/challenge` | Bearer + CSRF header |
 | `DELETE` | `/account/external-logins/unlink` | Bearer + pending-flow cookie + CSRF header + one-time code |
 | `DELETE` | `/account/sessions/{sessionId}` | Bearer |
+| `GET` | `/account/authenticator` | Bearer |
+| `POST` | `/account/authenticator/enrollment` | Bearer; returns Base32 secret, otpauth URI and QR SVG |
+| `POST` | `/account/authenticator/enrollment/confirm` | Bearer + current TOTP code; returns recovery codes once |
+| `POST` | `/account/authenticator/remove/challenge` | Bearer |
+| `DELETE` | `/account/authenticator` | Bearer + TOTP or recovery code |
 | `POST` | `/account/password/change/challenge` | Bearer |
 | `POST` | `/account/password/change` | Bearer + one-time code |
 | `POST` | `/account/password/set/challenge` | Bearer |
@@ -212,6 +218,33 @@ machine culture. Custom JSON files can add a culture or partially override
 stable text keys; details are in
 [UI localization](docs/customization.md#ui-localization).
 
+Authenticator support is opt-in for a custom host at both composition layers:
+
+```csharp
+var identity = services.AddSkopkaHello<Profile>(options =>
+{
+    options.Totp.Enabled = true;
+    options.Totp.Issuer = "IqZone XYZ";
+});
+
+identity.UseDataProtectionTotp();
+
+services.AddSkopkaHelloDelivery(options =>
+{
+    options.VerificationChannel = HelloDeliveryChannel.Email;
+    options.RequireTotpWhenEnabled = true;
+});
+```
+
+The factor uses the standard authenticator-app profile (Base32 secret,
+HMAC-SHA1, six digits, 30 seconds), accepts one adjacent clock step, rejects
+counter replay and includes one-use recovery codes. When
+`RequireTotpWhenEnabled` is true, TOTP replaces confirmed-contact delivery for
+users who have enabled it; other users retain the configured email/SMS flow.
+Enrollment, recovery-code display and confirmed removal live on
+`/hello/account/security`. Removing one’s own factor and resetting another
+user’s factor from admin both require step-up and revoke the affected sessions.
+
 With the default prefix, the ready server exposes:
 
 | Path | Purpose |
@@ -228,9 +261,9 @@ With the default prefix, the ready server exposes:
 | `/hello/confirm-phone` | Confirm a phone after an explicit POST |
 | `/hello/account` | Current account summary |
 | `/hello/account/sessions` | List and revoke active sessions |
-| `/hello/account/change-password` | Change password after configured-channel OTP step-up |
-| `/hello/account/security` | Set/remove a password or delete the account after OTP step-up |
-| `/hello/account/external-logins` | Link and unlink external providers after configured-channel OTP step-up |
+| `/hello/account/change-password` | Change password after the configured step-up |
+| `/hello/account/security` | Manage password, authenticator and account deletion after step-up |
+| `/hello/account/external-logins` | Link and unlink external providers after the configured step-up |
 | `/hello/admin/users` | Search and administer users after current role-policy authorization |
 | `/hello/admin/roles` | Search and administer roles after current role-policy authorization |
 | `/hello/culture` | Antiforgery-protected UI culture selection when localization is enabled |

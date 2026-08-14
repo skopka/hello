@@ -67,15 +67,20 @@ Authentication, authorization and step-up are three separate gates:
    built-in policy handler looks up current role membership through
    `IIdentityRoleService<TProfile>` instead of trusting a possibly stale role
    claim.
-3. Every mutation requires an Identity-owned one-time-code step-up. The proof
+3. Every mutation requires an Identity-owned step-up. The proof
    is bound to the actor, target user, action, optimistic version, block expiry,
    reason or role-parameter fingerprints, delivery channel and
    confirmed-destination fingerprint.
 
-The administrator must have a confirmed contact for the configured
-`SkopkaHello:Delivery:VerificationChannel`. The code is delivered out of band
-and is never returned by HTTP or logged. A wrong code is retryable; a terminal
-verification, changed binding or mutation race requires a new challenge.
+By default, the administrator must have a confirmed contact for the configured
+`SkopkaHello:Delivery:VerificationChannel`. With
+`SkopkaHello:Delivery:RequireTotpWhenEnabled=true`, an administrator who has
+enabled an authenticator uses its current code or an unused recovery code
+instead, with no delivery dependency. A wrong response is retryable; a
+terminal verification, changed binding or mutation race requires a new
+challenge. The `reset-authenticator` user action lets an authorized
+administrator reset another user’s factor and revokes that user’s sessions;
+it is itself protected by the actor’s step-up policy.
 
 The ready Server uses these independent policies and role settings:
 

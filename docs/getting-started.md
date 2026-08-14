@@ -5,7 +5,7 @@
 - .NET SDK 10.0.101 or a compatible patch;
 - PostgreSQL;
 - Docker Engine for integration tests;
-- published Skopka.Identity `0.10.0` packages.
+- published Skopka.Identity `0.11.0` packages.
 
 ## Configure the server
 
@@ -77,6 +77,8 @@ SkopkaHello__Jwt__Audience=skopka-hello-api
 SkopkaHello__Jwt__ValidateSessionOnEveryRequest=false
 SkopkaHello__Jwt__CurrentVersion=v1
 SkopkaHello__SelfRegistration__Enabled=true
+SkopkaHello__Totp__Enabled=true
+SkopkaHello__Totp__Issuer=Skopka.Hello
 SkopkaHello__Ui__PathPrefix=/hello
 SkopkaHello__Ui__Registration__Email=Optional
 SkopkaHello__Ui__Registration__UserName=Optional
@@ -202,6 +204,7 @@ To select and enable the built-in queued SMTP email provider:
 SkopkaHello__Delivery__EmailProviderId=smtp
 SkopkaHello__Delivery__SmsProviderId=
 SkopkaHello__Delivery__VerificationChannel=Email
+SkopkaHello__Delivery__RequireTotpWhenEnabled=false
 SkopkaHello__Delivery__AnonymousRequestQueueCapacity=256
 SkopkaHello__Delivery__Smtp__ProviderId=smtp
 SkopkaHello__Delivery__Smtp__Host=smtp.example.com
@@ -212,6 +215,7 @@ SkopkaHello__Delivery__Smtp__Password=...
 SkopkaHello__Delivery__Smtp__FromAddress=accounts@example.com
 SkopkaHello__Delivery__Smtp__FromName=Example Accounts
 SkopkaHello__Delivery__Smtp__QueueCapacity=256
+SkopkaHello__Delivery__Smtp__Localization__DefaultCulture=ru
 ```
 
 Leave `EmailProviderId` and `Host` empty to keep email delivery disabled. The
@@ -225,6 +229,46 @@ vendor-specific SMS adapter.
 mutation codes are sent. Set it to `Email` or `Sms`; the selected address must
 be confirmed and the matching provider must be configured. A challenge never
 falls back to the other channel after it has been issued.
+
+`Totp:Enabled` exposes authenticator enrollment in the API and account-security
+page. The ready Server registers encrypted RFC 6238 storage automatically.
+Set `Delivery:RequireTotpWhenEnabled=true` to use an enabled authenticator
+instead of the confirmed contact for every built-in sensitive action,
+including admin actions. Users without an enabled factor continue through the
+configured contact channel.
+
+The SMTP provider packages complete English and Russian dictionaries. A custom
+host can select and partially override them without replacing the queued or
+durable provider:
+
+```csharp
+services.AddSkopkaHelloSmtpProvider(options =>
+{
+    // SMTP connection settings omitted.
+    options.Localization.DefaultCulture = "ru";
+    options.Localization.AddDictionaryFile(
+        "ru",
+        "Localization/account-email.ru.override.json");
+});
+```
+
+For example, the override can change only the account-security wording while
+the packaged Russian catalog supplies every other value:
+
+```json
+{
+  "culture": "ru",
+  "texts": {
+    "Email.AccountSecurityVerification.AccountDelete.Subject": "Подтверждение удаления аккаунта",
+    "Email.AccountSecurityVerification.AccountDelete.Introduction": "Удаление аккаунта необратимо: вместе с ним исчезнут зачисления и статистика."
+  }
+}
+```
+
+Dictionary files use the UI dictionary shape (`culture` plus `texts`). Stable
+keys are published in `HelloAccountEmailTextKeys`; every value of
+`HelloAccountMessageKind`, including `AdminActionVerification`, has a subject
+and introduction key. The host-level default culture is used for every email.
 
 `IHelloAccountMessageSender` remains the application-facing port and dispatches
 semantic messages to the selected provider. The reusable SMTP adapter defaults
@@ -392,7 +436,7 @@ the current `canUnlink` decision with `GET /account/external-logins`. Provider
 subjects and protocol tokens are not returned. External sign-in and
 registration support both the built-in Razor UI
 and a same-origin browser/SPA API. Link and unlink use the same two surfaces and
-the same Identity-owned OTP step-up. There is no native-app provider-token
+the same Identity-owned step-up. There is no native-app provider-token
 callback. Native/BFF clients instead use the separate first-party authorization
 server described in [authorization server](authorization-server.md).
 
@@ -486,7 +530,7 @@ server consumes a short-lived HttpOnly `SameSite=Strict` link-request cookie
 and its atomic flow id before starting the maintained OIDC handler. After the
 provider returns, POST `/auth/external/complete` with the same Bearer and CSRF
 header. Outcome `LinkVerificationRequired` contains only the safe provider
-label. Request and complete the OTP step-up with:
+label. Request and complete the configured step-up with:
 
 ```http
 POST /account/external-logins/link/challenge
@@ -560,8 +604,10 @@ expiry unless online validation is enabled.
 
 ## Change an authenticated password
 
-Password change requires an active bearer session and a confirmed contact for
-the configured `VerificationChannel`. First request an OTP challenge:
+Password change requires an active bearer session. By default it also requires a
+confirmed contact for the configured `VerificationChannel`; an enabled
+authenticator replaces that dependency when `RequireTotpWhenEnabled=true`.
+First request a step-up challenge:
 
 ```http
 POST /account/password/change/challenge
@@ -569,8 +615,10 @@ Authorization: Bearer <access-token>
 ```
 
 The response contains only `challengeId`, `expiresAt` and `deliveryChannel`
-(`email` or `sms`). The OTP is delivered through the provider configured for
-that channel and is never returned by HTTP. Submit it with both passwords:
+(`email`, `sms` or `authenticator`). Contact OTP is delivered through the
+provider configured for that channel and is never returned by HTTP. For the
+authenticator channel, submit a current TOTP or unused recovery code with both
+passwords:
 
 ```http
 POST /account/password/change

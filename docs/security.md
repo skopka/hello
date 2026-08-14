@@ -163,13 +163,15 @@ The request token remains in the configured readable cookie and must be echoed
 only through the configured header.
 
 Linking and unlinking require the current UI session to pass online access-token
-validation and require a confirmed contact for the configured channel. The
-provider/subject pair,
+validation. By default, step-up requires a confirmed contact for the configured
+channel; when `RequireTotpWhenEnabled` applies, an enabled authenticator replaces
+contact delivery. The provider/subject pair,
 local user, logical session and challenge id are bound into a protected pending
 ticket. Identity issues and consumes a one-time code bound to the exact link or
-unlink action, provider/subject target, configured delivery channel and a
-non-reversible fingerprint of the confirmed destination. A step-up decision is
-never carried across the provider redirect.
+unlink action, provider/subject target and selected verification method. Contact
+challenges additionally bind the delivery channel and a non-reversible fingerprint
+of the confirmed destination. A step-up decision is never carried across the
+provider redirect.
 
 Before unlink, Hello reads the current sign-in-method snapshot and refuses to
 remove the final enabled method. Completion reads a fresh snapshot and uses its
@@ -250,17 +252,19 @@ Skopka.Identity. Tokens, recipient addresses and passwords are not logged.
 
 ## Authenticated credentials, deletion and step-up
 
-Changing a password requires a confirmed contact for the configured
-`VerificationChannel` and an OTP challenge issued by Skopka.Identity. The
+Changing a password requires an Identity verification challenge. By default it
+uses a confirmed contact for the configured `VerificationChannel`. When
+`RequireTotpWhenEnabled` is enabled and the user has an authenticator, the
+standard TOTP or an unused recovery code replaces contact delivery. The
 application validates the bearer or protected UI access
 token online and derives the user id, action and binding itself. None of these
 values or the user's optimistic-concurrency version are accepted from the
 request.
 
 The HTTP response contains only the challenge id, expiry and the non-sensitive
-delivery channel (`email` or `sms`). The OTP is passed directly to
-`IHelloAccountMessageSender`, is HMAC-protected at rest and is never logged or
-serialized to the client. Identity rate-limits challenge issuance
+delivery channel (`email`, `sms` or `authenticator`). Contact OTP is passed
+directly to `IHelloAccountMessageSender`, is HMAC-protected at rest and is
+never logged or serialized to the client. Identity rate-limits challenge issuance
 and attempts, binds the proof to the password-change action, user, security
 stamp, delivery channel and a non-reversible fingerprint of the confirmed
 destination, and consumes it once before the credential mutation. An unrelated
@@ -275,6 +279,17 @@ changed, returns
 new challenge. The Razor UI clears its challenge id and renders the request-code
 state while retaining the underlying password or concurrency error as
 additional diagnostic context.
+
+Authenticator enrollment generates a 20-byte Base32 secret and an
+`otpauth://totp` URI for the interoperable HMAC-SHA1/six-digit/30-second
+profile. The secret is Data Protection-encrypted in the Identity database and
+is not enabled until the user proves possession. Verification accepts one
+adjacent time step in either direction and atomically records the accepted
+counter; the enrollment response is therefore also burned and cannot be
+reused for immediate step-up. Recovery codes are returned once, stored only as
+SHA-256 hashes and consumed atomically. Never log or persist plaintext secrets,
+provisioning URIs, QR payloads or recovery codes outside the user’s deliberate
+backup.
 
 If the password change commits but refresh-session revocation fails, Hello
 returns `hello.account.password_change_session_cleanup_required` instead. The
@@ -348,6 +363,7 @@ Keep these values outside source control:
 - verification-code HMAC keys, at least 32 random bytes per version;
 - PostgreSQL credentials;
 - persisted ASP.NET Core Data Protection key ring and its protection material;
+- TOTP secrets protected by that key ring and one-use recovery-code backups;
 - SMTP credentials;
 - external OIDC client secrets;
 - authorization-server confidential client secrets and stable signing/
@@ -361,8 +377,9 @@ Protection key ring during rotation. Configure
 
 ## Logging and responses
 
-Never log passwords, JWTs, refresh tokens, action tokens, OTPs, provider tokens
-or raw request bodies on authentication routes. Problem responses expose stable
+Never log passwords, JWTs, refresh tokens, action tokens, OTPs, TOTP secrets,
+recovery codes, provisioning URIs, provider tokens or raw request bodies on
+authentication routes. Problem responses expose stable
 codes, safe validation fields and trace ids, not EF exceptions or arbitrary
 error details.
 

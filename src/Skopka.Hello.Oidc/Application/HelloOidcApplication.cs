@@ -14,7 +14,8 @@ internal sealed class HelloOidcApplication<TProfile>(
     IHelloOidcChallengeService challenges,
     HelloOidcOptions options,
     SkopkaHelloOptions helloOptions,
-    HelloUiRoutePaths uiRoutes)
+    HelloUiRoutePaths uiRoutes,
+    IHelloRequestContext? requestContext = null)
     : IHelloOidcApplication<TProfile>
 {
     public async Task<OperationResult<HelloOidcCompletion<TProfile>>>
@@ -738,7 +739,8 @@ internal sealed class HelloOidcApplication<TProfile>(
             local.Value.Version,
             ticket.ChallengeId.Value,
             verificationCode,
-            sessionMetadata);
+            sessionMetadata,
+            requestContext?.CreateClientKey(httpContext));
         var completed = link
             ? await externalIdentity.CompleteLinkAsync(
                 command,

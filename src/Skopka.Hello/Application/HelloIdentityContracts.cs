@@ -85,7 +85,8 @@ public sealed record HelloCompletePasswordChangeCommand(
     Guid ChallengeId,
     string VerificationCode,
     string CurrentPassword,
-    string NewPassword);
+    string NewPassword,
+    string? ClientKey = null);
 
 public sealed record HelloBeginPasswordSetCommand(
     string AccessToken,
@@ -95,7 +96,8 @@ public sealed record HelloCompletePasswordSetCommand(
     string AccessToken,
     Guid ChallengeId,
     string VerificationCode,
-    string NewPassword);
+    string NewPassword,
+    string? ClientKey = null);
 
 public sealed record HelloBeginPasswordRemovalCommand(
     string AccessToken,
@@ -104,7 +106,8 @@ public sealed record HelloBeginPasswordRemovalCommand(
 public sealed record HelloCompletePasswordRemovalCommand(
     string AccessToken,
     Guid ChallengeId,
-    string VerificationCode);
+    string VerificationCode,
+    string? ClientKey = null);
 
 public sealed record HelloBeginAccountDeletionCommand(
     string AccessToken,
@@ -113,7 +116,8 @@ public sealed record HelloBeginAccountDeletionCommand(
 public sealed record HelloCompleteAccountDeletionCommand(
     string AccessToken,
     Guid ChallengeId,
-    string VerificationCode);
+    string VerificationCode,
+    string? ClientKey = null);
 
 public sealed record HelloStepUpChallenge(
     Guid ChallengeId,
@@ -155,6 +159,43 @@ public sealed record HelloSessionInfo(
 public sealed record HelloCredentialState(
     bool HasPassword,
     bool CanRemovePassword);
+
+public sealed record HelloTotpState(
+    bool IsAvailable,
+    bool IsEnabled,
+    int RecoveryCodesRemaining,
+    DateTimeOffset? EnabledAt);
+
+public sealed record HelloTotpEnrollment(
+    Guid EnrollmentId,
+    string Secret,
+    string ProvisioningUri,
+    string QrCodeSvg,
+    DateTimeOffset ExpiresAt);
+
+public sealed record HelloConfirmedTotpEnrollment(
+    HelloTotpState State,
+    IReadOnlyList<string> RecoveryCodes);
+
+public sealed record HelloBeginTotpEnrollmentCommand(
+    string AccessToken,
+    string? ClientKey);
+
+public sealed record HelloConfirmTotpEnrollmentCommand(
+    string AccessToken,
+    Guid EnrollmentId,
+    string Code,
+    string? ClientKey);
+
+public sealed record HelloBeginTotpDisableCommand(
+    string AccessToken,
+    string? ClientKey);
+
+public sealed record HelloCompleteTotpDisableCommand(
+    string AccessToken,
+    Guid ChallengeId,
+    string VerificationCode,
+    string? ClientKey = null);
 
 public interface IHelloAccessTokenValidator<TProfile>
 {
@@ -199,6 +240,27 @@ public interface IHelloIdentityApplication<TProfile>
 
     Task<OperationResult<HelloCredentialState>> GetCredentialStateAsync(
         string accessToken,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloTotpState>> GetTotpStateAsync(
+        string accessToken,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloTotpEnrollment>> BeginTotpEnrollmentAsync(
+        HelloBeginTotpEnrollmentCommand command,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloConfirmedTotpEnrollment>>
+        ConfirmTotpEnrollmentAsync(
+            HelloConfirmTotpEnrollmentCommand command,
+            CancellationToken cancellationToken);
+
+    Task<OperationResult<HelloStepUpChallenge>> BeginTotpDisableAsync(
+        HelloBeginTotpDisableCommand command,
+        CancellationToken cancellationToken);
+
+    Task<OperationResult> CompleteTotpDisableAsync(
+        HelloCompleteTotpDisableCommand command,
         CancellationToken cancellationToken);
 
     Task<OperationResult> LogoutAsync(

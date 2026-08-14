@@ -4,6 +4,8 @@ namespace Skopka.Hello;
 
 public sealed class SkopkaHelloOptions
 {
+    public HelloTotpOptions Totp { get; } = new();
+
     public bool SelfRegistrationEnabled { get; set; } = true;
 
     public int RegistrationClientPermitLimit { get; set; } = 5;
@@ -42,6 +44,7 @@ public sealed class SkopkaHelloOptions
 
     public void Validate()
     {
+        Totp.Validate();
         HelloUiRoutePaths.ValidatePathPrefix(UiPathPrefix);
         ArgumentException.ThrowIfNullOrWhiteSpace(RefreshCookieName);
         ArgumentException.ThrowIfNullOrWhiteSpace(AntiforgeryCookieName);
@@ -85,6 +88,25 @@ public sealed class SkopkaHelloOptions
         {
             throw new InvalidOperationException(
                 "__Host- cookies must always be Secure.");
+        }
+    }
+}
+
+public sealed class HelloTotpOptions
+{
+    public bool Enabled { get; set; }
+
+    public string Issuer { get; set; } = "Skopka.Hello";
+
+    internal void Validate()
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(Issuer);
+        Issuer = Issuer.Trim();
+        if (Issuer.Length > 128
+            || Issuer.Any(character => char.IsControl(character)))
+        {
+            throw new InvalidOperationException(
+                "The TOTP issuer must contain at most 128 non-control characters.");
         }
     }
 }

@@ -77,12 +77,12 @@
             @Text[UsersModel.GetActionTextKey(pending.Action)]
         </h2>
         <p class="small mb-3">
-            @Text["Admin.Common.EnterCode",
-                pending.DeliveryChannel == HelloDeliveryChannel.Sms
-                    ? Text["Field.PhoneNumber"]
-                    : pending.DeliveryChannel == HelloDeliveryChannel.Email
-                        ? Text["Field.EmailAddress"]
-                        : Text["Admin.Common.Contact"]]
+            @(pending.DeliveryChannel == HelloDeliveryChannel.Authenticator
+                ? Text["Admin.Common.EnterAuthenticatorCode"]
+                : Text["Admin.Common.EnterCode",
+                    pending.DeliveryChannel == HelloDeliveryChannel.Sms
+                        ? Text["Field.PhoneNumber"]
+                        : Text["Field.EmailAddress"]])
             @if (pending.ExpiresAt is { } expiresAt)
             {
                 <span>@Text["Admin.Common.ExpiresAt", expiresAt.ToLocalTime()]</span>
@@ -119,7 +119,7 @@
                 <input class="form-control form-control-sm"
                        id="admin-verification-code"
                        name="verificationCode"
-                       inputmode="numeric"
+                       inputmode="@(pending.DeliveryChannel == HelloDeliveryChannel.Authenticator ? "text" : "numeric")"
                        autocomplete="one-time-code"
                        required />
             </div>
@@ -142,12 +142,12 @@
             @Text[UsersModel.GetRoleActionTextKey(pendingRole.Action)]
         </h2>
         <p class="small mb-3">
-            @Text["Admin.Common.EnterCode",
-                pendingRole.DeliveryChannel == HelloDeliveryChannel.Sms
-                    ? Text["Field.PhoneNumber"]
-                    : pendingRole.DeliveryChannel == HelloDeliveryChannel.Email
-                        ? Text["Field.EmailAddress"]
-                        : Text["Admin.Common.Contact"]]
+            @(pendingRole.DeliveryChannel == HelloDeliveryChannel.Authenticator
+                ? Text["Admin.Common.EnterAuthenticatorCode"]
+                : Text["Admin.Common.EnterCode",
+                    pendingRole.DeliveryChannel == HelloDeliveryChannel.Sms
+                        ? Text["Field.PhoneNumber"]
+                        : Text["Field.EmailAddress"]])
             @if (pendingRole.ExpiresAt is { } expiresAt)
             {
                 <span>@Text["Admin.Common.ExpiresAt", expiresAt.ToLocalTime()]</span>
@@ -180,7 +180,7 @@
                 <input class="form-control form-control-sm"
                        id="admin-role-verification-code"
                        name="verificationCode"
-                       inputmode="numeric"
+                       inputmode="@(pendingRole.DeliveryChannel == HelloDeliveryChannel.Authenticator ? "text" : "numeric")"
                        autocomplete="one-time-code"
                        required />
             </div>
@@ -538,6 +538,25 @@ else
                                                     <button class="btn btn-outline-secondary btn-sm"
                                                             type="submit">
                                                         @Text["Admin.Users.RevokeSessions"]
+                                                    </button>
+                                                </form>
+                                                <form method="post"
+                                                      asp-page-handler="BeginAction">
+                                                    <input type="hidden"
+                                                           name="userId"
+                                                           value="@user.Id" />
+                                                    <input type="hidden"
+                                                           name="action"
+                                                           value="reset-authenticator" />
+                                                    <input type="hidden"
+                                                           name="Search"
+                                                           value="@Model.Search" />
+                                                    <input type="hidden"
+                                                           name="Status"
+                                                           value="@Model.Status" />
+                                                    <button class="btn btn-outline-danger btn-sm"
+                                                            type="submit">
+                                                        @Text["Admin.Users.ResetAuthenticator"]
                                                     </button>
                                                 </form>
                                             </div>

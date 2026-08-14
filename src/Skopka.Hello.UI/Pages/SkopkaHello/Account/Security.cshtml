@@ -19,6 +19,101 @@
 
     @if (Model.Credentials is { } credentials)
     {
+        @if (Model.Totp is { IsAvailable: true } totp)
+        {
+            <h2>@Text["Security.Authenticator"]</h2>
+            @if (Model.RecoveryCodes is { Count: > 0 } recoveryCodes)
+            {
+                <div class="hello-status" role="status">
+                    <strong>@Text["Security.AuthenticatorEnabled"]</strong>
+                    <p>@Text["Security.RecoveryCodesSaveNow"]</p>
+                    <ul class="hello-recovery-codes">
+                        @foreach (var recoveryCode in recoveryCodes)
+                        {
+                            <li><code>@recoveryCode</code></li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @if (totp.IsEnabled)
+            {
+                <p>@Text["Security.AuthenticatorConfigured"]</p>
+                <p class="hello-muted">
+                    @Text["Security.RecoveryCodesRemaining", totp.RecoveryCodesRemaining]
+                </p>
+                <form method="post" asp-page-handler="BeginDisableTotp">
+                    <button class="hello-button hello-button-secondary"
+                            type="submit">
+                        @Text["Security.RequestAuthenticatorRemoval"]
+                    </button>
+                </form>
+            }
+            else if (Model.Enrollment is { } enrollment)
+            {
+                <p>@Text["Security.AuthenticatorScan"]</p>
+                <div class="hello-qr-code">
+                    @Html.Raw(enrollment.QrCodeSvg)
+                </div>
+                <p class="hello-muted">
+                    @Text["Security.AuthenticatorManualKey"]
+                    <code>@enrollment.Secret</code>
+                </p>
+                <form method="post"
+                      asp-page-handler="ConfirmTotp"
+                      class="hello-form">
+                    <input name="TotpInput.EnrollmentId"
+                           value="@enrollment.EnrollmentId"
+                           type="hidden" />
+                    <label for="totp-enrollment-code">
+                        @Text["Field.AuthenticatorCode"]
+                    </label>
+                    <input id="totp-enrollment-code"
+                           name="TotpInput.Code"
+                           inputmode="numeric"
+                           autocomplete="one-time-code" />
+                    <button class="hello-button" type="submit">
+                        @Text["Security.EnableAuthenticator"]
+                    </button>
+                </form>
+            }
+            else if (Model.PendingEnrollmentId is { } enrollmentId)
+            {
+                <p class="hello-muted">
+                    @Text["Security.AuthenticatorRetry"]
+                </p>
+                <form method="post"
+                      asp-page-handler="ConfirmTotp"
+                      class="hello-form">
+                    <input name="TotpInput.EnrollmentId"
+                           value="@enrollmentId"
+                           type="hidden" />
+                    <label for="totp-retry-code">
+                        @Text["Field.AuthenticatorCode"]
+                    </label>
+                    <input id="totp-retry-code"
+                           name="TotpInput.Code"
+                           inputmode="numeric"
+                           autocomplete="one-time-code" />
+                    <button class="hello-button" type="submit">
+                        @Text["Security.EnableAuthenticator"]
+                    </button>
+                </form>
+            }
+            else
+            {
+                <p class="hello-muted">
+                    @Text["Security.AuthenticatorDescription"]
+                </p>
+                <form method="post" asp-page-handler="BeginTotp">
+                    <button class="hello-button hello-button-secondary"
+                            type="submit">
+                        @Text["Security.SetUpAuthenticator"]
+                    </button>
+                </form>
+            }
+        }
+
         <h2>@Text["Field.Password"]</h2>
         @if (credentials.HasPassword)
         {
@@ -71,16 +166,29 @@
     @if (Model.Pending is { Action: "set" } setChallenge)
     {
         <h2>@Text["Security.SetPassword"]</h2>
+        <p class="hello-muted">
+            @(setChallenge.DeliveryChannel == HelloDeliveryChannel.Authenticator
+                ? Text["Security.AuthenticatorStepUp"]
+                : Text["Security.ContactStepUp"])
+        </p>
         <form method="post"
               asp-page-handler="CompleteSet"
               class="hello-form">
             <input name="SetInput.ChallengeId"
                    value="@setChallenge.ChallengeId"
                    type="hidden" />
-            <label for="set-code">@Text["Field.VerificationCode"]</label>
+            <input name="SetInput.DeliveryChannel"
+                   value="@setChallenge.DeliveryChannel"
+                   type="hidden" />
+            <label for="set-code">
+                @(setChallenge.DeliveryChannel == HelloDeliveryChannel.Authenticator
+                    ? Text["Field.AuthenticatorOrRecoveryCode"]
+                    : Text["Field.VerificationCode"])
+            </label>
             <input id="set-code"
                    name="SetInput.VerificationCode"
-                   autocomplete="one-time-code" />
+                   autocomplete="one-time-code"
+                   inputmode="@(setChallenge.DeliveryChannel == HelloDeliveryChannel.Authenticator ? "text" : "numeric")" />
             <label for="set-password">@Text["Field.NewPassword"]</label>
             <input id="set-password"
                    name="SetInput.NewPassword"
@@ -98,16 +206,29 @@
     @if (Model.Pending is { Action: "remove" } removeChallenge)
     {
         <h2>@Text["Security.RemovePassword"]</h2>
+        <p class="hello-muted">
+            @(removeChallenge.DeliveryChannel == HelloDeliveryChannel.Authenticator
+                ? Text["Security.AuthenticatorStepUp"]
+                : Text["Security.ContactStepUp"])
+        </p>
         <form method="post"
               asp-page-handler="CompleteRemove"
               class="hello-form">
             <input name="ActionInput.ChallengeId"
                    value="@removeChallenge.ChallengeId"
                    type="hidden" />
-            <label for="remove-code">@Text["Field.VerificationCode"]</label>
+            <input name="ActionInput.DeliveryChannel"
+                   value="@removeChallenge.DeliveryChannel"
+                   type="hidden" />
+            <label for="remove-code">
+                @(removeChallenge.DeliveryChannel == HelloDeliveryChannel.Authenticator
+                    ? Text["Field.AuthenticatorOrRecoveryCode"]
+                    : Text["Field.VerificationCode"])
+            </label>
             <input id="remove-code"
                    name="ActionInput.VerificationCode"
-                   autocomplete="one-time-code" />
+                   autocomplete="one-time-code"
+                   inputmode="@(removeChallenge.DeliveryChannel == HelloDeliveryChannel.Authenticator ? "text" : "numeric")" />
             <button class="hello-button" type="submit">
                 @Text["Security.RemovePasswordAndSignOut"]
             </button>
@@ -117,18 +238,63 @@
     @if (Model.Pending is { Action: "delete" } deleteChallenge)
     {
         <h2>@Text["Security.ConfirmDeletion"]</h2>
+        <p class="hello-muted">
+            @(deleteChallenge.DeliveryChannel == HelloDeliveryChannel.Authenticator
+                ? Text["Security.AuthenticatorStepUp"]
+                : Text["Security.ContactStepUp"])
+        </p>
         <form method="post"
               asp-page-handler="CompleteDelete"
               class="hello-form">
             <input name="ActionInput.ChallengeId"
                    value="@deleteChallenge.ChallengeId"
                    type="hidden" />
-            <label for="delete-code">@Text["Field.VerificationCode"]</label>
+            <input name="ActionInput.DeliveryChannel"
+                   value="@deleteChallenge.DeliveryChannel"
+                   type="hidden" />
+            <label for="delete-code">
+                @(deleteChallenge.DeliveryChannel == HelloDeliveryChannel.Authenticator
+                    ? Text["Field.AuthenticatorOrRecoveryCode"]
+                    : Text["Field.VerificationCode"])
+            </label>
             <input id="delete-code"
                    name="ActionInput.VerificationCode"
-                   autocomplete="one-time-code" />
+                   autocomplete="one-time-code"
+                   inputmode="@(deleteChallenge.DeliveryChannel == HelloDeliveryChannel.Authenticator ? "text" : "numeric")" />
             <button class="hello-button" type="submit">
                 @Text["Security.DeleteAndSignOut"]
+            </button>
+        </form>
+    }
+
+    @if (Model.Pending is { Action: "totp-disable" } totpChallenge)
+    {
+        <h2>@Text["Security.RemoveAuthenticator"]</h2>
+        <p class="hello-muted">
+            @(totpChallenge.DeliveryChannel == HelloDeliveryChannel.Authenticator
+                ? Text["Security.AuthenticatorRemovalConfirmation"]
+                : Text["Security.ContactStepUp"])
+        </p>
+        <form method="post"
+              asp-page-handler="CompleteDisableTotp"
+              class="hello-form">
+            <input name="ActionInput.ChallengeId"
+                   value="@totpChallenge.ChallengeId"
+                   type="hidden" />
+            <input name="ActionInput.DeliveryChannel"
+                   value="@totpChallenge.DeliveryChannel"
+                   type="hidden" />
+            <label for="totp-disable-code">
+                @(totpChallenge.DeliveryChannel == HelloDeliveryChannel.Authenticator
+                    ? Text["Field.AuthenticatorOrRecoveryCode"]
+                    : Text["Field.VerificationCode"])
+            </label>
+            <input id="totp-disable-code"
+                   name="ActionInput.VerificationCode"
+                   autocomplete="one-time-code"
+                   inputmode="@(totpChallenge.DeliveryChannel == HelloDeliveryChannel.Authenticator ? "text" : "numeric")" />
+            <button class="hello-button" type="submit">
+                @Text["Security.RemoveAuthenticatorAndSignOut"]
             </button>
         </form>
     }

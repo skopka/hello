@@ -14,7 +14,8 @@ internal static class HelloAccountMessageValidator
             return Invalid();
         }
 
-        if (!Enum.IsDefined(message.Channel)
+        if (message.Channel is not HelloDeliveryChannel.Email
+            and not HelloDeliveryChannel.Sms
             || !Enum.IsDefined(message.Kind))
         {
             return Invalid();
@@ -26,6 +27,16 @@ internal static class HelloAccountMessageValidator
                 HelloDeliveryErrorCodes.Expired,
                 "The account message has expired.",
                 ErrorType.Failure);
+        }
+
+        if (message.TemplateVariant is { } templateVariant
+            && (string.IsNullOrWhiteSpace(templateVariant)
+                || templateVariant.Length > 128
+                || templateVariant.Any(character =>
+                    !char.IsAsciiLetterOrDigit(character)
+                    && character is not '.' and not '-' and not '_')))
+        {
+            return Invalid();
         }
 
         var isActionMessage = message.Kind is

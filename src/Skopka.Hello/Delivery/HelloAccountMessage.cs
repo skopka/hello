@@ -4,6 +4,7 @@ public enum HelloDeliveryChannel
 {
     Email = 0,
     Sms = 1,
+    Authenticator = 2,
 }
 
 public enum HelloAccountMessageKind
@@ -27,4 +28,5 @@ public sealed record HelloAccountMessage(
     string RecipientAddress,
     Uri? ActionUrl,
     DateTimeOffset ExpiresAt,
-    string? VerificationCode = null);
+    string? VerificationCode = null,
+    string? TemplateVariant = null);

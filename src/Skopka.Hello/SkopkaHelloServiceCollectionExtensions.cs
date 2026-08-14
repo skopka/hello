@@ -74,6 +74,8 @@ public static class SkopkaHelloServiceCollectionExtensions
                 Skopka.Hello
                     .HelloAccountStepUpRequirementProvider<TProfile>>());
         services.TryAddScoped<
+            Skopka.Hello.HelloStepUpMethodResolver<TProfile>>();
+        services.TryAddScoped<
             Skopka.Hello.IHelloSessionCookieManager,
             Skopka.Hello.HelloSessionCookieManager>();
         services.TryAddScoped<

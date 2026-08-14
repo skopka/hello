@@ -24,6 +24,9 @@ public sealed class HelloSmtpOptions
 
     public bool UseBackgroundQueue { get; set; } = true;
 
+    public HelloAccountMessageLocalizationOptions Localization
+    { get; } = new();
+
     public void Validate()
     {
         _ = HelloAccountMessageDispatcher.NormalizeProviderId(
@@ -32,6 +35,7 @@ public sealed class HelloSmtpOptions
         ArgumentException.ThrowIfNullOrWhiteSpace(Host);
         ArgumentException.ThrowIfNullOrWhiteSpace(FromAddress);
         ArgumentException.ThrowIfNullOrWhiteSpace(FromName);
+        Localization.Validate();
 
         if (Port is < 1 or > 65535)
         {

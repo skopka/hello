@@ -16,7 +16,8 @@ internal sealed class HelloAccountMessageDispatcher
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(providers);
 
-        if (!Enum.IsDefined(options.VerificationChannel))
+        if (options.VerificationChannel is not HelloDeliveryChannel.Email
+            and not HelloDeliveryChannel.Sms)
         {
             throw new InvalidOperationException(
                 "The verification delivery channel is unsupported.");
@@ -32,7 +33,8 @@ internal sealed class HelloAccountMessageDispatcher
             var providerId = NormalizeProviderId(
                 provider.ProviderId,
                 "A delivery provider id");
-            if (!Enum.IsDefined(provider.Channel))
+            if (provider.Channel is not HelloDeliveryChannel.Email
+                and not HelloDeliveryChannel.Sms)
             {
                 throw new InvalidOperationException(
                     $"Delivery provider '{providerId}' reports an unsupported channel.");

@@ -77,6 +77,10 @@ public sealed record HelloUiCompleteAccountSecurityActionCommand(
     Guid ChallengeId,
     string VerificationCode);
 
+public sealed record HelloUiConfirmTotpEnrollmentCommand(
+    Guid EnrollmentId,
+    string Code);
+
 public interface IHelloUiApplication
 {
     Task<OperationResult> RegisterAsync(
@@ -175,6 +179,41 @@ public interface IHelloUiApplication
         HttpContext httpContext,
         CancellationToken cancellationToken)
         => AccountSelfServiceUnavailable<HelloCredentialState>();
+
+    Task<OperationResult<HelloTotpState>> GetTotpStateAsync(
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => Task.FromResult(
+            OperationResultFactory.Success(
+                new HelloTotpState(
+                    IsAvailable: false,
+                    IsEnabled: false,
+                    RecoveryCodesRemaining: 0,
+                    EnabledAt: null)));
+
+    Task<OperationResult<HelloTotpEnrollment>> BeginTotpEnrollmentAsync(
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailable<HelloTotpEnrollment>();
+
+    Task<OperationResult<HelloConfirmedTotpEnrollment>>
+        ConfirmTotpEnrollmentAsync(
+            HelloUiConfirmTotpEnrollmentCommand command,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailable<
+            HelloConfirmedTotpEnrollment>();
+
+    Task<OperationResult<HelloStepUpChallenge>> BeginTotpDisableAsync(
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailable<HelloStepUpChallenge>();
+
+    Task<OperationResult> CompleteTotpDisableAsync(
+        HelloUiCompleteAccountSecurityActionCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailableResult();
 
     Task<OperationResult<HelloStepUpChallenge>> BeginPasswordSetAsync(
         HttpContext httpContext,

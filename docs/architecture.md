@@ -182,7 +182,7 @@ validated user, session, provider and local return path. It returns only a
 local challenge URL. Navigating there atomically consumes the preflight flow id
 and creates the normal OIDC challenge. Completion requires the original Bearer
 session, promotes the provider result to the ordinary pending link ticket and
-then uses the same Identity OTP step-up as Razor UI.
+then uses the same Identity step-up as Razor UI.
 
 External and pending tickets also contain an unpredictable flow id. The
 terminal POST atomically consumes it before session creation or account
@@ -199,10 +199,11 @@ the form, but remains unconfirmed locally. Matching an existing email never
 authorizes linking; the user must sign in to that account and start an explicit
 link from `{UiPathPrefix}/account/external-logins`.
 
-Link and unlink require an online-validated local session, a confirmed contact
-for the configured channel and an Identity-owned OTP bound to the exact
-provider/subject operation, delivery channel and confirmed-destination
-fingerprint. The pending protected ticket binds the local user, session and
+Link and unlink require an online-validated local session and Identity-owned
+step-up bound to the exact provider/subject operation. The default contact OTP
+also binds its delivery channel and confirmed-destination fingerprint; policy
+may replace it with an enabled authenticator. The pending protected ticket binds
+the local user, session and
 challenge id. Completion reads a fresh sign-in-method snapshot, rechecks that
 unlink retains another enabled method and uses that current version for the
 Identity compare-and-swap mutation. Unrelated profile edits while the OTP is

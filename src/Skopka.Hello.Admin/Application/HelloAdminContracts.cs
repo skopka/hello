@@ -43,6 +43,7 @@ public enum HelloAdminUserAction
     Delete = 2,
     Restore = 3,
     RevokeSessions = 4,
+    ResetAuthenticator = 5,
 }
 
 public sealed record HelloAdminProfileProjectionContext(
@@ -110,7 +111,8 @@ public sealed record HelloAdminCompleteUserActionCommand(
     HelloAdminUserAction Action,
     HelloAdminUserActionParameters Parameters,
     Guid ChallengeId,
-    string VerificationCode);
+    string VerificationCode,
+    string? ClientKey = null);
 
 public sealed record HelloAdminUserActionResult(
     HelloAdminUser? User,
@@ -172,7 +174,8 @@ public sealed record HelloAdminCompleteRoleActionCommand(
     Guid? TargetUserId,
     HelloAdminRoleActionParameters Parameters,
     Guid ChallengeId,
-    string VerificationCode);
+    string VerificationCode,
+    string? ClientKey = null);
 
 public sealed record HelloAdminRoleActionResult(
     IdentityRole? Role,

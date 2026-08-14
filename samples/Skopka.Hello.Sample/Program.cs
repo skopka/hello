@@ -4,6 +4,7 @@ using Skopka.Hello.Endpoints;
 using Skopka.Hello.Oidc;
 using Skopka.Hello.Sample;
 using Skopka.Hello.UI;
+using Skopka.Identity.Totp;
 using Skopka.Identity.Verification;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -33,6 +34,12 @@ var identity = builder.Services
         options.SecureCookies = secureCookies;
         options.PublicOrigin = publicOrigin;
         options.SelfRegistrationEnabled = selfRegistrationEnabled;
+        options.Totp.Enabled = configuration.GetValue(
+            "SkopkaHello:Totp:Enabled",
+            true);
+        options.Totp.Issuer = configuration[
+                "SkopkaHello:Totp:Issuer"]
+            ?? "Skopka.Hello.Sample";
         options.UiPathPrefix = uiPathPrefix;
         if (!secureCookies)
         {
@@ -46,7 +53,8 @@ var identity = builder.Services
     })
     .UsePostgreSql(connectionString)
     .UsePbkdf2PasswordHasher()
-    .UseDataProtectionActionTokens();
+    .UseDataProtectionActionTokens()
+    .UseDataProtectionTotp();
 
 using (var jwtKeys = VersionedSecretKeySet.Load(
     configuration.GetSection("SkopkaHello:Jwt")))

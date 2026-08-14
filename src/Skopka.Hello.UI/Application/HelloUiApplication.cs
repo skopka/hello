@@ -342,7 +342,8 @@ internal sealed class HelloUiApplication<TProfile>(
                 command.ChallengeId,
                 command.VerificationCode,
                 command.CurrentPassword,
-                command.NewPassword),
+                command.NewPassword,
+                requestContext.CreateClientKey(httpContext)),
             cancellationToken);
     }
 
@@ -356,6 +357,85 @@ internal sealed class HelloUiApplication<TProfile>(
             ? InvalidSession<HelloCredentialState>()
             : await application.GetCredentialStateAsync(
                 accessToken,
+                cancellationToken);
+    }
+
+    public async Task<OperationResult<HelloTotpState>> GetTotpStateAsync(
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        return accessToken is null
+            ? InvalidSession<HelloTotpState>()
+            : await application.GetTotpStateAsync(
+                accessToken,
+                cancellationToken);
+    }
+
+    public async Task<OperationResult<HelloTotpEnrollment>>
+        BeginTotpEnrollmentAsync(
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        return accessToken is null
+            ? InvalidSession<HelloTotpEnrollment>()
+            : await application.BeginTotpEnrollmentAsync(
+                new HelloBeginTotpEnrollmentCommand(
+                    accessToken,
+                    requestContext.CreateClientKey(httpContext)),
+                cancellationToken);
+    }
+
+    public async Task<OperationResult<HelloConfirmedTotpEnrollment>>
+        ConfirmTotpEnrollmentAsync(
+            HelloUiConfirmTotpEnrollmentCommand command,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        return accessToken is null
+            ? InvalidSession<HelloConfirmedTotpEnrollment>()
+            : await application.ConfirmTotpEnrollmentAsync(
+                new HelloConfirmTotpEnrollmentCommand(
+                    accessToken,
+                    command.EnrollmentId,
+                    command.Code,
+                    requestContext.CreateClientKey(httpContext)),
+                cancellationToken);
+    }
+
+    public async Task<OperationResult<HelloStepUpChallenge>>
+        BeginTotpDisableAsync(
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        return accessToken is null
+            ? InvalidSession<HelloStepUpChallenge>()
+            : await application.BeginTotpDisableAsync(
+                new HelloBeginTotpDisableCommand(
+                    accessToken,
+                    requestContext.CreateClientKey(httpContext)),
+                cancellationToken);
+    }
+
+    public async Task<OperationResult> CompleteTotpDisableAsync(
+        HelloUiCompleteAccountSecurityActionCommand command,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        return accessToken is null
+            ? InvalidSession()
+            : await application.CompleteTotpDisableAsync(
+                new HelloCompleteTotpDisableCommand(
+                    accessToken,
+                    command.ChallengeId,
+                    command.VerificationCode,
+                    requestContext.CreateClientKey(httpContext)),
                 cancellationToken);
     }
 
@@ -388,7 +468,8 @@ internal sealed class HelloUiApplication<TProfile>(
                     accessToken,
                     command.ChallengeId,
                     command.VerificationCode,
-                    command.NewPassword),
+                    command.NewPassword,
+                    requestContext.CreateClientKey(httpContext)),
                 cancellationToken);
     }
 
@@ -420,7 +501,8 @@ internal sealed class HelloUiApplication<TProfile>(
                 new HelloCompletePasswordRemovalCommand(
                     accessToken,
                     command.ChallengeId,
-                    command.VerificationCode),
+                    command.VerificationCode,
+                    requestContext.CreateClientKey(httpContext)),
                 cancellationToken);
     }
 
@@ -452,7 +534,8 @@ internal sealed class HelloUiApplication<TProfile>(
                 new HelloCompleteAccountDeletionCommand(
                     accessToken,
                     command.ChallengeId,
-                    command.VerificationCode),
+                    command.VerificationCode,
+                    requestContext.CreateClientKey(httpContext)),
                 cancellationToken);
     }
 

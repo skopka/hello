@@ -23,6 +23,8 @@ public sealed class ChangePasswordModel(
 
     public DateTimeOffset? CodeExpiresAt { get; private set; }
 
+    public HelloDeliveryChannel? VerificationChannel { get; private set; }
+
     public void OnGet()
         => HelloUiSensitivePage.ApplyResponseHeaders(Response);
 
@@ -45,6 +47,8 @@ public sealed class ChangePasswordModel(
         }
 
         Input.ChallengeId = result.Value.ChallengeId;
+        Input.DeliveryChannel = result.Value.DeliveryChannel;
+        VerificationChannel = result.Value.DeliveryChannel;
         CodeExpiresAt = result.Value.ExpiresAt;
         return Page();
     }
@@ -53,6 +57,9 @@ public sealed class ChangePasswordModel(
         CancellationToken cancellationToken)
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        VerificationChannel = Enum.IsDefined(Input.DeliveryChannel)
+            ? Input.DeliveryChannel
+            : null;
         if (Input.ChallengeId == Guid.Empty)
         {
             ModelState.AddModelError(
@@ -148,9 +155,11 @@ public sealed class ChangePasswordModel(
     {
         public Guid ChallengeId { get; set; }
 
+        public HelloDeliveryChannel DeliveryChannel { get; set; }
+
         [Required(ErrorMessage = "Validation.Required")]
         [StringLength(
-            8,
+            64,
             MinimumLength = 6,
             ErrorMessage = "Validation.StringLengthRange")]
         [Display(Name = "Field.VerificationCode")]

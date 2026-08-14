@@ -15,6 +15,14 @@ public sealed class AccountSecurityModel(
 {
     public HelloCredentialState? Credentials { get; private set; }
 
+    public HelloTotpState? Totp { get; private set; }
+
+    public HelloTotpEnrollment? Enrollment { get; private set; }
+
+    public Guid? PendingEnrollmentId { get; private set; }
+
+    public IReadOnlyList<string>? RecoveryCodes { get; private set; }
+
     public PendingChallenge? Pending { get; private set; }
 
     public async Task<IActionResult> OnGetAsync(
@@ -51,6 +59,104 @@ public sealed class AccountSecurityModel(
                 cancellationToken),
             cancellationToken);
 
+    public async Task<IActionResult> OnPostBeginTotpAsync(
+        CancellationToken cancellationToken)
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        var result = await application.BeginTotpEnrollmentAsync(
+            HttpContext,
+            cancellationToken);
+        if (result.IsSuccess)
+        {
+            Enrollment = result.Value;
+            PendingEnrollmentId = result.Value.EnrollmentId;
+        }
+        else
+        {
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
+        }
+
+        var loaded = await LoadStateAsync(cancellationToken);
+        return loaded ? Page() : Challenge();
+    }
+
+    public async Task<IActionResult> OnPostConfirmTotpAsync(
+        [Bind(Prefix = "TotpInput")] TotpEnrollmentInput input,
+        CancellationToken cancellationToken)
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        PendingEnrollmentId = input.EnrollmentId;
+        if (!ModelState.IsValid)
+        {
+            await LoadStateAsync(cancellationToken);
+            return Page();
+        }
+
+        var result = await application.ConfirmTotpEnrollmentAsync(
+            new HelloUiConfirmTotpEnrollmentCommand(
+                input.EnrollmentId,
+                input.Code),
+            HttpContext,
+            cancellationToken);
+        if (result.IsSuccess)
+        {
+            Totp = result.Value.State;
+            RecoveryCodes = result.Value.RecoveryCodes;
+            PendingEnrollmentId = null;
+        }
+        else
+        {
+            HelloUiModelState.AddErrors(
+                ModelState,
+                result.Errors,
+                text,
+                _ => "TotpInput.Code");
+        }
+
+        var loaded = await LoadStateAsync(cancellationToken);
+        return loaded ? Page() : Challenge();
+    }
+
+    public Task<IActionResult> OnPostBeginDisableTotpAsync(
+        CancellationToken cancellationToken)
+        => BeginAsync(
+            "totp-disable",
+            application.BeginTotpDisableAsync(
+                HttpContext,
+                cancellationToken),
+            cancellationToken);
+
+    public async Task<IActionResult> OnPostCompleteDisableTotpAsync(
+        [Bind(Prefix = "ActionInput")] SecurityActionInput input,
+        CancellationToken cancellationToken)
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (!ModelState.IsValid)
+        {
+            Pending = new PendingChallenge(
+                "totp-disable",
+                input.ChallengeId,
+                null,
+                input.DeliveryChannel);
+            await LoadStateAsync(cancellationToken);
+            return Page();
+        }
+
+        var result = await application.CompleteTotpDisableAsync(
+            new HelloUiCompleteAccountSecurityActionCommand(
+                input.ChallengeId,
+                input.VerificationCode),
+            HttpContext,
+            cancellationToken);
+        return await FinishAsync(
+            result,
+            "totp-disable",
+            input.ChallengeId,
+            input.DeliveryChannel,
+            deleted: false,
+            cancellationToken);
+    }
+
     public async Task<IActionResult> OnPostCompleteSetAsync(
         [Bind(Prefix = "SetInput")] PasswordSetInput input,
         CancellationToken cancellationToken)
@@ -61,7 +167,8 @@ public sealed class AccountSecurityModel(
             Pending = new PendingChallenge(
                 "set",
                 input.ChallengeId,
-                null);
+                null,
+                input.DeliveryChannel);
             await LoadStateAsync(cancellationToken);
             return Page();
         }
@@ -77,6 +184,7 @@ public sealed class AccountSecurityModel(
             result,
             "set",
             input.ChallengeId,
+            input.DeliveryChannel,
             deleted: false,
             cancellationToken);
     }
@@ -91,7 +199,8 @@ public sealed class AccountSecurityModel(
             Pending = new PendingChallenge(
                 "remove",
                 input.ChallengeId,
-                null);
+                null,
+                input.DeliveryChannel);
             await LoadStateAsync(cancellationToken);
             return Page();
         }
@@ -106,6 +215,7 @@ public sealed class AccountSecurityModel(
             result,
             "remove",
             input.ChallengeId,
+            input.DeliveryChannel,
             deleted: false,
             cancellationToken);
     }
@@ -120,7 +230,8 @@ public sealed class AccountSecurityModel(
             Pending = new PendingChallenge(
                 "delete",
                 input.ChallengeId,
-                null);
+                null,
+                input.DeliveryChannel);
             await LoadStateAsync(cancellationToken);
             return Page();
         }
@@ -135,6 +246,7 @@ public sealed class AccountSecurityModel(
             result,
             "delete",
             input.ChallengeId,
+            input.DeliveryChannel,
             deleted: true,
             cancellationToken);
     }
@@ -152,7 +264,8 @@ public sealed class AccountSecurityModel(
             Pending = new PendingChallenge(
                 action,
                 result.Value.ChallengeId,
-                result.Value.ExpiresAt);
+                result.Value.ExpiresAt,
+                result.Value.DeliveryChannel);
         }
         else
         {
@@ -170,6 +283,7 @@ public sealed class AccountSecurityModel(
         Skopka.Abstraction.OperationResult.OperationResult result,
         string action,
         Guid challengeId,
+        HelloDeliveryChannel deliveryChannel,
         bool deleted,
         CancellationToken cancellationToken)
     {
@@ -202,7 +316,8 @@ public sealed class AccountSecurityModel(
                 Pending = new PendingChallenge(
                     action,
                     challengeId,
-                    null);
+                    null,
+                    deliveryChannel);
             }
 
             HelloUiModelState.AddErrors(
@@ -243,7 +358,19 @@ public sealed class AccountSecurityModel(
         if (result.IsSuccess)
         {
             Credentials = result.Value;
-            return true;
+            var totp = await application.GetTotpStateAsync(
+                HttpContext,
+                cancellationToken);
+            if (totp.IsSuccess)
+            {
+                Totp ??= totp.Value;
+                return true;
+            }
+
+            HelloUiModelState.AddErrors(ModelState, totp.Errors, text);
+            return !totp.Errors.Any(
+                error => error.Type == Skopka.Abstraction.OperationResult
+                    .ErrorType.Unauthorized);
         }
 
         HelloUiModelState.AddErrors(
@@ -258,11 +385,14 @@ public sealed class AccountSecurityModel(
     public sealed record PendingChallenge(
         string Action,
         Guid ChallengeId,
-        DateTimeOffset? ExpiresAt);
+        DateTimeOffset? ExpiresAt,
+        HelloDeliveryChannel DeliveryChannel);
 
     public sealed class PasswordSetInput
     {
         public Guid ChallengeId { get; set; }
+
+        public HelloDeliveryChannel DeliveryChannel { get; set; }
 
         [Required(ErrorMessage = "Validation.Required")]
         [StringLength(256, ErrorMessage = "Validation.StringLength")]
@@ -288,9 +418,21 @@ public sealed class AccountSecurityModel(
     {
         public Guid ChallengeId { get; set; }
 
+        public HelloDeliveryChannel DeliveryChannel { get; set; }
+
         [Required(ErrorMessage = "Validation.Required")]
         [StringLength(256, ErrorMessage = "Validation.StringLength")]
         [Display(Name = "Field.VerificationCode")]
         public string VerificationCode { get; set; } = string.Empty;
+    }
+
+    public sealed class TotpEnrollmentInput
+    {
+        public Guid EnrollmentId { get; set; }
+
+        [Required(ErrorMessage = "Validation.Required")]
+        [StringLength(256, ErrorMessage = "Validation.StringLength")]
+        [Display(Name = "Field.AuthenticatorCode")]
+        public string Code { get; set; } = string.Empty;
     }
 }

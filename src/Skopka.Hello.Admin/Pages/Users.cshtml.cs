@@ -182,7 +182,8 @@ public sealed class UsersModel(
                 parsedAction,
                 parameters,
                 challengeId,
-                verificationCode),
+                verificationCode,
+                requestContext.CreateClientKey(HttpContext)),
             cancellationToken);
         if (result.IsSuccess)
         {
@@ -328,7 +329,8 @@ public sealed class UsersModel(
                 userId,
                 parameters,
                 challengeId,
-                verificationCode),
+                verificationCode,
+                requestContext.CreateClientKey(HttpContext)),
             cancellationToken);
         if (result.IsSuccess)
         {
@@ -383,6 +385,8 @@ public sealed class UsersModel(
             HelloAdminUserAction.Delete => "Delete user",
             HelloAdminUserAction.Restore => "Restore user",
             HelloAdminUserAction.RevokeSessions => "Revoke sessions",
+            HelloAdminUserAction.ResetAuthenticator =>
+                "Reset authenticator",
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
 
@@ -403,6 +407,8 @@ public sealed class UsersModel(
             HelloAdminUserAction.Restore => "Admin.Users.RestoreUser",
             HelloAdminUserAction.RevokeSessions =>
                 "Admin.Users.RevokeSessions",
+            HelloAdminUserAction.ResetAuthenticator =>
+                "Admin.Users.ResetAuthenticator",
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
 
@@ -501,7 +507,8 @@ public sealed class UsersModel(
             policyName)).Succeeded;
 
     private string GetPolicy(HelloAdminUserAction action)
-        => action == HelloAdminUserAction.Delete
+        => action is HelloAdminUserAction.Delete
+            or HelloAdminUserAction.ResetAuthenticator
             ? options.DeletePolicyName
             : options.ManagePolicyName;
 

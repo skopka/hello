@@ -7,7 +7,14 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Skopka.Abstraction.OperationResult" />
+    <PackageReference Include="QRCoder" />
     <PackageReference Include="Skopka.Identity" />
     <PackageReference Include="Skopka.Identity.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Remove="Delivery\Localization\Resources\*.json" />
+    <EmbeddedResource Include="Delivery\Localization\Resources\*.json"
+                      LogicalName="Skopka.Hello.Delivery.Localization.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

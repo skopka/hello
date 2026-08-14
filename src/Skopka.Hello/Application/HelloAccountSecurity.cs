@@ -5,6 +5,7 @@ using Skopka.Abstraction.OperationResult;
 using Skopka.Identity.Errors;
 using Skopka.Identity.ExternalLogins;
 using Skopka.Identity.StepUp;
+using Skopka.Identity.Totp;
 using Skopka.Identity.Users;
 using Skopka.Identity.Verification;
 
@@ -42,6 +43,12 @@ internal static class HelloAccountSecurity
     public const string AccountDeletePurpose =
         "hello:account.delete";
 
+    public const string AuthenticatorDisableAction =
+        "account.authenticator.disable";
+
+    public const string AuthenticatorDisablePurpose =
+        "hello:account.authenticator.disable";
+
     public const string ExternalLinkAction =
         "account.external.link";
 
@@ -75,6 +82,16 @@ internal static class HelloAccountSecurity
             destination,
             action);
 
+    public static string CreateBinding(
+        Guid userId,
+        HelloStepUpMethodSelection selection,
+        string action)
+        => CreateDeliveryBinding(
+            userId,
+            selection.Channel,
+            selection.Destination ?? "totp",
+            action);
+
     public static string CreateExternalLoginBinding(
         ExternalLoginKey login,
         Guid userId,
@@ -103,6 +120,16 @@ internal static class HelloAccountSecurity
             destination,
             resourceBinding);
     }
+
+    public static string CreateExternalLoginBinding(
+        ExternalLoginKey login,
+        Guid userId,
+        HelloStepUpMethodSelection selection)
+        => CreateExternalLoginBinding(
+            login,
+            userId,
+            selection.Channel,
+            selection.Destination ?? "totp");
 
     private static string CreateDeliveryBinding(
         Guid userId,
@@ -143,6 +170,10 @@ internal static class HelloAccountSecurity
         {
             HelloDeliveryChannel.Email => ConfirmedEmailRequired(),
             HelloDeliveryChannel.Sms => ConfirmedPhoneRequired(),
+            HelloDeliveryChannel.Authenticator => new Error(
+                IdentityErrorCodes.TotpNotEnabled,
+                "An authenticator is required for this action.",
+                ErrorType.Forbidden),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(channel),
                 channel,
@@ -185,12 +216,128 @@ internal static class HelloAccountSecurity
                 user.Phone,
             HelloDeliveryChannel.Email or HelloDeliveryChannel.Sms =>
                 null,
+            HelloDeliveryChannel.Authenticator => null,
             _ => throw new ArgumentOutOfRangeException(
                 nameof(channel),
                 channel,
                 "The verification delivery channel is unsupported."),
         };
         return destination is not null;
+    }
+}
+
+internal sealed record HelloStepUpMethodSelection(
+    string Method,
+    HelloDeliveryChannel Channel,
+    string? Destination);
+
+internal sealed class HelloStepUpMethodResolver<TProfile>(
+    HelloDeliveryOptions options,
+    IHelloAccountMessageSender messageSender,
+    IIdentityTotpService<TProfile>? totp = null)
+{
+    public async Task<OperationResult<string>> GetRequiredMethodAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        if (!options.RequireTotpWhenEnabled)
+        {
+            return OperationResultFactory.Success(
+                VerificationMethods.OneTimeCode);
+        }
+
+        if (totp is null)
+        {
+            return OperationResultFactory.Fail<string>(
+                new Error(
+                    IdentityErrorCodes.VerificationMethodUnavailable,
+                    "TOTP is required by Hello but is not configured in Skopka.Identity.",
+                    ErrorType.Failure));
+        }
+
+        var status = await totp.GetStatusAsync(userId, cancellationToken);
+        if (!status.IsSuccess)
+        {
+            return OperationResultFactory.Fail<string>(status.Errors);
+        }
+
+        return OperationResultFactory.Success(
+            status.Value.IsEnabled
+                ? VerificationMethods.TimeBasedOneTimePassword
+                : VerificationMethods.OneTimeCode);
+    }
+
+    public async Task<OperationResult<HelloStepUpMethodSelection>> SelectAsync(
+        IdentityUser<TProfile> user,
+        CancellationToken cancellationToken)
+    {
+        var method = await GetRequiredMethodAsync(
+            user.Id,
+            cancellationToken);
+        if (!method.IsSuccess)
+        {
+            return OperationResultFactory.Fail<HelloStepUpMethodSelection>(
+                method.Errors);
+        }
+
+        return Resolve(user, method.Value, requireDelivery: true);
+    }
+
+    public OperationResult<HelloStepUpMethodSelection> Resolve(
+        IdentityUser<TProfile> user,
+        string method,
+        bool requireDelivery)
+    {
+        if (string.Equals(
+                method,
+                VerificationMethods.TimeBasedOneTimePassword,
+                StringComparison.Ordinal))
+        {
+            return OperationResultFactory.Success(
+                new HelloStepUpMethodSelection(
+                    method,
+                    HelloDeliveryChannel.Authenticator,
+                    Destination: null));
+        }
+
+        if (!string.Equals(
+                method,
+                VerificationMethods.OneTimeCode,
+                StringComparison.Ordinal))
+        {
+            return OperationResultFactory.Fail<HelloStepUpMethodSelection>(
+                new Error(
+                    IdentityErrorCodes.VerificationMethodUnavailable,
+                    "The verification method is not supported by Hello.",
+                    ErrorType.Validation));
+        }
+
+        if (!HelloAccountSecurity.TryGetConfirmedDestination(
+                user,
+                options.VerificationChannel,
+                out var destination))
+        {
+            return OperationResultFactory.Fail<HelloStepUpMethodSelection>(
+                HelloAccountSecurity.ConfirmedDestinationRequired(
+                    options.VerificationChannel));
+        }
+
+        if (requireDelivery)
+        {
+            var available = messageSender.CheckAvailability(
+                options.VerificationChannel);
+            if (!available.IsSuccess)
+            {
+                return OperationResultFactory.Fail<
+                    HelloStepUpMethodSelection>(available.Errors);
+            }
+        }
+
+        return OperationResultFactory.Success(
+            new HelloStepUpMethodSelection(
+                method,
+                options.VerificationChannel,
+                destination));
     }
 }
 
@@ -225,6 +372,13 @@ internal sealed class HelloAccountStepUpRequirementProvider<TProfile>
             AssuranceLevel: 2,
             MaximumAge: TimeSpan.FromMinutes(2));
 
+    private static readonly StepUpRequirement AuthenticatorDisable =
+        new(
+            HelloAccountSecurity.AuthenticatorDisablePurpose,
+            [VerificationMethods.OneTimeCode],
+            AssuranceLevel: 2,
+            MaximumAge: TimeSpan.FromMinutes(2));
+
     private static readonly StepUpRequirement ExternalLink =
         new(
             HelloAccountSecurity.ExternalLinkPurpose,
@@ -252,6 +406,8 @@ internal sealed class HelloAccountStepUpRequirementProvider<TProfile>
             HelloAccountSecurity.PasswordSetAction => PasswordSet,
             HelloAccountSecurity.PasswordRemoveAction => PasswordRemove,
             HelloAccountSecurity.AccountDeleteAction => AccountDelete,
+            HelloAccountSecurity.AuthenticatorDisableAction =>
+                AuthenticatorDisable,
             HelloAccountSecurity.ExternalLinkAction => ExternalLink,
             HelloAccountSecurity.ExternalUnlinkAction => ExternalUnlink,
             _ => null,
@@ -261,7 +417,8 @@ internal sealed class HelloAccountStepUpRequirementProvider<TProfile>
 }
 
 internal sealed class HelloStepUpPolicyProvider<TProfile>(
-    IEnumerable<IHelloStepUpRequirementProvider<TProfile>> providers)
+    IEnumerable<IHelloStepUpRequirementProvider<TProfile>> providers,
+    HelloStepUpMethodResolver<TProfile>? methodResolver = null)
     : IStepUpPolicyProvider<TProfile>
 {
     public HelloStepUpPolicyProvider()
@@ -296,6 +453,31 @@ internal sealed class HelloStepUpPolicyProvider<TProfile>(
             selected = requirement;
         }
 
-        return selected;
+        if (selected is null
+            || methodResolver is null
+            || !selected.AllowedMethods.Contains(
+                VerificationMethods.OneTimeCode,
+                StringComparer.Ordinal))
+        {
+            return selected;
+        }
+
+        var method = await methodResolver.GetRequiredMethodAsync(
+            context.UserId,
+            cancellationToken);
+        return method.IsSuccess
+            ? selected with
+            {
+                AllowedMethods = selected.AllowedMethods
+                    .Select(item => string.Equals(
+                            item,
+                            VerificationMethods.OneTimeCode,
+                            StringComparison.Ordinal)
+                        ? method.Value
+                        : item)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray(),
+            }
+            : null;
     }
 }

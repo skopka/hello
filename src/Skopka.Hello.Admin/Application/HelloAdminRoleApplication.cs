@@ -24,9 +24,16 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
     SkopkaHelloAdminOptions options,
     IHelloSecurityEventSink securityEvents,
     IHttpContextAccessor httpContextAccessor,
-    ILogger<HelloAdminRoleApplication<TProfile>>? logger = null)
+    ILogger<HelloAdminRoleApplication<TProfile>>? logger = null,
+    HelloStepUpMethodResolver<TProfile>? stepUpMethodResolver = null)
     : IHelloAdminRoleApplication
 {
+    private readonly HelloStepUpMethodResolver<TProfile> stepUpMethods =
+        stepUpMethodResolver
+        ?? new HelloStepUpMethodResolver<TProfile>(
+            deliveryOptions,
+            messageSender);
+
     public async Task<OperationResult<IdentityRolePage>> QueryRolesAsync(
         HelloAdminQueryRolesCommand command,
         CancellationToken cancellationToken)
@@ -117,19 +124,13 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
                 allowed.Errors);
         }
 
-        if (!TryGetConfirmedDestination(actor.Value, out var destination))
+        var selected = await stepUpMethods.SelectAsync(
+            actor.Value,
+            cancellationToken);
+        if (!selected.IsSuccess)
         {
             return OperationResultFactory.Fail<HelloStepUpChallenge>(
-                HelloAdminSecurity.ConfirmedDestinationRequired(
-                    deliveryOptions.VerificationChannel));
-        }
-
-        var available = messageSender.CheckAvailability(
-            deliveryOptions.VerificationChannel);
-        if (!available.IsSuccess)
-        {
-            return OperationResultFactory.Fail<HelloStepUpChallenge>(
-                available.Errors);
+                selected.Errors);
         }
 
         var issued = await stepUp.BeginAsync(
@@ -142,9 +143,8 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
                     command.RoleId,
                     command.TargetUserId,
                     command.Parameters,
-                    deliveryOptions.VerificationChannel,
-                    destination!),
-                VerificationMethods.OneTimeCode,
+                    selected.Value),
+                selected.Value.Method,
                 command.ClientKey),
             cancellationToken);
         if (!issued.IsSuccess)
@@ -153,31 +153,16 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
                 issued.Errors);
         }
 
-        if (string.IsNullOrWhiteSpace(issued.Value.DeliveryCode))
-        {
-            return OperationResultFactory.Fail<HelloStepUpChallenge>(
-                new Error(
-                    IdentityErrorCodes.VerificationMethodUnavailable,
-                    "The verification code could not be delivered.",
-                    ErrorType.Failure));
-        }
-
-        var delivered = await messageSender.SendAsync(
-            new HelloAccountMessage(
-                Guid.NewGuid(),
-                HelloAccountMessageKind.AdminActionVerification,
-                deliveryOptions.VerificationChannel,
-                destination!,
-                null,
-                issued.Value.ExpiresAt,
-                issued.Value.DeliveryCode),
+        var delivered = await DeliverStepUpAsync(
+            selected.Value,
+            issued.Value,
             cancellationToken);
         return delivered.IsSuccess
             ? OperationResultFactory.Success(
                 new HelloStepUpChallenge(
                     issued.Value.ChallengeId,
                     issued.Value.ExpiresAt,
-                    deliveryOptions.VerificationChannel))
+                    selected.Value.Channel))
             : OperationResultFactory.Fail<HelloStepUpChallenge>(
                 delivered.Errors);
     }
@@ -222,18 +207,12 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
                 allowed.Errors);
         }
 
-        if (!TryGetConfirmedDestination(actor.Value, out var destination))
-        {
-            return OperationResultFactory.Fail<HelloAdminRoleActionResult>(
-                HelloAdminSecurity.ConfirmedDestinationRequired(
-                    deliveryOptions.VerificationChannel));
-        }
-
         var verified = await verification.VerifyAsync(
             new VerifyVerificationChallengeCommand(
                 command.ChallengeId,
                 actor.Value.Id,
-                command.VerificationCode),
+                command.VerificationCode,
+                command.ClientKey),
             cancellationToken);
         if (!verified.IsSuccess)
         {
@@ -241,6 +220,15 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
                 ? OperationResultFactory.Fail<HelloAdminRoleActionResult>(
                     verified.Errors)
                 : RestartRequired(verified.Errors);
+        }
+
+        var selected = stepUpMethods.Resolve(
+            actor.Value,
+            verified.Value.Method,
+            requireDelivery: false);
+        if (!selected.IsSuccess)
+        {
+            return RestartRequired(selected.Errors);
         }
 
         var authorized = await stepUp.AuthorizeAsync(
@@ -253,8 +241,7 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
                     command.RoleId,
                     command.TargetUserId,
                     command.Parameters,
-                    deliveryOptions.VerificationChannel,
-                    destination!),
+                    selected.Value),
                 command.ChallengeId,
                 verified.Value.Token),
             cancellationToken);
@@ -360,6 +347,44 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
             default:
                 throw new ArgumentOutOfRangeException(nameof(command));
         }
+    }
+
+    private async Task<OperationResult> DeliverStepUpAsync(
+        HelloStepUpMethodSelection selection,
+        IssuedVerificationChallenge issued,
+        CancellationToken cancellationToken)
+    {
+        if (selection.Channel == HelloDeliveryChannel.Authenticator)
+        {
+            return string.IsNullOrWhiteSpace(issued.DeliveryCode)
+                ? OperationResultFactory.Success()
+                : OperationResultFactory.Fail(
+                    new Error(
+                        IdentityErrorCodes.VerificationMethodUnavailable,
+                        "The authenticator method unexpectedly produced a delivery code.",
+                        ErrorType.Failure));
+        }
+
+        if (string.IsNullOrWhiteSpace(issued.DeliveryCode)
+            || string.IsNullOrWhiteSpace(selection.Destination))
+        {
+            return OperationResultFactory.Fail(
+                new Error(
+                    IdentityErrorCodes.VerificationMethodUnavailable,
+                    "The verification code could not be delivered.",
+                    ErrorType.Failure));
+        }
+
+        return await messageSender.SendAsync(
+            new HelloAccountMessage(
+                Guid.NewGuid(),
+                HelloAccountMessageKind.AdminActionVerification,
+                selection.Channel,
+                selection.Destination,
+                null,
+                issued.ExpiresAt,
+                issued.DeliveryCode),
+            cancellationToken);
     }
 
     private async Task<OperationResult> ValidateRoleTargetAsync(

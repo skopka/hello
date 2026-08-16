@@ -221,6 +221,8 @@
     "Validation.PrivacyPolicyConsentRequired": "Примите Политику конфиденциальности, чтобы создать аккаунт.",
     "Validation.LoginIdentifierRequired": "Введите имя пользователя, email или номер телефона.",
 
+    "Errors.hello.registration.consent_required.acceptTermsOfService": "Примите Пользовательское соглашение, чтобы создать аккаунт.",
+    "Errors.hello.registration.consent_required.acceptPrivacyPolicy": "Примите Политику конфиденциальности, чтобы создать аккаунт.",
     "Errors.identity.authentication.invalid_credentials": "Неверный логин или пароль.",
     "Errors.identity.authentication.blocked": "Вход временно заблокирован.",
     "Errors.identity.user_name.duplicate": "Это имя пользователя уже используется.",

@@ -12,7 +12,9 @@ internal sealed class HelloUiExternalApplication<TProfile>(
     IEnumerable<IHelloOidcProviderCatalog> providerCatalogs,
     IHelloUiProfileFactory<TProfile> profiles,
     IHelloRequestContext requestContext,
-    SkopkaHelloOptions helloOptions)
+    SkopkaHelloOptions helloOptions,
+    IHelloRegistrationConsentPolicy registrationConsentPolicy,
+    TimeProvider timeProvider)
     : IHelloUiExternalApplication
 {
     private readonly IHelloOidcApplication<TProfile>? oidc =
@@ -122,10 +124,25 @@ internal sealed class HelloUiExternalApplication<TProfile>(
             return Unavailable<HelloUiExternalRegistration>();
         }
 
+        var submittedConsent = CreateRegistrationConsent(
+            command.AcceptTermsOfService,
+            command.AcceptPrivacyPolicy);
+        var consentValidation = registrationConsentPolicy.Validate(
+            submittedConsent);
+        if (!consentValidation.IsSuccess)
+        {
+            return OperationResultFactory.Fail<
+                HelloUiExternalRegistration>(consentValidation.Errors);
+        }
+        var registrationConsent = consentValidation.Value;
+
         var profile = profiles.Create(
             new HelloUiRegistrationProfile(
                 command.DisplayName,
-                command.Locale));
+                command.Locale)
+            {
+                RegistrationConsent = registrationConsent,
+            });
         if (!profile.IsSuccess)
         {
             return OperationResultFactory.Fail<
@@ -147,7 +164,10 @@ internal sealed class HelloUiExternalApplication<TProfile>(
                 command.Email,
                 command.Phone,
                 profile.Value,
-                CreateSessionMetadata(httpContext)),
+                CreateSessionMetadata(httpContext))
+            {
+                RegistrationConsent = registrationConsent,
+            },
             httpContext,
             cancellationToken);
         return result.IsSuccess
@@ -158,6 +178,16 @@ internal sealed class HelloUiExternalApplication<TProfile>(
             : OperationResultFactory.Fail<
                 HelloUiExternalRegistration>(result.Errors);
     }
+
+    private HelloRegistrationConsent CreateRegistrationConsent(
+        bool termsOfService,
+        bool privacyPolicy)
+        => new(
+            termsOfService,
+            privacyPolicy,
+            termsOfService || privacyPolicy
+                ? timeProvider.GetUtcNow()
+                : null);
 
     public async Task<OperationResult<
         IReadOnlyList<HelloOidcLinkedProvider>>>

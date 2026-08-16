@@ -221,6 +221,8 @@
     "Validation.PrivacyPolicyConsentRequired": "Accept the Privacy Policy to create an account.",
     "Validation.LoginIdentifierRequired": "Enter a user name, email address or phone number.",
 
+    "Errors.hello.registration.consent_required.acceptTermsOfService": "Accept the Terms of Service to create an account.",
+    "Errors.hello.registration.consent_required.acceptPrivacyPolicy": "Accept the Privacy Policy to create an account.",
     "Errors.identity.authentication.invalid_credentials": "The login or password is invalid.",
     "Errors.identity.authentication.blocked": "Sign-in is temporarily blocked.",
     "Errors.identity.user_name.duplicate": "That user name is already in use.",

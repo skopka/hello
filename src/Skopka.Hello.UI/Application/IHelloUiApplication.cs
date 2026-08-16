@@ -10,7 +10,12 @@ public sealed record HelloUiRegisterCommand(
     string? Phone,
     string DisplayName,
     string? Locale,
-    string Password);
+    string Password)
+{
+    public bool AcceptTermsOfService { get; init; }
+
+    public bool AcceptPrivacyPolicy { get; init; }
+}
 
 public sealed record HelloUiLoginCommand(
     string Login,

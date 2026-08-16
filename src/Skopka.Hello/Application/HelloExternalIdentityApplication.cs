@@ -25,7 +25,10 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
     HelloRegistrationAdmission<TProfile>? registrationAdmission = null,
     IEnumerable<IHelloAccessTokenValidator<TProfile>>?
         accessTokenValidators = null,
-    HelloStepUpMethodResolver<TProfile>? stepUpMethodResolver = null)
+    HelloStepUpMethodResolver<TProfile>? stepUpMethodResolver = null,
+    IHelloRegistrationConsentPolicy? registrationConsentPolicy = null,
+    IHelloRegistrationConsentProfileEnricher<TProfile>?
+        registrationConsentProfileEnricher = null)
     : IHelloExternalIdentityApplication<TProfile>
 {
     private readonly HelloStepUpMethodResolver<TProfile> stepUpMethods =
@@ -33,6 +36,10 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
         ?? new HelloStepUpMethodResolver<TProfile>(
             deliveryOptions,
             messageSender);
+
+    private readonly IHelloRegistrationConsentPolicy registrationConsent =
+        registrationConsentPolicy
+        ?? new HelloRegistrationConsentPolicy(options, []);
 
     public async Task<OperationResult<HelloSignIn<TProfile>>> SignInAsync(
         HelloExternalSignInCommand command,
@@ -65,6 +72,18 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
                     HelloRegistrationErrors.Disabled());
         }
 
+        var submittedConsent = command.RegistrationConsent
+            ?? HelloRegistrationConsent.None;
+        var consentValidation = registrationConsent.Validate(
+            submittedConsent);
+        if (!consentValidation.IsSuccess)
+        {
+            return OperationResultFactory.Fail<
+                HelloSignIn<TProfile>>(consentValidation.Errors);
+        }
+
+        var consent = consentValidation.Value;
+
         if (registrationAdmission is not null)
         {
             var admitted = await registrationAdmission.CheckAsync(
@@ -77,13 +96,28 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
             }
         }
 
+        var profile = command.Profile;
+        if (registrationConsentProfileEnricher is not null)
+        {
+            var enriched = registrationConsentProfileEnricher.Enrich(
+                profile,
+                consent);
+            if (!enriched.IsSuccess)
+            {
+                return OperationResultFactory.Fail<
+                    HelloSignIn<TProfile>>(enriched.Errors);
+            }
+
+            profile = enriched.Value;
+        }
+
         var registered = await registration.RegisterExternalAsync(
             new RegisterExternalUserCommand<TProfile>(
                 new CreateUserCommand<TProfile>(
                     command.UserName,
                     command.Email,
                     command.Phone,
-                    command.Profile),
+                    profile),
                 command.Login),
             cancellationToken);
         return registered.IsSuccess

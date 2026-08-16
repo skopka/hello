@@ -47,6 +47,12 @@ UI prefix is also configured once through `AddSkopkaHello<TProfile>`; core
 action links, UI routing and OIDC browser redirects consume the same immutable
 route snapshot. It is not the host application's `PathBase`.
 
+Registration consent is a shared application invariant, not a Razor-only
+check. UI legal-document URLs contribute requirements to password, headless and
+external registration. Transports provide acceptance flags; Hello attaches a
+server timestamp and exposes trusted evidence through the UI profile factory
+and optional profile enricher before the atomic Identity registration call.
+
 Refresh tokens stay only in `Secure`, `HttpOnly` cookies. Cookie-authorized
 mutations require antiforgery validation. API access tokens are returned as
 JSON/bearer tokens. The protected Razor UI ticket carries its access token in

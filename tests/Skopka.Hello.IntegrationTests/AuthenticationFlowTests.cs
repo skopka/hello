@@ -1018,6 +1018,86 @@ public sealed class AuthenticationFlowTests
         Dictionary<string, string> cookies =
             new(StringComparer.Ordinal);
 
+        using var apiRegistrationWithoutConsent =
+            await client.PostAsJsonAsync(
+                "/auth/register",
+                new
+                {
+                    userName = "api-without-consent",
+                    email = "api-without-consent@example.test",
+                    phone = (string?)null,
+                    profile = new
+                    {
+                        displayName = "API Without Consent",
+                        locale = "en",
+                    },
+                    password = "correct horse battery staple",
+                });
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            apiRegistrationWithoutConsent.StatusCode);
+        using (var problem = JsonDocument.Parse(
+                   await apiRegistrationWithoutConsent.Content
+                       .ReadAsStringAsync()))
+        {
+            Assert.Equal(
+                HelloRegistrationErrors.ConsentRequiredCode,
+                problem.RootElement.GetProperty("code").GetString());
+            var errors = problem.RootElement.GetProperty("errors");
+            Assert.True(errors.TryGetProperty(
+                "acceptTermsOfService",
+                out _));
+            Assert.True(errors.TryGetProperty(
+                "acceptPrivacyPolicy",
+                out _));
+        }
+
+        var apiConsentStartedAt = DateTimeOffset.UtcNow;
+        using var apiRegistration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "api-with-consent",
+                email = "api-with-consent@example.test",
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "API With Consent",
+                    locale = "en",
+                    registrationConsent = new
+                    {
+                        termsOfServiceAccepted = false,
+                        privacyPolicyAccepted = false,
+                        acceptedAt = DateTimeOffset.UnixEpoch,
+                    },
+                },
+                password = "correct horse battery staple",
+                acceptTermsOfService = true,
+                acceptPrivacyPolicy = true,
+            });
+        var apiConsentCompletedAt = DateTimeOffset.UtcNow;
+        Assert.Equal(HttpStatusCode.Created, apiRegistration.StatusCode);
+        using (var apiAccountDocument = JsonDocument.Parse(
+                   await apiRegistration.Content.ReadAsStringAsync()))
+        {
+            var consent = apiAccountDocument.RootElement
+                .GetProperty("profile")
+                .GetProperty("registrationConsent");
+            Assert.True(consent
+                .GetProperty("termsOfServiceAccepted")
+                .GetBoolean());
+            Assert.True(consent
+                .GetProperty("privacyPolicyAccepted")
+                .GetBoolean());
+            var acceptedAt = consent
+                .GetProperty("acceptedAt")
+                .GetDateTimeOffset();
+            Assert.InRange(
+                acceptedAt,
+                apiConsentStartedAt,
+                apiConsentCompletedAt);
+        }
+
         using var registerPage = await SendAsync(
             client,
             HttpMethod.Get,
@@ -1201,6 +1281,7 @@ public sealed class AuthenticationFlowTests
             missingLegalConsentsHtml,
             "__RequestVerificationToken");
 
+        var uiConsentStartedAt = DateTimeOffset.UtcNow;
         using var register = await SendFormAsync(
             client,
             "/hello/register",
@@ -1220,6 +1301,7 @@ public sealed class AuthenticationFlowTests
                 ["Input.AcceptPrivacyPolicy"] = "true",
                 ["__RequestVerificationToken"] = registerToken,
             });
+        var uiConsentCompletedAt = DateTimeOffset.UtcNow;
         Assert.Equal(HttpStatusCode.Redirect, register.StatusCode);
         Assert.StartsWith(
             "/hello/login",
@@ -1253,6 +1335,47 @@ public sealed class AuthenticationFlowTests
         Assert.Equal(
             HttpStatusCode.NoContent,
             confirmation.StatusCode);
+
+        using var consentProofLogin = await client.PostAsJsonAsync(
+            "/auth/login",
+            new
+            {
+                login = "browser-alice@example.test",
+                password = "correct horse battery staple",
+            });
+        Assert.Equal(HttpStatusCode.OK, consentProofLogin.StatusCode);
+        using var consentProofLoginDocument = JsonDocument.Parse(
+            await consentProofLogin.Content.ReadAsStringAsync());
+        var consentProofAccessToken = consentProofLoginDocument.RootElement
+            .GetProperty("accessToken")
+            .GetString();
+        using var consentProofRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/account/me");
+        consentProofRequest.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                consentProofAccessToken);
+        using var consentProof = await client.SendAsync(
+            consentProofRequest);
+        Assert.Equal(HttpStatusCode.OK, consentProof.StatusCode);
+        using (var consentProofDocument = JsonDocument.Parse(
+                   await consentProof.Content.ReadAsStringAsync()))
+        {
+            var consent = consentProofDocument.RootElement
+                .GetProperty("profile")
+                .GetProperty("registrationConsent");
+            Assert.True(consent
+                .GetProperty("termsOfServiceAccepted")
+                .GetBoolean());
+            Assert.True(consent
+                .GetProperty("privacyPolicyAccepted")
+                .GetBoolean());
+            Assert.InRange(
+                consent.GetProperty("acceptedAt").GetDateTimeOffset(),
+                uiConsentStartedAt,
+                uiConsentCompletedAt);
+        }
 
         using var loginPage = await SendAsync(
             client,
@@ -2561,18 +2684,35 @@ public sealed class AuthenticationFlowTests
 
     private sealed record IntegrationProfile(
         string DisplayName,
-        string? Locale);
+        string? Locale)
+    {
+        public IntegrationRegistrationConsent? RegistrationConsent
+        {
+            get;
+            init;
+        }
+    }
+
+    private sealed record IntegrationRegistrationConsent(
+        bool TermsOfServiceAccepted,
+        bool PrivacyPolicyAccepted,
+        DateTimeOffset AcceptedAt);
 
     private sealed class IntegrationProfileUiFactory
         : IHelloUiProfileFactory<IntegrationProfile>,
-            IHelloUiProfileEditor<IntegrationProfile>
+            IHelloUiProfileEditor<IntegrationProfile>,
+            IHelloRegistrationConsentProfileEnricher<IntegrationProfile>
     {
         public OperationResult<IntegrationProfile> Create(
             HelloUiRegistrationProfile profile)
             => OperationResultFactory.Success(
                 new IntegrationProfile(
                     profile.DisplayName,
-                    profile.Locale));
+                    profile.Locale)
+                {
+                    RegistrationConsent = ToProfileConsent(
+                        profile.RegistrationConsent),
+                });
 
         public string GetDisplayName(
             IntegrationProfile profile)
@@ -2631,8 +2771,30 @@ public sealed class AuthenticationFlowTests
             return OperationResultFactory.Success(
                 new IntegrationProfile(
                     displayName,
-                    locale));
+                    locale)
+                {
+                    RegistrationConsent =
+                        current.RegistrationConsent,
+                });
         }
+
+        public OperationResult<IntegrationProfile> Enrich(
+            IntegrationProfile profile,
+            HelloRegistrationConsent consent)
+            => OperationResultFactory.Success(
+                profile with
+                {
+                    RegistrationConsent = ToProfileConsent(consent),
+                });
+
+        private static IntegrationRegistrationConsent? ToProfileConsent(
+            HelloRegistrationConsent? consent)
+            => consent is { AcceptedAt: { } acceptedAt }
+                ? new IntegrationRegistrationConsent(
+                    consent.TermsOfServiceAccepted,
+                    consent.PrivacyPolicyAccepted,
+                    acceptedAt)
+                : null;
     }
 
     private sealed class IntegrationAdminProfileProjector

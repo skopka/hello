@@ -35,7 +35,10 @@ public sealed record HelloOidcRegisterCommand<TProfile>(
     string? Email,
     string? Phone,
     TProfile Profile,
-    IdentitySessionMetadata SessionMetadata);
+    IdentitySessionMetadata SessionMetadata)
+{
+    public HelloRegistrationConsent? RegistrationConsent { get; init; }
+}
 
 public sealed record HelloOidcLinkedProvider(
     string ProviderId,

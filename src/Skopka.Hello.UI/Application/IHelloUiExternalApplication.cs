@@ -16,7 +16,12 @@ public sealed record HelloUiExternalRegisterCommand(
     string? Email,
     string? Phone,
     string DisplayName,
-    string? Locale);
+    string? Locale)
+{
+    public bool AcceptTermsOfService { get; init; }
+
+    public bool AcceptPrivacyPolicy { get; init; }
+}
 
 public sealed record HelloUiExternalRegistration(
     HelloUiSignIn SignIn,

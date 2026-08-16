@@ -6,6 +6,9 @@ public sealed class SkopkaHelloOptions
 {
     public HelloTotpOptions Totp { get; } = new();
 
+    public HelloRegistrationConsentOptions RegistrationConsent { get; } =
+        new();
+
     public bool SelfRegistrationEnabled { get; set; } = true;
 
     public int RegistrationClientPermitLimit { get; set; } = 5;

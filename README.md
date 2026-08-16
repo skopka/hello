@@ -213,11 +213,15 @@ the application itself.
 
 `TermsOfServiceUrl` and `PrivacyPolicyUrl` add localized links to the packaged
 footer and a separate required consent checkbox for each configured document
-on both password and external registration forms. Razor registration rejects
-the submission before calling Identity when a required checkbox is clear.
-Hello does not host the documents or persist an auditable consent record; the
-host owns their content and lifecycle. Each value accepts the same safe local
-absolute path or absolute HTTPS URL shape as `ApplicationHomeUrl`.
+on both password and external registration forms. The same application policy
+also requires `acceptTermsOfService` and/or `acceptPrivacyPolicy` on headless
+registration requests, so `/auth/register` cannot bypass the UI rule. Hello
+captures the accepted flags with a server timestamp and exposes the evidence
+to `IHelloUiProfileFactory.Create`; hosts can persist it atomically in their
+profile. `IHelloRegistrationConsentProfileEnricher<TProfile>` provides the same
+trusted overwrite point for API-bound profiles. The host still owns document
+content, revisions and retention. Each URL accepts the same safe local absolute
+path or absolute HTTPS shape as `ApplicationHomeUrl`.
 
 The footer selector persists the supported culture in a secure preference
 cookie and is omitted when only one culture remains. Use `RemoveCulture` or

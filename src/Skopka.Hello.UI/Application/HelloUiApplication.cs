@@ -10,6 +10,8 @@ internal sealed class HelloUiApplication<TProfile>(
     IHelloUiProfileFactory<TProfile> profiles,
     IHelloRequestContext requestContext,
     SkopkaHelloOptions helloOptions,
+    IHelloRegistrationConsentPolicy registrationConsentPolicy,
+    TimeProvider timeProvider,
     IHelloUiProfileEditor<TProfile>? profileEditor = null)
     : IHelloUiApplication
 {
@@ -25,10 +27,25 @@ internal sealed class HelloUiApplication<TProfile>(
                 HelloRegistrationErrors.Disabled());
         }
 
+        var submittedConsent = CreateRegistrationConsent(
+            command.AcceptTermsOfService,
+            command.AcceptPrivacyPolicy);
+        var consentValidation = registrationConsentPolicy.Validate(
+            submittedConsent);
+        if (!consentValidation.IsSuccess)
+        {
+            return OperationResultFactory.Fail(
+                consentValidation.Errors);
+        }
+        var registrationConsent = consentValidation.Value;
+
         var profile = profiles.Create(
             new HelloUiRegistrationProfile(
                 command.DisplayName,
-                command.Locale));
+                command.Locale)
+            {
+                RegistrationConsent = registrationConsent,
+            });
         if (!profile.IsSuccess)
         {
             return OperationResultFactory.Fail(profile.Errors);
@@ -40,12 +57,25 @@ internal sealed class HelloUiApplication<TProfile>(
                 command.Email,
                 command.Phone,
                 profile.Value,
-                command.Password),
+                command.Password)
+            {
+                RegistrationConsent = registrationConsent,
+            },
             cancellationToken);
         return result.IsSuccess
             ? OperationResultFactory.Success()
             : OperationResultFactory.Fail(result.Errors);
     }
+
+    private HelloRegistrationConsent CreateRegistrationConsent(
+        bool termsOfService,
+        bool privacyPolicy)
+        => new(
+            termsOfService,
+            privacyPolicy,
+            termsOfService || privacyPolicy
+                ? timeProvider.GetUtcNow()
+                : null);
 
     public async Task<OperationResult<HelloUiSignIn>> LoginAsync(
         HelloUiLoginCommand command,

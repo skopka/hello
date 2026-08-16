@@ -248,7 +248,10 @@ internal sealed class HelloOidcApplication<TProfile>(
                 command.Phone,
                 command.Profile,
                 ticket.Login,
-                command.SessionMetadata),
+                command.SessionMetadata)
+            {
+                RegistrationConsent = command.RegistrationConsent,
+            },
             cancellationToken);
         if (!result.IsSuccess
             && IsOnlyError(

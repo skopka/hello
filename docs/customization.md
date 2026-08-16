@@ -12,6 +12,10 @@ public sealed record MyProfile(string DisplayName, string? Locale);
 Profile schema changes are application data migrations. Do not place ASP.NET,
 EF, credential or protocol types in a profile.
 
+If the profile stores registration-consent evidence, use a host-owned value
+type and map the trusted Hello evidence into it. Do not trust similarly named
+values inside the client-supplied `profile` JSON.
+
 ## Hello options
 
 ```csharp
@@ -21,6 +25,8 @@ services.AddSkopkaHello<MyProfile>(options =>
     options.CookieSameSite = SameSiteMode.Strict;
     options.SelfRegistrationEnabled = false;
     options.UiPathPrefix = "/accounts";
+    options.RegistrationConsent.TermsOfServiceRequired = true;
+    options.RegistrationConsent.PrivacyPolicyRequired = true;
 });
 ```
 
@@ -160,11 +166,11 @@ SkopkaHello__Ui__Registration__UserName=Hidden
 SkopkaHello__Ui__Registration__Phone=Hidden
 ```
 
-These options intentionally govern the packaged Razor forms. The typed
+These options intentionally govern the packaged Razor fields. The typed
 headless `POST /auth/register` contract remains host-facing and accepts the
 three optional identifiers subject to the shared Identity rule that at least
-one usable login handle is present. A host that exposes that API to its own
-clients can apply a stricter API-specific admission policy independently.
+one usable login handle is present. Registration consent is different: its
+policy is shared by Razor, password API and external/OIDC registration.
 
 Select only the page groups the host needs. For example, a host-owned account
 area can keep only the packaged login page:
@@ -243,11 +249,30 @@ query or fragment.
 
 Set `TermsOfServiceUrl` and/or `PrivacyPolicyUrl` to render localized legal
 document links in the packaged footer and a separate required consent checkbox
-for each configured document on both registration forms. Razor registration
-rejects a clear required checkbox before invoking the registration application
-operation. The documents remain host-owned pages; Hello neither serves their
-content nor persists an auditable acceptance record. Values use the same safe
-local absolute path or absolute HTTPS URL rules as `ApplicationHomeUrl`.
+for each configured document on both registration forms. Each configured URL
+also contributes to the shared application policy, so password and external
+registration fail before Identity when the matching acceptance is missing.
+Headless requests provide `acceptTermsOfService` and
+`acceptPrivacyPolicy`; omission is equivalent to `false`. Values use the same
+safe local absolute path or absolute HTTPS URL rules as `ApplicationHomeUrl`.
+
+Hello captures the accepted flags and one server-side `AcceptedAt` timestamp.
+`HelloUiRegistrationProfile.RegistrationConsent` gives that evidence to
+`IHelloUiProfileFactory<TProfile>.Create`, allowing the host to map it into the
+profile written by the same Identity registration operation. For the headless
+API, implement `IHelloRegistrationConsentProfileEnricher<TProfile>` on the same
+factory (the UI registration helper detects and registers it). `Enrich` receives
+the client-bound profile and trusted evidence immediately before Identity; it
+must overwrite or clear any client-provided evidence fields. API-only hosts can
+register their enricher directly and configure requirements through
+`SkopkaHelloOptions.RegistrationConsent`.
+When packaged registration pages are enabled, every core requirement must have
+the corresponding UI document URL; startup fails instead of rendering a form
+that cannot satisfy the shared policy.
+
+The host owns document content and revision identifiers. Store the applicable
+revision beside the flags and timestamp according to the host's retention and
+audit policy; Hello deliberately does not infer revisions from URLs.
 
 Dictionary paths are absolute or relative to the host content root. Files are
 read once at startup, are never served as static content and can contain a

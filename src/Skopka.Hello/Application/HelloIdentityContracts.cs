@@ -33,7 +33,10 @@ public sealed record HelloRegisterCommand<TProfile>(
     string? Email,
     string? Phone,
     TProfile Profile,
-    string Password);
+    string Password)
+{
+    public HelloRegistrationConsent? RegistrationConsent { get; init; }
+}
 
 public sealed record HelloLoginCommand(
     string Login,

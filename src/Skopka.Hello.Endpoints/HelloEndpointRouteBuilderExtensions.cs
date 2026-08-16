@@ -304,6 +304,7 @@ public static class HelloEndpointRouteBuilderExtensions
     private static async Task<IResult> RegisterAsync<TProfile>(
         RegisterRequest<TProfile> request,
         IHelloIdentityApplication<TProfile> application,
+        TimeProvider timeProvider,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -313,7 +314,13 @@ public static class HelloEndpointRouteBuilderExtensions
                 request.Email,
                 request.Phone,
                 request.Profile,
-                request.Password),
+                request.Password)
+            {
+                RegistrationConsent = CreateRegistrationConsent(
+                    request.AcceptTermsOfService,
+                    request.AcceptPrivacyPolicy,
+                    timeProvider),
+            },
             cancellationToken);
 
         return result.IsSuccess
@@ -550,6 +557,7 @@ public static class HelloEndpointRouteBuilderExtensions
         IHelloRequestContext requestContext,
         SkopkaHelloOptions options,
         IHelloSessionCookieManager cookies,
+        TimeProvider timeProvider,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -588,7 +596,13 @@ public static class HelloEndpointRouteBuilderExtensions
                 request.Profile,
                 requestContext.CreateSessionMetadata(
                     httpContext,
-                    options.ClientName)),
+                    options.ClientName))
+            {
+                RegistrationConsent = CreateRegistrationConsent(
+                    request.AcceptTermsOfService,
+                    request.AcceptPrivacyPolicy,
+                    timeProvider),
+            },
             httpContext,
             cancellationToken);
         return registered.IsSuccess
@@ -1870,6 +1884,17 @@ public static class HelloEndpointRouteBuilderExtensions
             user.Version,
             user.CreatedAt,
             user.ModifiedAt);
+
+    private static HelloRegistrationConsent CreateRegistrationConsent(
+        bool termsOfService,
+        bool privacyPolicy,
+        TimeProvider timeProvider)
+        => new(
+            termsOfService,
+            privacyPolicy,
+            termsOfService || privacyPolicy
+                ? timeProvider.GetUtcNow()
+                : null);
 
     private static TotpStateResponse ToTotpStateResponse(
         HelloTotpState state)

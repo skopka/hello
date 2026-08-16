@@ -27,8 +27,10 @@ RCL static asset; the mounted custom stylesheet is linked after it.
 Optional `SkopkaHello:Ui:TermsOfServiceUrl` and
 `SkopkaHello:Ui:PrivacyPolicyUrl` values add host-owned legal-document links to
 the footer and required consent checkboxes to both Razor registration forms.
-Use local absolute paths or absolute HTTPS URLs; the ready Server does not
-serve, version or persist acceptance of those documents itself.
+They also require the corresponding acceptance fields on headless registration.
+Use local absolute paths or absolute HTTPS URLs. The ready Server stores the
+trusted flags and server acceptance time in `HelloProfile`; operators still own
+document hosting, revision mapping and evidence-retention policy.
 
 The admin API prefix is configured by
 `SkopkaHello:Admin:ApiPathPrefix` (`/admin` by default). Its Razor user page is

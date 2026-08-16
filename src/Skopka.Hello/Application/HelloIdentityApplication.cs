@@ -34,7 +34,10 @@ internal sealed class HelloIdentityApplication<TProfile>(
     IEnumerable<IHelloAccessTokenValidator<TProfile>>?
         accessTokenValidators = null,
     IIdentityTotpService<TProfile>? totp = null,
-    HelloStepUpMethodResolver<TProfile>? stepUpMethodResolver = null)
+    HelloStepUpMethodResolver<TProfile>? stepUpMethodResolver = null,
+    IHelloRegistrationConsentPolicy? registrationConsentPolicy = null,
+    IHelloRegistrationConsentProfileEnricher<TProfile>?
+        registrationConsentProfileEnricher = null)
     : IHelloIdentityApplication<TProfile>
 {
     private readonly HelloStepUpMethodResolver<TProfile> stepUpMethods =
@@ -42,6 +45,10 @@ internal sealed class HelloIdentityApplication<TProfile>(
         ?? new HelloStepUpMethodResolver<TProfile>(
             deliveryOptions,
             messageSender);
+
+    private readonly IHelloRegistrationConsentPolicy registrationConsent =
+        registrationConsentPolicy
+        ?? new HelloRegistrationConsentPolicy(options, []);
 
     public async Task<OperationResult<HelloAccount<TProfile>>> RegisterAsync(
         HelloRegisterCommand<TProfile> command,
@@ -65,6 +72,18 @@ internal sealed class HelloIdentityApplication<TProfile>(
                     HelloRegistrationErrors.LoginHandleRequired());
         }
 
+        var submittedConsent = command.RegistrationConsent
+            ?? HelloRegistrationConsent.None;
+        var consentValidation = registrationConsent.Validate(
+            submittedConsent);
+        if (!consentValidation.IsSuccess)
+        {
+            return OperationResultFactory.Fail<
+                HelloAccount<TProfile>>(consentValidation.Errors);
+        }
+
+        var consent = consentValidation.Value;
+
         if (registrationAdmission is not null)
         {
             var admitted = await registrationAdmission.CheckAsync(
@@ -77,13 +96,28 @@ internal sealed class HelloIdentityApplication<TProfile>(
             }
         }
 
+        var profile = command.Profile;
+        if (registrationConsentProfileEnricher is not null)
+        {
+            var enriched = registrationConsentProfileEnricher.Enrich(
+                profile,
+                consent);
+            if (!enriched.IsSuccess)
+            {
+                return OperationResultFactory.Fail<
+                    HelloAccount<TProfile>>(enriched.Errors);
+            }
+
+            profile = enriched.Value;
+        }
+
         var result = await registration.RegisterPasswordAsync(
             new RegisterPasswordUserCommand<TProfile>(
                 new CreateUserCommand<TProfile>(
                     command.UserName,
                     command.Email,
                     command.Phone,
-                    command.Profile),
+                    profile),
                 command.Password),
             cancellationToken);
 

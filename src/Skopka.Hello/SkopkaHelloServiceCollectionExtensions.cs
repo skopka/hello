@@ -18,6 +18,10 @@ public static class SkopkaHelloServiceCollectionExtensions
         options.Validate();
 
         services.AddSingleton(options);
+        services.TryAddSingleton<TimeProvider>(TimeProvider.System);
+        services.TryAddSingleton<
+            Skopka.Hello.IHelloRegistrationConsentPolicy,
+            Skopka.Hello.HelloRegistrationConsentPolicy>();
         services.AddSingleton(
             new Skopka.Hello.HelloUiRoutePaths(
                 options.UiPathPrefix));

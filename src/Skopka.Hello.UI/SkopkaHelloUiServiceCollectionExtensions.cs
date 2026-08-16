@@ -18,6 +18,7 @@ public static class SkopkaHelloUiServiceCollectionExtensions
         configure?.Invoke(options);
         options.Validate();
         services.AddSingleton(options);
+        AddRegistrationConsentRequirement(services, options);
         AddLocalizationServices(services);
 
         return services;
@@ -37,6 +38,7 @@ public static class SkopkaHelloUiServiceCollectionExtensions
         configure?.Invoke(options);
         options.Validate();
         services.AddSingleton(options);
+        AddRegistrationConsentRequirement(services, options);
         AddLocalizationServices(services);
 
         services.TryAddScoped<TProfileFactory>();
@@ -50,6 +52,19 @@ public static class SkopkaHelloUiServiceCollectionExtensions
                 Skopka.Hello.UI.IHelloUiProfileEditor<TProfile>>(
                 provider =>
                     (Skopka.Hello.UI.IHelloUiProfileEditor<TProfile>)
+                    provider.GetRequiredService<TProfileFactory>());
+        }
+        if (typeof(
+                Skopka.Hello
+                    .IHelloRegistrationConsentProfileEnricher<TProfile>)
+            .IsAssignableFrom(typeof(TProfileFactory)))
+        {
+            services.TryAddScoped<
+                Skopka.Hello
+                    .IHelloRegistrationConsentProfileEnricher<TProfile>>(
+                provider =>
+                    (Skopka.Hello
+                        .IHelloRegistrationConsentProfileEnricher<TProfile>)
                     provider.GetRequiredService<TProfileFactory>());
         }
         services.TryAddScoped<
@@ -120,6 +135,14 @@ public static class SkopkaHelloUiServiceCollectionExtensions
 
         return services;
     }
+
+    private static void AddRegistrationConsentRequirement(
+        IServiceCollection services,
+        Skopka.Hello.UI.SkopkaHelloUiOptions options)
+        => services.AddSingleton(
+            new Skopka.Hello.HelloRegistrationConsentRequirement(
+                options.TermsOfServiceUrl is not null,
+                options.PrivacyPolicyUrl is not null));
 
     private static void AddLocalizationServices(
         IServiceCollection services)

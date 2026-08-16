@@ -4,7 +4,10 @@ namespace Skopka.Hello.UI;
 
 public sealed record HelloUiRegistrationProfile(
     string DisplayName,
-    string? Locale);
+    string? Locale)
+{
+    public HelloRegistrationConsent? RegistrationConsent { get; init; }
+}
 
 public interface IHelloUiProfileFactory<TProfile>
 {

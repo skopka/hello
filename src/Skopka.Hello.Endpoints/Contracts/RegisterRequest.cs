@@ -5,4 +5,9 @@ public sealed record RegisterRequest<TProfile>(
     string? Email,
     string? Phone,
     TProfile Profile,
-    string Password);
+    string Password)
+{
+    public bool AcceptTermsOfService { get; init; }
+
+    public bool AcceptPrivacyPolicy { get; init; }
+}

@@ -360,9 +360,16 @@ Content-Type: application/json
     "displayName": "Alice",
     "locale": "en"
   },
-  "password": "a sufficiently long passphrase"
+  "password": "a sufficiently long passphrase",
+  "acceptTermsOfService": true,
+  "acceptPrivacyPolicy": true
 }
 ```
+
+The two acceptance fields are required only when the corresponding registration
+consent policy is enabled. Configuring the packaged UI's legal-document URL
+enables that policy for both Razor and headless registration. API-only hosts can
+set `SkopkaHelloOptions.RegistrationConsent` directly.
 
 Login:
 

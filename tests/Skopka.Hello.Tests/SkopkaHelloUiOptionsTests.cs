@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Skopka.Hello.UI;
+using Skopka.Identity.Errors;
 
 namespace Skopka.Hello.Tests;
 
@@ -227,6 +228,31 @@ public sealed class SkopkaHelloUiOptionsTests
     }
 
     [Fact]
+    public void LegalDocumentUrlsContributeToSharedConsentPolicy()
+    {
+        var services = new ServiceCollection();
+        services.AddSkopkaHello<TestProfile>();
+        services.AddSkopkaHelloUi(options =>
+        {
+            options.TermsOfServiceUrl = "/terms";
+            options.PrivacyPolicyUrl = "/privacy";
+        });
+        using var provider = services.BuildServiceProvider();
+
+        var policy = provider.GetRequiredService<
+            IHelloRegistrationConsentPolicy>();
+        var result = policy.Validate(HelloRegistrationConsent.None);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(
+            HelloRegistrationErrors.ConsentRequiredCode,
+            error.Code);
+        var details = Assert.IsType<ValidationDetails>(error.Details);
+        Assert.Equal(2, details.Fields.Count);
+    }
+
+    [Fact]
     public void ValidateRejectsAuthenticatedRedirectToLoginPage()
     {
         var options = new SkopkaHelloUiOptions
@@ -416,4 +442,6 @@ public sealed class SkopkaHelloUiOptionsTests
             exception.Message,
             StringComparison.OrdinalIgnoreCase);
     }
+
+    private sealed record TestProfile(string DisplayName);
 }

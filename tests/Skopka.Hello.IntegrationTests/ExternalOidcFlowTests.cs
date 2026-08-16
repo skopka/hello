@@ -463,6 +463,27 @@ public sealed class ExternalOidcFlowTests
             ExternalAuthenticationOutcome.RegistrationRequired,
             Assert.IsType<ExternalAuthenticationResponse>(hints).Outcome);
 
+        using var missingConsentRegistration = await SendHelloJsonAsync(
+            helloClient,
+            HttpMethod.Post,
+            HelloOidcDefaults.ApiRegistrationPath,
+            firstCookies,
+            new
+            {
+                userName = "external-headless-alice",
+                email = "external@example.test",
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Headless Alice",
+                    locale = "en",
+                },
+            },
+            antiforgeryToken);
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            missingConsentRegistration.StatusCode);
+
         using var registration = await SendHelloJsonAsync(
             helloClient,
             HttpMethod.Post,
@@ -478,6 +499,8 @@ public sealed class ExternalOidcFlowTests
                     displayName = "Headless Alice",
                     locale = "en",
                 },
+                acceptTermsOfService = true,
+                acceptPrivacyPolicy = true,
             },
             antiforgeryToken);
         Assert.Equal(HttpStatusCode.OK, registration.StatusCode);
@@ -510,6 +533,8 @@ public sealed class ExternalOidcFlowTests
                     displayName = "Replay",
                     locale = "en",
                 },
+                acceptTermsOfService = true,
+                acceptPrivacyPolicy = true,
             },
             antiforgeryToken);
         Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
@@ -606,6 +631,8 @@ public sealed class ExternalOidcFlowTests
                     displayName = "Headless Mutations",
                     locale = "en",
                 },
+                acceptTermsOfService = true,
+                acceptPrivacyPolicy = true,
             },
             antiforgeryToken);
         Assert.Equal(HttpStatusCode.OK, registration.StatusCode);
@@ -1202,20 +1229,41 @@ public sealed class ExternalOidcFlowTests
 
     private sealed record IntegrationProfile(
         string DisplayName,
-        string? Locale);
+        string? Locale)
+    {
+        public HelloRegistrationConsent? RegistrationConsent
+        {
+            get;
+            init;
+        }
+    }
 
     private sealed class IntegrationProfileUiFactory
-        : IHelloUiProfileFactory<IntegrationProfile>
+        : IHelloUiProfileFactory<IntegrationProfile>,
+            IHelloRegistrationConsentProfileEnricher<IntegrationProfile>
     {
         public OperationResult<IntegrationProfile> Create(
             HelloUiRegistrationProfile profile)
             => OperationResultFactory.Success(
                 new IntegrationProfile(
                     profile.DisplayName,
-                    profile.Locale));
+                    profile.Locale)
+                {
+                    RegistrationConsent =
+                        profile.RegistrationConsent,
+                });
 
         public string GetDisplayName(IntegrationProfile profile)
             => profile.DisplayName;
+
+        public OperationResult<IntegrationProfile> Enrich(
+            IntegrationProfile profile,
+            HelloRegistrationConsent consent)
+            => OperationResultFactory.Success(
+                profile with
+                {
+                    RegistrationConsent = consent,
+                });
     }
 
     private sealed record CompletedProviderChallenge(

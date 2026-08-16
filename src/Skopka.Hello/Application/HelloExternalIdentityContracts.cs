@@ -24,7 +24,10 @@ public sealed record HelloExternalRegistrationCommand<TProfile>(
     string? Phone,
     TProfile Profile,
     ExternalLoginKey Login,
-    IdentitySessionMetadata SessionMetadata);
+    IdentitySessionMetadata SessionMetadata)
+{
+    public HelloRegistrationConsent? RegistrationConsent { get; init; }
+}
 
 public sealed record HelloBeginExternalLoginMutationCommand(
     string AccessToken,

@@ -74,6 +74,14 @@ It then passes the returned user id and current security stamp to session creati
 delegates strict rotation to Skopka.Identity. Minimal API and Razor handlers
 call the same operations and never call EF stores directly.
 
+Registration consent is also a shared application invariant. Configured core
+requirements and UI legal-document requirements are combined before password
+or external Identity registration. Transports submit only acceptance flags;
+Hello attaches a server timestamp. Razor hosts receive the trusted evidence in
+`HelloUiRegistrationProfile`, while headless profile binding can be sanitized
+and enriched through `IHelloRegistrationConsentProfileEnricher<TProfile>` before
+the profile enters the same atomic Identity registration operation.
+
 Authenticated account edits also flow through this generic application
 boundary. User name, email and phone mutations derive the user from an
 online-validated access token and pass the caller's `ExpectedVersion` to

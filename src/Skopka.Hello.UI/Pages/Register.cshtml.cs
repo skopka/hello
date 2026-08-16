@@ -44,12 +44,6 @@ public sealed class RegisterModel(
         Input.UserName = values.UserName;
         Input.Phone = values.Phone;
         Input.Locale = values.Locale;
-        HelloUiLegalConsentValidator.Validate(
-            uiOptions,
-            ModelState,
-            text,
-            Input.AcceptTermsOfService,
-            Input.AcceptPrivacyPolicy);
         if (!ModelState.IsValid)
         {
             return Page();
@@ -62,7 +56,13 @@ public sealed class RegisterModel(
                 Input.Phone,
                 Input.DisplayName,
                 Input.Locale,
-                Input.Password),
+                Input.Password)
+            {
+                AcceptTermsOfService =
+                    Input.AcceptTermsOfService,
+                AcceptPrivacyPolicy =
+                    Input.AcceptPrivacyPolicy,
+            },
             cancellationToken);
         if (!result.IsSuccess)
         {

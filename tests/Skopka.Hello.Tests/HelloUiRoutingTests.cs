@@ -143,6 +143,23 @@ public sealed class HelloUiRoutingTests
         Assert.Equal(["/identity/login"], routes);
     }
 
+    [Fact]
+    public void RegistrationUiRequiresUrlForCoreConsentPolicy()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => CreateApplication(
+                "/identity",
+                selfRegistrationEnabled: true,
+                configureHello: options =>
+                    options.RegistrationConsent
+                        .TermsOfServiceRequired = true));
+
+        Assert.Contains(
+            nameof(SkopkaHelloUiOptions.TermsOfServiceUrl),
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("/")]
@@ -186,7 +203,8 @@ public sealed class HelloUiRoutingTests
     private static WebApplication CreateApplication(
         string pathPrefix,
         bool selfRegistrationEnabled,
-        Action<SkopkaHelloUiOptions>? configureUi = null)
+        Action<SkopkaHelloUiOptions>? configureUi = null,
+        Action<SkopkaHelloOptions>? configureHello = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Services.AddSkopkaHello<TestProfile>(options =>
@@ -194,6 +212,7 @@ public sealed class HelloUiRoutingTests
             options.UiPathPrefix = pathPrefix;
             options.SelfRegistrationEnabled =
                 selfRegistrationEnabled;
+            configureHello?.Invoke(options);
         });
         builder.Services.AddSkopkaHelloUi<
             TestProfile,

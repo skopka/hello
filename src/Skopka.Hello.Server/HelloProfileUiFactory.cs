@@ -6,7 +6,8 @@ namespace Skopka.Hello.Server;
 
 public sealed class HelloProfileUiFactory
     : IHelloUiProfileFactory<HelloProfile>,
-        IHelloUiProfileEditor<HelloProfile>
+        IHelloUiProfileEditor<HelloProfile>,
+        IHelloRegistrationConsentProfileEnricher<HelloProfile>
 {
     private const string DisplayNameField = "displayName";
     private const string LocaleField = "locale";
@@ -39,7 +40,11 @@ public sealed class HelloProfileUiFactory
                 displayName,
                 string.IsNullOrWhiteSpace(profile.Locale)
                     ? null
-                    : profile.Locale.Trim()));
+                    : profile.Locale.Trim())
+            {
+                RegistrationConsent = ToProfileConsent(
+                    profile.RegistrationConsent),
+            });
     }
 
     public string GetDisplayName(HelloProfile profile)
@@ -102,7 +107,11 @@ public sealed class HelloProfileUiFactory
 
         return errors.Count == 0
             ? OperationResultFactory.Success(
-                new HelloProfile(displayName!, locale))
+                new HelloProfile(displayName!, locale)
+                {
+                    RegistrationConsent =
+                        current.RegistrationConsent,
+                })
             : OperationResultFactory.Fail<HelloProfile>(
                 new Error(
                     IdentityErrorCodes.Validation,
@@ -110,4 +119,27 @@ public sealed class HelloProfileUiFactory
                     ErrorType.Validation,
                     new ValidationDetails(errors)));
     }
+
+    public OperationResult<HelloProfile> Enrich(
+        HelloProfile profile,
+        HelloRegistrationConsent consent)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(consent);
+
+        return OperationResultFactory.Success(
+            profile with
+            {
+                RegistrationConsent = ToProfileConsent(consent),
+            });
+    }
+
+    private static HelloProfileRegistrationConsent? ToProfileConsent(
+        HelloRegistrationConsent? consent)
+        => consent is { AcceptedAt: { } acceptedAt }
+            ? new HelloProfileRegistrationConsent(
+                consent.TermsOfServiceAccepted,
+                consent.PrivacyPolicyAccepted,
+                acceptedAt)
+            : null;
 }

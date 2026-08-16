@@ -1045,12 +1045,12 @@ public sealed class AuthenticationFlowTests
             StringComparison.Ordinal);
         Assert.Equal(
             2,
-            Regex.Matches(registerHtml, "href=\"/terms\"").Count);
+            Regex.Count(registerHtml, "href=\"/terms\""));
         Assert.Equal(
             2,
-            Regex.Matches(
+            Regex.Count(
                 registerHtml,
-                "href=\"https://legal.example.test/privacy\"").Count);
+                "href=\"https://legal.example.test/privacy\""));
         Assert.Contains(
             "Terms of Service",
             registerHtml,

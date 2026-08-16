@@ -242,10 +242,12 @@ cross-origin application must use an absolute HTTPS URL without credentials,
 query or fragment.
 
 Set `TermsOfServiceUrl` and/or `PrivacyPolicyUrl` to render localized legal
-document links in the packaged footer and next to the submission action on
-both registration forms. The documents remain host-owned pages; Hello neither
-serves their content nor records acceptance. Values use the same safe local
-absolute path or absolute HTTPS URL rules as `ApplicationHomeUrl`.
+document links in the packaged footer and a separate required consent checkbox
+for each configured document on both registration forms. Razor registration
+rejects a clear required checkbox before invoking the registration application
+operation. The documents remain host-owned pages; Hello neither serves their
+content nor persists an auditable acceptance record. Values use the same safe
+local absolute path or absolute HTTPS URL rules as `ApplicationHomeUrl`.
 
 Dictionary paths are absolute or relative to the host content root. Files are
 read once at startup, are never served as static content and can contain a

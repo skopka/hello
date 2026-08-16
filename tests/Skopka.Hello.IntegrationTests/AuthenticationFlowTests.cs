@@ -1059,6 +1059,18 @@ public sealed class AuthenticationFlowTests
             "Privacy Policy",
             registerHtml,
             StringComparison.Ordinal);
+        var termsConsent = Regex.Match(
+            registerHtml,
+            "<input[^>]*id=\"Input_AcceptTermsOfService\"[^>]*>",
+            RegexOptions.CultureInvariant).Value;
+        Assert.Contains("type=\"checkbox\"", termsConsent);
+        Assert.Contains("required", termsConsent);
+        var privacyConsent = Regex.Match(
+            registerHtml,
+            "<input[^>]*id=\"Input_AcceptPrivacyPolicy\"[^>]*>",
+            RegexOptions.CultureInvariant).Value;
+        Assert.Contains("type=\"checkbox\"", privacyConsent);
+        Assert.Contains("required", privacyConsent);
         Assert.Contains(
             "id=\"hello-culture\"",
             registerHtml,
@@ -1113,6 +1125,8 @@ public sealed class AuthenticationFlowTests
                     "correct horse battery staple",
                 ["Input.ConfirmPassword"] =
                     "correct horse battery staple",
+                ["Input.AcceptTermsOfService"] = "true",
+                ["Input.AcceptPrivacyPolicy"] = "true",
                 ["__RequestVerificationToken"] = registerToken,
             });
         Assert.Equal(HttpStatusCode.OK, missingRequiredEmail.StatusCode);
@@ -1137,6 +1151,8 @@ public sealed class AuthenticationFlowTests
                 ["Input.Email"] = "browser-alice@example.test",
                 ["Input.Password"] = "too short",
                 ["Input.ConfirmPassword"] = "too short",
+                ["Input.AcceptTermsOfService"] = "true",
+                ["Input.AcceptPrivacyPolicy"] = "true",
                 ["__RequestVerificationToken"] = registerToken,
             });
         Assert.Equal(HttpStatusCode.OK, rejectedPassword.StatusCode);
@@ -1155,6 +1171,36 @@ public sealed class AuthenticationFlowTests
             rejectedPasswordHtml,
             "__RequestVerificationToken");
 
+        using var missingLegalConsents = await SendFormAsync(
+            client,
+            "/hello/register",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["Input.DisplayName"] = "Browser Alice",
+                ["Input.Email"] = "browser-alice@example.test",
+                ["Input.Password"] =
+                    "correct horse battery staple",
+                ["Input.ConfirmPassword"] =
+                    "correct horse battery staple",
+                ["__RequestVerificationToken"] = registerToken,
+            });
+        Assert.Equal(HttpStatusCode.OK, missingLegalConsents.StatusCode);
+        var missingLegalConsentsHtml =
+            await missingLegalConsents.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "Accept the Terms of Service to create an account.",
+            missingLegalConsentsHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Accept the Privacy Policy to create an account.",
+            missingLegalConsentsHtml,
+            StringComparison.Ordinal);
+        MergeCookies(cookies, missingLegalConsents);
+        registerToken = ReadInputValue(
+            missingLegalConsentsHtml,
+            "__RequestVerificationToken");
+
         using var register = await SendFormAsync(
             client,
             "/hello/register",
@@ -1170,6 +1216,8 @@ public sealed class AuthenticationFlowTests
                     "correct horse battery staple",
                 ["Input.ConfirmPassword"] =
                     "correct horse battery staple",
+                ["Input.AcceptTermsOfService"] = "true",
+                ["Input.AcceptPrivacyPolicy"] = "true",
                 ["__RequestVerificationToken"] = registerToken,
             });
         Assert.Equal(HttpStatusCode.Redirect, register.StatusCode);

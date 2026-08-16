@@ -44,6 +44,12 @@ public sealed class RegisterModel(
         Input.UserName = values.UserName;
         Input.Phone = values.Phone;
         Input.Locale = values.Locale;
+        HelloUiLegalConsentValidator.Validate(
+            uiOptions,
+            ModelState,
+            text,
+            Input.AcceptTermsOfService,
+            Input.AcceptPrivacyPolicy);
         if (!ModelState.IsValid)
         {
             return Page();
@@ -112,5 +118,9 @@ public sealed class RegisterModel(
             ErrorMessage = "Validation.PasswordsDoNotMatch")]
         [Display(Name = "Field.ConfirmPassword")]
         public string ConfirmPassword { get; set; } = string.Empty;
+
+        public bool AcceptTermsOfService { get; set; }
+
+        public bool AcceptPrivacyPolicy { get; set; }
     }
 }

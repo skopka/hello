@@ -78,7 +78,43 @@
         <span asp-validation-for="Input.ConfirmPassword"
               class="hello-field-error"></span>
 
-        <partial name="/Pages/Shared/_SkopkaHelloLegalNotice.cshtml" />
+        @if (UiOptions.TermsOfServiceUrl is not null
+            || UiOptions.PrivacyPolicyUrl is not null)
+        {
+            <fieldset class="hello-legal-consents">
+                <partial name="/Pages/Shared/_SkopkaHelloLegalNotice.cshtml" />
+                @if (UiOptions.TermsOfServiceUrl is not null)
+                {
+                    <div class="hello-legal-consent">
+                        <input asp-for="Input.AcceptTermsOfService"
+                               required />
+                        <label asp-for="Input.AcceptTermsOfService">
+                            @Text["Legal.AcceptTermsOfServicePrefix"]
+                            <a href="@UiOptions.TermsOfServiceUrl">
+                                @Text["Legal.TermsOfService"]
+                            </a>.
+                        </label>
+                        <span asp-validation-for="Input.AcceptTermsOfService"
+                              class="hello-field-error hello-legal-consent-error"></span>
+                    </div>
+                }
+                @if (UiOptions.PrivacyPolicyUrl is not null)
+                {
+                    <div class="hello-legal-consent">
+                        <input asp-for="Input.AcceptPrivacyPolicy"
+                               required />
+                        <label asp-for="Input.AcceptPrivacyPolicy">
+                            @Text["Legal.AcceptPrivacyPolicyPrefix"]
+                            <a href="@UiOptions.PrivacyPolicyUrl">
+                                @Text["Legal.PrivacyPolicy"]
+                            </a>.
+                        </label>
+                        <span asp-validation-for="Input.AcceptPrivacyPolicy"
+                              class="hello-field-error hello-legal-consent-error"></span>
+                    </div>
+                }
+            </fieldset>
+        }
 
         <button class="hello-button" type="submit">
             @Text["Register.Action"]

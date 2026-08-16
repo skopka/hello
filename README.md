@@ -212,10 +212,12 @@ without credentials, query or fragment; leave it unset when the identity UI is
 the application itself.
 
 `TermsOfServiceUrl` and `PrivacyPolicyUrl` add localized links to the packaged
-footer and to both password and external registration forms. Hello does not
-host the documents or record legal consent; the host owns their content and
-lifecycle. Each value accepts the same safe local absolute path or absolute
-HTTPS URL shape as `ApplicationHomeUrl`.
+footer and a separate required consent checkbox for each configured document
+on both password and external registration forms. Razor registration rejects
+the submission before calling Identity when a required checkbox is clear.
+Hello does not host the documents or persist an auditable consent record; the
+host owns their content and lifecycle. Each value accepts the same safe local
+absolute path or absolute HTTPS URL shape as `ApplicationHomeUrl`.
 
 The footer selector persists the supported culture in a secure preference
 cookie and is omitted when only one culture remains. Use `RemoveCulture` or

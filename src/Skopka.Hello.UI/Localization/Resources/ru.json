@@ -14,6 +14,8 @@
 
     "Legal.Navigation": "Правовая информация",
     "Legal.RegistrationNotice": "Перед созданием аккаунта ознакомьтесь с применимыми документами:",
+    "Legal.AcceptTermsOfServicePrefix": "Я ознакомился(-ась) и принимаю",
+    "Legal.AcceptPrivacyPolicyPrefix": "Я ознакомился(-ась) и принимаю",
     "Legal.TermsOfService": "Пользовательское соглашение",
     "Legal.PrivacyPolicy": "Политика конфиденциальности",
 
@@ -215,6 +217,8 @@
     "Validation.StringLengthRange": "Длина поля «{0}» должна быть от {2} до {1} символов.",
     "Validation.EmailAddress": "Поле «{0}» содержит недействительный email.",
     "Validation.PasswordsDoNotMatch": "Пароли не совпадают.",
+    "Validation.TermsOfServiceConsentRequired": "Примите Пользовательское соглашение, чтобы создать аккаунт.",
+    "Validation.PrivacyPolicyConsentRequired": "Примите Политику конфиденциальности, чтобы создать аккаунт.",
     "Validation.LoginIdentifierRequired": "Введите имя пользователя, email или номер телефона.",
 
     "Errors.identity.authentication.invalid_credentials": "Неверный логин или пароль.",

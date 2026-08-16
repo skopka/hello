@@ -75,6 +75,12 @@ public sealed class ExternalRegisterModel(
         Input.UserName = values.UserName;
         Input.Phone = values.Phone;
         Input.Locale = values.Locale;
+        HelloUiLegalConsentValidator.Validate(
+            uiOptions,
+            ModelState,
+            text,
+            Input.AcceptTermsOfService,
+            Input.AcceptPrivacyPolicy);
         if (!ModelState.IsValid)
         {
             await LoadHintsAsync(prefill: false, cancellationToken);
@@ -194,5 +200,9 @@ public sealed class ExternalRegisterModel(
 
         [StringLength(32, ErrorMessage = "Validation.StringLength")]
         public string? Locale { get; set; }
+
+        public bool AcceptTermsOfService { get; set; }
+
+        public bool AcceptPrivacyPolicy { get; set; }
     }
 }

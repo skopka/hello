@@ -124,6 +124,69 @@ public sealed class RegisterPageValidationTests
         Assert.True(modelState.IsValid);
     }
 
+    [Fact]
+    public void LegalConsentsAreOptionalWhenDocumentUrlsAreNotConfigured()
+    {
+        var options = new SkopkaHelloUiOptions();
+        var modelState = new ModelStateDictionary();
+
+        HelloUiLegalConsentValidator.Validate(
+            options,
+            modelState,
+            TestHelloUiLocalizer.Instance,
+            acceptsTermsOfService: false,
+            acceptsPrivacyPolicy: false);
+
+        Assert.True(modelState.IsValid);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ConfiguredLegalDocumentRequiresItsConsent(
+        bool isTermsOfService)
+    {
+        var options = new SkopkaHelloUiOptions
+        {
+            TermsOfServiceUrl = isTermsOfService ? "/terms" : null,
+            PrivacyPolicyUrl = isTermsOfService ? null : "/privacy",
+        };
+        var modelState = new ModelStateDictionary();
+
+        HelloUiLegalConsentValidator.Validate(
+            options,
+            modelState,
+            TestHelloUiLocalizer.Instance,
+            acceptsTermsOfService: false,
+            acceptsPrivacyPolicy: false);
+
+        var field = isTermsOfService
+            ? "Input.AcceptTermsOfService"
+            : "Input.AcceptPrivacyPolicy";
+        Assert.False(modelState.IsValid);
+        Assert.Single(modelState[field]!.Errors);
+    }
+
+    [Fact]
+    public void AcceptedConfiguredLegalDocumentsPassValidation()
+    {
+        var options = new SkopkaHelloUiOptions
+        {
+            TermsOfServiceUrl = "/terms",
+            PrivacyPolicyUrl = "/privacy",
+        };
+        var modelState = new ModelStateDictionary();
+
+        HelloUiLegalConsentValidator.Validate(
+            options,
+            modelState,
+            TestHelloUiLocalizer.Instance,
+            acceptsTermsOfService: true,
+            acceptsPrivacyPolicy: true);
+
+        Assert.True(modelState.IsValid);
+    }
+
     private static HelloUiRegistrationOptions
         CreateSingleIdentifierOptions(
             HelloUiRegistrationField identifier)

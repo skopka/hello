@@ -14,6 +14,8 @@
 
     "Legal.Navigation": "Legal information",
     "Legal.RegistrationNotice": "Review the applicable documents before creating your account:",
+    "Legal.AcceptTermsOfServicePrefix": "I have read and accept the",
+    "Legal.AcceptPrivacyPolicyPrefix": "I have read and accept the",
     "Legal.TermsOfService": "Terms of Service",
     "Legal.PrivacyPolicy": "Privacy Policy",
 
@@ -215,6 +217,8 @@
     "Validation.StringLengthRange": "The {0} field must be a string with a minimum length of {2} and a maximum length of {1}.",
     "Validation.EmailAddress": "The {0} field is not a valid email address.",
     "Validation.PasswordsDoNotMatch": "The passwords do not match.",
+    "Validation.TermsOfServiceConsentRequired": "Accept the Terms of Service to create an account.",
+    "Validation.PrivacyPolicyConsentRequired": "Accept the Privacy Policy to create an account.",
     "Validation.LoginIdentifierRequired": "Enter a user name, email address or phone number.",
 
     "Errors.identity.authentication.invalid_credentials": "The login or password is invalid.",

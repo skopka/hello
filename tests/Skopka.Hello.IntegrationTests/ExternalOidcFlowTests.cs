@@ -93,8 +93,44 @@ public sealed class ExternalOidcFlowTests
             "name=\"Input.Locale\"",
             registrationHtml,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "name=\"Input.AcceptTermsOfService\"",
+            registrationHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "name=\"Input.AcceptPrivacyPolicy\"",
+            registrationHtml,
+            StringComparison.Ordinal);
         var registrationToken = ReadInputValue(
             registrationHtml,
+            "__RequestVerificationToken");
+
+        using var missingLegalConsents = await SendHelloFormAsync(
+            helloClient,
+            HelloUiDefaults.ExternalRegistrationPath,
+            firstCookies,
+            new Dictionary<string, string>
+            {
+                ["Input.DisplayName"] = "External Alice",
+                ["Input.Email"] = "external@example.test",
+                ["Input.UserName"] = "external-alice",
+                ["Input.Phone"] = string.Empty,
+                ["Input.Locale"] = "en",
+                ["__RequestVerificationToken"] = registrationToken,
+            });
+        Assert.Equal(HttpStatusCode.OK, missingLegalConsents.StatusCode);
+        var missingLegalConsentsHtml =
+            await missingLegalConsents.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "Accept the Terms of Service to create an account.",
+            missingLegalConsentsHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Accept the Privacy Policy to create an account.",
+            missingLegalConsentsHtml,
+            StringComparison.Ordinal);
+        registrationToken = ReadInputValue(
+            missingLegalConsentsHtml,
             "__RequestVerificationToken");
 
         using var registration = await SendHelloFormAsync(
@@ -108,6 +144,8 @@ public sealed class ExternalOidcFlowTests
                 ["Input.UserName"] = "external-alice",
                 ["Input.Phone"] = string.Empty,
                 ["Input.Locale"] = "en",
+                ["Input.AcceptTermsOfService"] = "true",
+                ["Input.AcceptPrivacyPolicy"] = "true",
                 ["__RequestVerificationToken"] = registrationToken,
             });
         Assert.Equal(HttpStatusCode.Redirect, registration.StatusCode);
@@ -1568,7 +1606,11 @@ public sealed class ExternalOidcFlowTests
             builder.Services.AddProblemDetails();
             builder.Services.AddSkopkaHelloUi<
                 IntegrationProfile,
-                IntegrationProfileUiFactory>();
+                IntegrationProfileUiFactory>(options =>
+                {
+                    options.TermsOfServiceUrl = "/terms";
+                    options.PrivacyPolicyUrl = "/privacy";
+                });
 
             var application = builder.Build();
             application.UseExceptionHandler();

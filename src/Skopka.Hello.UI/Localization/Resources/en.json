@@ -12,6 +12,11 @@
     "Layout.Language": "Language",
     "Layout.ChangeLanguage": "Change language",
 
+    "Legal.Navigation": "Legal information",
+    "Legal.RegistrationNotice": "Review the applicable documents before creating your account:",
+    "Legal.TermsOfService": "Terms of Service",
+    "Legal.PrivacyPolicy": "Privacy Policy",
+
     "Field.Login": "Email, phone, or user name",
     "Field.Password": "Password",
     "Field.DisplayName": "Display name",

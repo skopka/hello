@@ -19,6 +19,8 @@ public sealed class SkopkaHelloUiOptionsTests
         Assert.Equal(HelloUiPages.All, options.EnabledPages);
         Assert.Null(options.AuthenticatedRedirectPath);
         Assert.Null(options.ApplicationHomeUrl);
+        Assert.Null(options.TermsOfServiceUrl);
+        Assert.Null(options.PrivacyPolicyUrl);
         Assert.Equal(
             HelloUiRegistrationFieldMode.Hidden,
             options.Registration.Locale);
@@ -181,6 +183,47 @@ public sealed class SkopkaHelloUiOptionsTests
         options.Validate();
 
         Assert.Equal(homeUrl, options.ApplicationHomeUrl);
+    }
+
+    [Theory]
+    [InlineData("terms", true)]
+    [InlineData("http://example.test/terms", true)]
+    [InlineData("javascript:alert(1)", true)]
+    [InlineData("privacy", false)]
+    [InlineData("https://user:password@example.test/privacy", false)]
+    [InlineData("https://example.test/privacy?version=1", false)]
+    public void ValidateRejectsUnsafeLegalDocumentUrl(
+        string documentUrl,
+        bool isTermsOfService)
+    {
+        var options = new SkopkaHelloUiOptions
+        {
+            TermsOfServiceUrl = isTermsOfService ? documentUrl : null,
+            PrivacyPolicyUrl = isTermsOfService ? null : documentUrl,
+        };
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Theory]
+    [InlineData("/terms", "https://legal.example.test/privacy")]
+    [InlineData(
+        "https://legal.example.test:8443/terms",
+        "/privacy")]
+    public void ValidateAllowsSafeLegalDocumentUrls(
+        string termsOfServiceUrl,
+        string privacyPolicyUrl)
+    {
+        var options = new SkopkaHelloUiOptions
+        {
+            TermsOfServiceUrl = termsOfServiceUrl,
+            PrivacyPolicyUrl = privacyPolicyUrl,
+        };
+
+        options.Validate();
+
+        Assert.Equal(termsOfServiceUrl, options.TermsOfServiceUrl);
+        Assert.Equal(privacyPolicyUrl, options.PrivacyPolicyUrl);
     }
 
     [Fact]

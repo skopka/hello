@@ -12,6 +12,11 @@
     "Layout.Language": "Язык",
     "Layout.ChangeLanguage": "Изменить язык",
 
+    "Legal.Navigation": "Правовая информация",
+    "Legal.RegistrationNotice": "Перед созданием аккаунта ознакомьтесь с применимыми документами:",
+    "Legal.TermsOfService": "Пользовательское соглашение",
+    "Legal.PrivacyPolicy": "Политика конфиденциальности",
+
     "Field.Login": "Email, телефон или имя пользователя",
     "Field.Password": "Пароль",
     "Field.DisplayName": "Отображаемое имя",

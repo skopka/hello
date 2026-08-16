@@ -84,10 +84,22 @@ select {
 
 .hello-footer {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 1rem;
   padding: 1rem clamp(1rem, 5vw, 4rem);
   border-top: 1px solid var(--skopka-hello-color-border);
   background: var(--skopka-hello-color-surface);
+}
+
+.hello-footer .hello-legal-links {
+  margin-right: auto;
+}
+
+.hello-legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
 }
 
 .hello-language-form {
@@ -350,6 +362,14 @@ select {
     var(--skopka-hello-color-danger) 35%,
     transparent
   );
+}
+
+.hello-legal-notice {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 1rem;
+  color: var(--skopka-hello-color-muted);
+  font-size: 0.9rem;
 }
 
 .hello-qr-code {

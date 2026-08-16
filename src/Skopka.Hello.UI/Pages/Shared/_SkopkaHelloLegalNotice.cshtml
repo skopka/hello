@@ -1,0 +1,21 @@
+@if (UiOptions.TermsOfServiceUrl is not null
+    || UiOptions.PrivacyPolicyUrl is not null)
+{
+    <div class="hello-legal-notice">
+        <span>@Text["Legal.RegistrationNotice"]</span>
+        <span class="hello-legal-links">
+            @if (UiOptions.TermsOfServiceUrl is not null)
+            {
+                <a href="@UiOptions.TermsOfServiceUrl">
+                    @Text["Legal.TermsOfService"]
+                </a>
+            }
+            @if (UiOptions.PrivacyPolicyUrl is not null)
+            {
+                <a href="@UiOptions.PrivacyPolicyUrl">
+                    @Text["Legal.PrivacyPolicy"]
+                </a>
+            }
+        </span>
+    </div>
+}

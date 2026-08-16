@@ -194,6 +194,8 @@ route paths:
 services.AddSkopkaHelloUi<Profile, ProfileFactory>(options =>
 {
     options.ApplicationHomeUrl = "https://app.example.com/";
+    options.TermsOfServiceUrl = "/terms";
+    options.PrivacyPolicyUrl = "https://legal.example.com/privacy";
     options.Localization.Enabled = true;
     options.Localization.DefaultCulture = "ru";
     options.Localization.UseAcceptLanguageHeader = false;
@@ -208,6 +210,12 @@ services.AddSkopkaHelloUi<Profile, ProfileFactory>(options =>
 packaged header. It accepts a safe local absolute path or an absolute HTTPS URL
 without credentials, query or fragment; leave it unset when the identity UI is
 the application itself.
+
+`TermsOfServiceUrl` and `PrivacyPolicyUrl` add localized links to the packaged
+footer and to both password and external registration forms. Hello does not
+host the documents or record legal consent; the host owns their content and
+lifecycle. Each value accepts the same safe local absolute path or absolute
+HTTPS URL shape as `ApplicationHomeUrl`.
 
 The footer selector persists the supported culture in a secure preference
 cookie and is omitted when only one culture remains. Use `RemoveCulture` or

@@ -24,6 +24,10 @@ mapping are not enabled.
 The account UI is served under the startup-configured
 `SkopkaHello:Ui:PathPrefix`, `/hello` by default. The packaged stylesheet is an
 RCL static asset; the mounted custom stylesheet is linked after it.
+Optional `SkopkaHello:Ui:TermsOfServiceUrl` and
+`SkopkaHello:Ui:PrivacyPolicyUrl` values add host-owned legal-document links to
+the footer and registration forms. Use local absolute paths or absolute HTTPS
+URLs; the ready Server does not serve or version those documents itself.
 
 The admin API prefix is configured by
 `SkopkaHello:Admin:ApiPathPrefix` (`/admin` by default). Its Razor user page is

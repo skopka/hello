@@ -999,6 +999,9 @@ public sealed class AuthenticationFlowTests
             configureUi: options =>
             {
                 options.ApplicationHomeUrl = "/app";
+                options.TermsOfServiceUrl = "/terms";
+                options.PrivacyPolicyUrl =
+                    "https://legal.example.test/privacy";
                 options.CustomCssFilePath = Path.Combine(
                     AppContext.BaseDirectory,
                     "integration-custom.css");
@@ -1038,6 +1041,22 @@ public sealed class AuthenticationFlowTests
             StringComparison.Ordinal);
         Assert.Contains(
             "href=\"/app\"",
+            registerHtml,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            2,
+            Regex.Matches(registerHtml, "href=\"/terms\"").Count);
+        Assert.Equal(
+            2,
+            Regex.Matches(
+                registerHtml,
+                "href=\"https://legal.example.test/privacy\"").Count);
+        Assert.Contains(
+            "Terms of Service",
+            registerHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Privacy Policy",
             registerHtml,
             StringComparison.Ordinal);
         Assert.Contains(

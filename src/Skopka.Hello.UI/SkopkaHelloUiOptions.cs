@@ -29,6 +29,10 @@ public sealed class SkopkaHelloUiOptions
 
     public string? ApplicationHomeUrl { get; set; }
 
+    public string? TermsOfServiceUrl { get; set; }
+
+    public string? PrivacyPolicyUrl { get; set; }
+
     public HelloUiRegistrationOptions Registration { get; } = new();
 
     public SkopkaHelloUiLocalizationOptions Localization { get; } =
@@ -85,6 +89,13 @@ public sealed class SkopkaHelloUiOptions
             throw new InvalidOperationException(
                 "ApplicationHomeUrl must be a local absolute path or an absolute HTTPS URL without credentials, a query, a fragment or unsafe path segments.");
         }
+
+        ValidateLegalDocumentUrl(
+            TermsOfServiceUrl,
+            nameof(TermsOfServiceUrl));
+        ValidateLegalDocumentUrl(
+            PrivacyPolicyUrl,
+            nameof(PrivacyPolicyUrl));
 
         ArgumentException.ThrowIfNullOrWhiteSpace(
             CustomCssRequestPath);
@@ -236,6 +247,17 @@ public sealed class SkopkaHelloUiOptions
         }
 
         return IsLocalAbsolutePath(uri.AbsolutePath);
+    }
+
+    private static void ValidateLegalDocumentUrl(
+        string? value,
+        string optionName)
+    {
+        if (value is not null && !IsSafeApplicationHomeUrl(value))
+        {
+            throw new InvalidOperationException(
+                $"{optionName} must be a local absolute path or an absolute HTTPS URL without credentials, a query, a fragment or unsafe path segments.");
+        }
     }
 
     private static string[] GetUiRoutes(

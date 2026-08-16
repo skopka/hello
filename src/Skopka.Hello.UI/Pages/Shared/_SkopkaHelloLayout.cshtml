@@ -1,4 +1,10 @@
 @inject IHelloUiExternalApplication ExternalIdentity
+@{
+    var showLanguageSelector = UiOptions.Localization.Enabled
+        && UiOptions.Localization.SupportedCultures.Count > 1;
+    var showLegalLinks = UiOptions.TermsOfServiceUrl is not null
+        || UiOptions.PrivacyPolicyUrl is not null;
+}
 <!doctype html>
 <html lang="@System.Globalization.CultureInfo.CurrentUICulture.Name">
 <head>
@@ -81,49 +87,69 @@
     <main class="hello-main">
         @RenderBody()
     </main>
-    @if (UiOptions.Localization.Enabled
-        && UiOptions.Localization.SupportedCultures.Count > 1)
+    @if (showLanguageSelector || showLegalLinks)
     {
         <footer class="hello-footer">
-            <form method="post"
-                  action="@(Context.Request.PathBase
-                      + HelloRoutes.CulturePath)"
-                  asp-antiforgery="true"
-                  class="hello-language-form">
-                <label for="hello-culture">
-                    @Text["Layout.Language"]
-                </label>
-                <select id="hello-culture" name="culture">
-                    @foreach (var culture in
-                        UiOptions.Localization.SupportedCultures)
+            @if (showLegalLinks)
+            {
+                <nav class="hello-legal-links"
+                     aria-label="@Text["Legal.Navigation"]">
+                    @if (UiOptions.TermsOfServiceUrl is not null)
                     {
-                        if (String.Equals(
-                            culture.Name,
-                            System.Globalization.CultureInfo
-                                .CurrentUICulture.Name,
-                            StringComparison.OrdinalIgnoreCase))
-                        {
-                            <option value="@culture.Name" selected>
-                                @culture.DisplayName
-                            </option>
-                        }
-                        else
-                        {
-                            <option value="@culture.Name">
-                                @culture.DisplayName
-                            </option>
-                        }
+                        <a href="@UiOptions.TermsOfServiceUrl">
+                            @Text["Legal.TermsOfService"]
+                        </a>
                     }
-                </select>
-                <input type="hidden"
-                       name="returnUrl"
-                       value="@(Context.Request.PathBase
-                           + Context.Request.Path
-                           + Context.Request.QueryString)" />
-                <button class="hello-link-button" type="submit">
-                    @Text["Layout.ChangeLanguage"]
-                </button>
-            </form>
+                    @if (UiOptions.PrivacyPolicyUrl is not null)
+                    {
+                        <a href="@UiOptions.PrivacyPolicyUrl">
+                            @Text["Legal.PrivacyPolicy"]
+                        </a>
+                    }
+                </nav>
+            }
+            @if (showLanguageSelector)
+            {
+                <form method="post"
+                      action="@(Context.Request.PathBase
+                          + HelloRoutes.CulturePath)"
+                      asp-antiforgery="true"
+                      class="hello-language-form">
+                    <label for="hello-culture">
+                        @Text["Layout.Language"]
+                    </label>
+                    <select id="hello-culture" name="culture">
+                        @foreach (var culture in
+                            UiOptions.Localization.SupportedCultures)
+                        {
+                            if (String.Equals(
+                                culture.Name,
+                                System.Globalization.CultureInfo
+                                    .CurrentUICulture.Name,
+                                StringComparison.OrdinalIgnoreCase))
+                            {
+                                <option value="@culture.Name" selected>
+                                    @culture.DisplayName
+                                </option>
+                            }
+                            else
+                            {
+                                <option value="@culture.Name">
+                                    @culture.DisplayName
+                                </option>
+                            }
+                        }
+                    </select>
+                    <input type="hidden"
+                           name="returnUrl"
+                           value="@(Context.Request.PathBase
+                                + Context.Request.Path
+                                + Context.Request.QueryString)" />
+                    <button class="hello-link-button" type="submit">
+                        @Text["Layout.ChangeLanguage"]
+                    </button>
+                </form>
+            }
         </footer>
     }
 </body>

@@ -504,6 +504,10 @@ builder.Services.AddSkopkaHelloUi<
     HelloProfile,
     HelloProfileUiFactory>(options =>
 {
+    options.TermsOfServiceUrl =
+        configuration["SkopkaHello:Ui:TermsOfServiceUrl"];
+    options.PrivacyPolicyUrl =
+        configuration["SkopkaHello:Ui:PrivacyPolicyUrl"];
     options.CustomCssFilePath =
         configuration["SkopkaHello:Customization:CssFilePath"];
     options.CustomCssRequestPath =

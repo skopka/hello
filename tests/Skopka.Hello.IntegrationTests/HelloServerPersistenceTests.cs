@@ -63,6 +63,14 @@ public sealed class HelloServerPersistenceTests
                 ConsentType = OpenIddictConstants.ConsentTypes.Implicit,
                 DisplayName = "Removed PostgreSQL client",
             });
+        await applications.CreateAsync(
+            new OpenIddictApplicationDescriptor
+            {
+                ClientId = "another-removed-postgres-client",
+                ClientType = OpenIddictConstants.ClientTypes.Public,
+                ConsentType = OpenIddictConstants.ConsentTypes.Implicit,
+                DisplayName = "Another removed PostgreSQL client",
+            });
 
         var clients = scope.ServiceProvider.GetRequiredService<
             IHelloAuthorizationClientSynchronizer>();
@@ -76,6 +84,9 @@ public sealed class HelloServerPersistenceTests
         Assert.Null(
             await applications.FindByClientIdAsync(
                 "removed-postgres-client"));
+        Assert.Null(
+            await applications.FindByClientIdAsync(
+                "another-removed-postgres-client"));
 
         await using var dataSource = NpgsqlDataSource.Create(
             connectionString);

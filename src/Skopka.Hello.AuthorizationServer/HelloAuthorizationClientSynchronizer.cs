@@ -14,7 +14,7 @@ internal sealed class HelloAuthorizationClientSynchronizer(
         var configuredClientIds = options.Clients
             .Select(client => client.ClientId)
             .ToHashSet(StringComparer.Ordinal);
-        var applicationsToDelete = new List<object>();
+        var applicationIdsToDelete = new List<string>();
         await foreach (var application in applications.ListAsync(
             null,
             null,
@@ -26,12 +26,26 @@ internal sealed class HelloAuthorizationClientSynchronizer(
             if (clientId is null
                 || !configuredClientIds.Contains(clientId))
             {
-                applicationsToDelete.Add(application);
+                var applicationId = await applications.GetIdAsync(
+                    application,
+                    cancellationToken);
+                if (applicationId is not null)
+                {
+                    applicationIdsToDelete.Add(applicationId);
+                }
             }
         }
 
-        foreach (var application in applicationsToDelete)
+        foreach (var applicationId in applicationIdsToDelete)
         {
+            var application = await applications.FindByIdAsync(
+                applicationId,
+                cancellationToken);
+            if (application is null)
+            {
+                continue;
+            }
+
             await applications.DeleteAsync(
                 application,
                 cancellationToken);

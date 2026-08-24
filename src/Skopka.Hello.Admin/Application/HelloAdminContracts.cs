@@ -23,6 +23,9 @@ public static class HelloAdminErrorCodes
     public const string ProtectedRoleMutationForbidden =
         "hello.admin.protected_role_mutation_forbidden";
 
+    public const string RoleManagementDisabled =
+        "hello.admin.role_management_disabled";
+
     public const string SelfRoleRemovalForbidden =
         "hello.admin.self_role_removal_forbidden";
 }

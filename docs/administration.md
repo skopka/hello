@@ -24,6 +24,8 @@ services.AddSkopkaHelloAdmin<MyProfile, MyAdminProfileProjector>(options =>
     options.ReadRoleName = "Skopka.Hello.Admin";
     options.ManageRoleName = "Skopka.Hello.Admin";
     options.DeleteRoleName = "Skopka.Hello.Admin";
+    options.ProtectedRoleNames = ["iq-author", "iq-teacher"];
+    options.RoleManagementEnabled = false;
 });
 
 app.MapSkopkaHelloAdmin<MyProfile>();
@@ -95,7 +97,9 @@ The ready Server uses these independent policies and role settings:
       "DeletePolicyName": "Skopka.Hello.Admin.Delete",
       "ReadRoleName": "Skopka.Hello.Admin",
       "ManageRoleName": "Skopka.Hello.Admin",
-      "DeleteRoleName": "Skopka.Hello.Admin"
+      "DeleteRoleName": "Skopka.Hello.Admin",
+      "ProtectedRoleNames": [],
+      "RoleManagementEnabled": true
     }
   }
 }
@@ -191,11 +195,21 @@ and optional `parentId`; update additionally requires `roleId` and
 `expectedVersion`; delete requires `roleId` and `expectedVersion`; membership
 actions require `roleId` and `targetUserId`.
 
-Roles named by `ReadRoleName`, `ManageRoleName` or `DeleteRoleName` cannot be
-renamed or deleted through this surface. An administrator also cannot remove
-their own protected role. Removing another administrator's last membership is
-an explicit high-privilege operation; if operators lock out every
-administrator, recover with the bootstrap command.
+Roles named by `ReadRoleName`, `ManageRoleName`, `DeleteRoleName` or
+`ProtectedRoleNames` cannot be renamed or deleted through this surface. Name
+matching trims configured values and ignores case. An administrator also
+cannot remove their own protected role. Assigning protected roles and removing
+them from other users remain available.
+
+`ProtectedRoleNames` is empty by default. Set `RoleManagementEnabled` to
+`false` when the host owns the complete role catalog in code. Role creation,
+update and deletion are then rejected by both API and Razor handlers, and their
+Razor forms are hidden. Role queries and user membership assignment/removal
+remain available; `RoleManagementEnabled` defaults to `true`.
+
+Removing another administrator's last membership is an explicit
+high-privilege operation; if operators lock out every administrator, recover
+with the bootstrap command.
 
 Assign and remove revoke all target refresh sessions after the membership
 change. The Admin policies themselves always query current membership, so the

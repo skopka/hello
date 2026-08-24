@@ -23,6 +23,8 @@ public sealed class RolesModel(
 
     public IdentityRoleCursor? NextCursor { get; private set; }
 
+    public bool RoleManagementEnabled => options.RoleManagementEnabled;
+
     [BindProperty(SupportsGet = true)]
     public string? Search { get; set; }
 

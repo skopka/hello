@@ -1016,7 +1016,9 @@ public sealed class AuthenticationFlowTests
                     HelloUiRegistrationFieldMode.Hidden;
                 options.Registration.Phone =
                     HelloUiRegistrationFieldMode.Hidden;
-            });
+            },
+            configureAdmin: options =>
+                options.RoleManagementEnabled = false);
         using var client = app.CreateClient(
             allowAutoRedirect: false);
         Dictionary<string, string> cookies =
@@ -1459,6 +1461,44 @@ public sealed class AuthenticationFlowTests
         Assert.Equal(HttpStatusCode.OK, allowedUiAdministrator.StatusCode);
 
         var teacherRole = await app.CreateRoleAsync("iq-teacher");
+        using var adminRoles = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/admin/roles",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, adminRoles.StatusCode);
+        var adminRolesHtml = await adminRoles.Content.ReadAsStringAsync();
+        Assert.Contains(
+            teacherRole.Name,
+            adminRolesHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "admin-new-role-title",
+            adminRolesHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "admin-role-actions",
+            adminRolesHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "admin-manage-panel",
+            adminRolesHtml,
+            StringComparison.Ordinal);
+
+        var adminApiLogin = await LoginAsync(
+            client,
+            "browser-alice@example.test",
+            "correct horse battery staple");
+        using var rejectedRoleCreation = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/admin/roles/actions/create/challenge",
+            adminApiLogin.AccessToken,
+            new { name = "unused-role" });
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            rejectedRoleCreation.StatusCode);
+
         using var adminUsers = await SendAsync(
             client,
             HttpMethod.Get,
@@ -3206,7 +3246,8 @@ public sealed class AuthenticationFlowTests
             bool selfRegistrationEnabled = true,
             HelloDeliveryChannel verificationChannel =
                 HelloDeliveryChannel.Email,
-            Action<SkopkaHelloUiOptions>? configureUi = null)
+            Action<SkopkaHelloUiOptions>? configureUi = null,
+            Action<SkopkaHelloAdminOptions>? configureAdmin = null)
         {
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions
@@ -3328,7 +3369,7 @@ public sealed class AuthenticationFlowTests
                 IntegrationProfileUiFactory>(configureUi);
             builder.Services.AddSkopkaHelloAdmin<
                 IntegrationProfile,
-                IntegrationAdminProfileProjector>();
+                IntegrationAdminProfileProjector>(configureAdmin);
             builder.Services.AddSkopkaHelloCurrentRolePolicy<
                 IntegrationProfile>(
                 UiAdministratorPolicy,

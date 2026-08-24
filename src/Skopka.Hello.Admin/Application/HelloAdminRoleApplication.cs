@@ -394,6 +394,15 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
         Guid? targetUserId,
         CancellationToken cancellationToken)
     {
+        if (!options.RoleManagementEnabled
+            && action is HelloAdminRoleAction.Create
+                or HelloAdminRoleAction.Update
+                or HelloAdminRoleAction.Delete)
+        {
+            return OperationResultFactory.Fail(
+                HelloAdminSecurity.RoleManagementDisabled());
+        }
+
         if (action == HelloAdminRoleAction.Create)
         {
             return OperationResultFactory.Success();
@@ -454,7 +463,13 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
             || string.Equals(
                 roleName,
                 options.DeleteRoleName.Trim(),
-                StringComparison.OrdinalIgnoreCase);
+                StringComparison.OrdinalIgnoreCase)
+            || options.ProtectedRoleNames.Any(protectedRoleName =>
+                !string.IsNullOrWhiteSpace(protectedRoleName)
+                && string.Equals(
+                    roleName,
+                    protectedRoleName.Trim(),
+                    StringComparison.OrdinalIgnoreCase));
 
     private Task<OperationResult<IdentityUser<TProfile>>> ValidateActorAsync(
         string accessToken,

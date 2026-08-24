@@ -56,59 +56,62 @@
         </section>
     </div>
 
-    <div class="col-12 col-xl-8">
-        <section class="card admin-card admin-create-card h-100"
-                 aria-labelledby="admin-new-role-title">
-            <div class="card-body">
-                <div class="admin-eyebrow"
-                     id="admin-new-role-title">
-                    @Text["Admin.Roles.NewRole"]
+    @if (Model.RoleManagementEnabled)
+    {
+        <div class="col-12 col-xl-8">
+            <section class="card admin-card admin-create-card h-100"
+                     aria-labelledby="admin-new-role-title">
+                <div class="card-body">
+                    <div class="admin-eyebrow"
+                         id="admin-new-role-title">
+                        @Text["Admin.Roles.NewRole"]
+                    </div>
+                    <form method="post"
+                          asp-page-handler="BeginAction"
+                          class="row g-2 align-items-end">
+                        <input type="hidden" name="action" value="create" />
+                        <input type="hidden" name="Search" value="@Model.Search" />
+                        <div class="col-12 col-md-4">
+                            <label class="form-label small mb-1"
+                                   for="new-role-name">
+                                @Text["Admin.Common.Name"]
+                            </label>
+                            <input class="form-control form-control-sm"
+                                   id="new-role-name"
+                                   name="name"
+                                   maxlength="256"
+                                   required />
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label small mb-1"
+                                   for="new-role-description">
+                                @Text["Admin.Common.Description"]
+                            </label>
+                            <input class="form-control form-control-sm"
+                                   id="new-role-description"
+                                   name="description"
+                                   maxlength="1024" />
+                        </div>
+                        <div class="col-12 col-md">
+                            <label class="form-label small mb-1"
+                                   for="new-role-parent">
+                                @Text["Admin.Roles.ParentRoleIdOptional"]
+                            </label>
+                            <input class="form-control form-control-sm"
+                                   id="new-role-parent"
+                                   name="parentId"
+                                   inputmode="text" />
+                        </div>
+                        <div class="col-12 col-md-auto d-grid">
+                            <button class="btn btn-primary btn-sm" type="submit">
+                                @Text["Admin.Roles.Create"]
+                            </button>
+                        </div>
+                    </form>
                 </div>
-                <form method="post"
-                      asp-page-handler="BeginAction"
-                      class="row g-2 align-items-end">
-                    <input type="hidden" name="action" value="create" />
-                    <input type="hidden" name="Search" value="@Model.Search" />
-                    <div class="col-12 col-md-4">
-                        <label class="form-label small mb-1"
-                               for="new-role-name">
-                            @Text["Admin.Common.Name"]
-                        </label>
-                        <input class="form-control form-control-sm"
-                               id="new-role-name"
-                               name="name"
-                               maxlength="256"
-                               required />
-                    </div>
-                    <div class="col-12 col-md-4">
-                        <label class="form-label small mb-1"
-                               for="new-role-description">
-                            @Text["Admin.Common.Description"]
-                        </label>
-                        <input class="form-control form-control-sm"
-                               id="new-role-description"
-                               name="description"
-                               maxlength="1024" />
-                    </div>
-                    <div class="col-12 col-md">
-                        <label class="form-label small mb-1"
-                               for="new-role-parent">
-                            @Text["Admin.Roles.ParentRoleIdOptional"]
-                        </label>
-                        <input class="form-control form-control-sm"
-                               id="new-role-parent"
-                               name="parentId"
-                               inputmode="text" />
-                    </div>
-                    <div class="col-12 col-md-auto d-grid">
-                        <button class="btn btn-primary btn-sm" type="submit">
-                            @Text["Admin.Roles.Create"]
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </section>
-    </div>
+            </section>
+        </div>
+    }
 </div>
 
 @if (Model.PendingAction is { } pending)
@@ -218,80 +221,83 @@ else
                         </div>
                     </dl>
 
-                    <div class="admin-role-actions">
-                        <button class="btn btn-outline-primary btn-sm"
-                                type="button"
-                                data-bs-toggle="collapse"
-                                data-bs-target="#@editPanelId"
-                                aria-expanded="false"
-                                aria-controls="@editPanelId">
-                            @Text["Admin.Roles.Edit"]
-                        </button>
-                        <form method="post" asp-page-handler="BeginAction">
-                            <input type="hidden" name="action" value="delete" />
-                            <input type="hidden" name="roleId" value="@role.Id" />
-                            <input type="hidden"
-                                   name="expectedVersion"
-                                   value="@role.Version" />
-                            <input type="hidden" name="Search" value="@Model.Search" />
-                            <button class="btn btn-outline-danger btn-sm"
-                                    type="submit">
-                                @Text["Admin.Common.Delete"]
+                    @if (Model.RoleManagementEnabled)
+                    {
+                        <div class="admin-role-actions">
+                            <button class="btn btn-outline-primary btn-sm"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#@editPanelId"
+                                    aria-expanded="false"
+                                    aria-controls="@editPanelId">
+                                @Text["Admin.Roles.Edit"]
                             </button>
-                        </form>
-                    </div>
-
-                    <div class="collapse admin-manage-panel"
-                         id="@editPanelId">
-                        <form method="post"
-                              asp-page-handler="BeginAction"
-                              class="row g-2">
-                            <input type="hidden" name="action" value="update" />
-                            <input type="hidden" name="roleId" value="@role.Id" />
-                            <input type="hidden"
-                                   name="expectedVersion"
-                                   value="@role.Version" />
-                            <input type="hidden" name="Search" value="@Model.Search" />
-                            <div class="col-12 col-md-6">
-                                <label class="form-label small mb-1"
-                                       for="role-name-@role.Id.ToString("N")">
-                                    @Text["Admin.Common.Name"]
-                                </label>
-                                <input class="form-control form-control-sm"
-                                       id="role-name-@role.Id.ToString("N")"
-                                       name="name"
-                                       value="@role.Name"
-                                       maxlength="256"
-                                       required />
-                            </div>
-                            <div class="col-12 col-md-6">
-                                <label class="form-label small mb-1"
-                                       for="role-parent-@role.Id.ToString("N")">
-                                    @Text["Admin.Roles.ParentRoleIdOptional"]
-                                </label>
-                                <input class="form-control form-control-sm"
-                                       id="role-parent-@role.Id.ToString("N")"
-                                       name="parentId"
-                                       value="@role.ParentId" />
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label small mb-1"
-                                       for="role-description-@role.Id.ToString("N")">
-                                    @Text["Admin.Common.Description"]
-                                </label>
-                                <textarea class="form-control form-control-sm"
-                                          id="role-description-@role.Id.ToString("N")"
-                                          name="description"
-                                          rows="2"
-                                          maxlength="1024">@role.Description</textarea>
-                            </div>
-                            <div class="col-12">
-                                <button class="btn btn-primary btn-sm" type="submit">
-                                    @Text["Admin.Common.Update"]
+                            <form method="post" asp-page-handler="BeginAction">
+                                <input type="hidden" name="action" value="delete" />
+                                <input type="hidden" name="roleId" value="@role.Id" />
+                                <input type="hidden"
+                                       name="expectedVersion"
+                                       value="@role.Version" />
+                                <input type="hidden" name="Search" value="@Model.Search" />
+                                <button class="btn btn-outline-danger btn-sm"
+                                        type="submit">
+                                    @Text["Admin.Common.Delete"]
                                 </button>
-                            </div>
-                        </form>
-                    </div>
+                            </form>
+                        </div>
+
+                        <div class="collapse admin-manage-panel"
+                             id="@editPanelId">
+                            <form method="post"
+                                  asp-page-handler="BeginAction"
+                                  class="row g-2">
+                                <input type="hidden" name="action" value="update" />
+                                <input type="hidden" name="roleId" value="@role.Id" />
+                                <input type="hidden"
+                                       name="expectedVersion"
+                                       value="@role.Version" />
+                                <input type="hidden" name="Search" value="@Model.Search" />
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label small mb-1"
+                                           for="role-name-@role.Id.ToString("N")">
+                                        @Text["Admin.Common.Name"]
+                                    </label>
+                                    <input class="form-control form-control-sm"
+                                           id="role-name-@role.Id.ToString("N")"
+                                           name="name"
+                                           value="@role.Name"
+                                           maxlength="256"
+                                           required />
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label small mb-1"
+                                           for="role-parent-@role.Id.ToString("N")">
+                                        @Text["Admin.Roles.ParentRoleIdOptional"]
+                                    </label>
+                                    <input class="form-control form-control-sm"
+                                           id="role-parent-@role.Id.ToString("N")"
+                                           name="parentId"
+                                           value="@role.ParentId" />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label small mb-1"
+                                           for="role-description-@role.Id.ToString("N")">
+                                        @Text["Admin.Common.Description"]
+                                    </label>
+                                    <textarea class="form-control form-control-sm"
+                                              id="role-description-@role.Id.ToString("N")"
+                                              name="description"
+                                              rows="2"
+                                              maxlength="1024">@role.Description</textarea>
+                                </div>
+                                <div class="col-12">
+                                    <button class="btn btn-primary btn-sm" type="submit">
+                                        @Text["Admin.Common.Update"]
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    }
                 </div>
             </article>
         }

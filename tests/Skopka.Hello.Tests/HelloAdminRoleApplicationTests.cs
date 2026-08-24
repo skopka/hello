@@ -108,6 +108,113 @@ public sealed class HelloAdminRoleApplicationTests
         Assert.Null(fixture.StepUp.BeginCommand);
     }
 
+    [Theory]
+    [InlineData(HelloAdminRoleAction.Update)]
+    [InlineData(HelloAdminRoleAction.Delete)]
+    public async Task ConfiguredProtectedRoleCannotBeUpdatedOrDeleted(
+        HelloAdminRoleAction action)
+    {
+        var fixture = new Fixture(
+            roleName: "IQ-Author",
+            configureOptions: options =>
+                options.ProtectedRoleNames = [" iq-author "]);
+        var parameters = action == HelloAdminRoleAction.Update
+            ? new HelloAdminRoleActionParameters(
+                ExpectedVersion: fixture.Role.Version,
+                Name: "renamed")
+            : new HelloAdminRoleActionParameters(
+                ExpectedVersion: fixture.Role.Version);
+
+        var result = await fixture.Application.BeginRoleActionAsync(
+            new HelloAdminBeginRoleActionCommand(
+                "access-token",
+                action,
+                fixture.Role.Id,
+                TargetUserId: null,
+                parameters,
+                ClientKey: null),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains(
+            result.Errors,
+            error => error.Code
+                == HelloAdminErrorCodes.ProtectedRoleMutationForbidden);
+        Assert.Null(fixture.StepUp.BeginCommand);
+    }
+
+    [Fact]
+    public async Task EmptyProtectedRoleListPreservesRoleUpdate()
+    {
+        var fixture = new Fixture();
+
+        var result = await fixture.Application.BeginRoleActionAsync(
+            new HelloAdminBeginRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Update,
+                fixture.Role.Id,
+                TargetUserId: null,
+                new HelloAdminRoleActionParameters(
+                    ExpectedVersion: fixture.Role.Version,
+                    Name: "renamed"),
+                ClientKey: null),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(fixture.StepUp.BeginCommand);
+    }
+
+    [Theory]
+    [InlineData(HelloAdminRoleAction.Assign)]
+    [InlineData(HelloAdminRoleAction.Remove)]
+    public async Task ConfiguredProtectedRoleMembershipCanStillBeChanged(
+        HelloAdminRoleAction action)
+    {
+        var fixture = new Fixture(
+            roleName: "iq-teacher",
+            configureOptions: options =>
+            {
+                options.ProtectedRoleNames = ["IQ-TEACHER"];
+                options.RoleManagementEnabled = false;
+            });
+        var targetUserId = Guid.NewGuid();
+        var parameters = new HelloAdminRoleActionParameters();
+        var begun = await fixture.Application.BeginRoleActionAsync(
+            new HelloAdminBeginRoleActionCommand(
+                "access-token",
+                action,
+                fixture.Role.Id,
+                targetUserId,
+                parameters,
+                ClientKey: null),
+            CancellationToken.None);
+
+        Assert.True(begun.IsSuccess);
+
+        var completed = await fixture.Application.CompleteRoleActionAsync(
+            new HelloAdminCompleteRoleActionCommand(
+                "access-token",
+                action,
+                fixture.Role.Id,
+                targetUserId,
+                parameters,
+                begun.Value.ChallengeId,
+                "123456"),
+            CancellationToken.None);
+
+        Assert.True(completed.IsSuccess);
+        if (action == HelloAdminRoleAction.Assign)
+        {
+            Assert.NotNull(fixture.Roles.Assigned);
+        }
+        else
+        {
+            Assert.NotNull(fixture.Roles.Removed);
+        }
+
+        Assert.Equal(targetUserId, fixture.Sessions.RevokedUserId);
+    }
+
     [Fact]
     public async Task AdministratorCannotRemoveOwnProtectedRole()
     {
@@ -129,6 +236,104 @@ public sealed class HelloAdminRoleApplicationTests
             result.Errors,
             error => error.Code
                 == HelloAdminErrorCodes.SelfRoleRemovalForbidden);
+    }
+
+    [Fact]
+    public async Task AdministratorCannotRemoveOwnConfiguredProtectedRole()
+    {
+        var fixture = new Fixture(
+            roleName: "iq-teacher",
+            configureOptions: options =>
+                options.ProtectedRoleNames = [" IQ-TEACHER "]);
+
+        var result = await fixture.Application.BeginRoleActionAsync(
+            new HelloAdminBeginRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Remove,
+                fixture.Role.Id,
+                fixture.Actor.Id,
+                new HelloAdminRoleActionParameters(),
+                ClientKey: null),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains(
+            result.Errors,
+            error => error.Code
+                == HelloAdminErrorCodes.SelfRoleRemovalForbidden);
+    }
+
+    [Theory]
+    [InlineData(HelloAdminRoleAction.Create)]
+    [InlineData(HelloAdminRoleAction.Update)]
+    [InlineData(HelloAdminRoleAction.Delete)]
+    public async Task DisabledRoleManagementRejectsRoleCrud(
+        HelloAdminRoleAction action)
+    {
+        var fixture = new Fixture(
+            configureOptions: options =>
+                options.RoleManagementEnabled = false);
+        var roleId = action == HelloAdminRoleAction.Create
+            ? (Guid?)null
+            : fixture.Role.Id;
+        var parameters = action switch
+        {
+            HelloAdminRoleAction.Create =>
+                new HelloAdminRoleActionParameters(Name: "new-role"),
+            HelloAdminRoleAction.Update =>
+                new HelloAdminRoleActionParameters(
+                    ExpectedVersion: fixture.Role.Version,
+                    Name: "renamed"),
+            HelloAdminRoleAction.Delete =>
+                new HelloAdminRoleActionParameters(
+                    ExpectedVersion: fixture.Role.Version),
+            _ => throw new ArgumentOutOfRangeException(nameof(action)),
+        };
+
+        var result = await fixture.Application.BeginRoleActionAsync(
+            new HelloAdminBeginRoleActionCommand(
+                "access-token",
+                action,
+                roleId,
+                TargetUserId: null,
+                parameters,
+                ClientKey: null),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains(
+            result.Errors,
+            error => error.Code
+                == HelloAdminErrorCodes.RoleManagementDisabled);
+        Assert.Null(fixture.StepUp.BeginCommand);
+    }
+
+    [Fact]
+    public async Task DisabledRoleManagementRejectsDirectCompletion()
+    {
+        var fixture = new Fixture(
+            configureOptions: options =>
+                options.RoleManagementEnabled = false);
+
+        var result = await fixture.Application.CompleteRoleActionAsync(
+            new HelloAdminCompleteRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Update,
+                fixture.Role.Id,
+                TargetUserId: null,
+                new HelloAdminRoleActionParameters(
+                    ExpectedVersion: fixture.Role.Version,
+                    Name: "renamed"),
+                Guid.NewGuid(),
+                "123456"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains(
+            result.Errors,
+            error => error.Code
+                == HelloAdminErrorCodes.RoleManagementDisabled);
+        Assert.Null(fixture.StepUp.AuthorizeCommand);
     }
 
     [Fact]
@@ -218,7 +423,8 @@ public sealed class HelloAdminRoleApplicationTests
     {
         public Fixture(
             string roleName = "Operators",
-            OperationResult? revokeResult = null)
+            OperationResult? revokeResult = null,
+            Action<SkopkaHelloAdminOptions>? configureOptions = null)
         {
             Actor = CreateUser(Guid.NewGuid());
             Role = new IdentityRole(
@@ -235,6 +441,8 @@ public sealed class HelloAdminRoleApplicationTests
             StepUp = new FakeStepUpService();
             Messages = new FakeMessageSender();
             SecurityEvents = new RecordingSecurityEventSink();
+            var options = new SkopkaHelloAdminOptions();
+            configureOptions?.Invoke(options);
             Application = new HelloAdminRoleApplication<TestProfile>(
                 RoleQueries,
                 Roles,
@@ -246,7 +454,7 @@ public sealed class HelloAdminRoleApplicationTests
                 {
                     VerificationChannel = HelloDeliveryChannel.Email,
                 },
-                new SkopkaHelloAdminOptions(),
+                options,
                 SecurityEvents,
                 new HttpContextAccessor());
         }

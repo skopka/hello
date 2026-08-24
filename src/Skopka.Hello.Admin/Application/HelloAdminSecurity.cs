@@ -423,6 +423,12 @@ internal static class HelloAdminSecurity
             "A role used by an admin authorization policy cannot be updated or deleted through this surface.",
             ErrorType.Forbidden);
 
+    public static Error RoleManagementDisabled()
+        => new(
+            HelloAdminErrorCodes.RoleManagementDisabled,
+            "Role creation, update and deletion are disabled by the host.",
+            ErrorType.Forbidden);
+
     public static Error SelfRoleRemovalForbidden()
         => new(
             HelloAdminErrorCodes.SelfRoleRemovalForbidden,

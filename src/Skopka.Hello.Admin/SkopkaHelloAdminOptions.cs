@@ -36,6 +36,10 @@ public sealed class SkopkaHelloAdminOptions
     public string DeleteRoleName { get; set; } =
         HelloAdminDefaults.AdministratorRole;
 
+    public string[] ProtectedRoleNames { get; set; } = [];
+
+    public bool RoleManagementEnabled { get; set; } = true;
+
     public void Validate()
     {
         ApiPathPrefix = ValidatePathPrefix(
@@ -59,6 +63,7 @@ public sealed class SkopkaHelloAdminOptions
         ArgumentException.ThrowIfNullOrWhiteSpace(ReadRoleName);
         ArgumentException.ThrowIfNullOrWhiteSpace(ManageRoleName);
         ArgumentException.ThrowIfNullOrWhiteSpace(DeleteRoleName);
+        ArgumentNullException.ThrowIfNull(ProtectedRoleNames);
 
         if (new[]
             {

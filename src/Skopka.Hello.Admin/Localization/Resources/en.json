@@ -89,6 +89,7 @@
     "Errors.hello.admin.action_restart_required": "The action must be started again.",
     "Errors.hello.admin.session_cleanup_required": "The change was saved, but session cleanup could not be confirmed.",
     "Errors.hello.admin.protected_role_mutation_forbidden": "The protected role cannot be changed.",
+    "Errors.hello.admin.role_management_disabled": "Role creation, update and deletion are disabled by the host.",
     "Errors.hello.admin.self_role_removal_forbidden": "You cannot remove your own protected role."
   }
 }

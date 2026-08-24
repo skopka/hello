@@ -29,6 +29,8 @@ public sealed class SkopkaHelloUiOptions
 
     public string? ApplicationHomeUrl { get; set; }
 
+    public string? NoticeText { get; set; }
+
     public string? TermsOfServiceUrl { get; set; }
 
     public string? PrivacyPolicyUrl { get; set; }

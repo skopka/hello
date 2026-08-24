@@ -220,6 +220,17 @@ else
                     ? "text-bg-warning"
                     : "text-bg-success";
             var managePanelId = $"admin-user-{user.Id:N}";
+            var assignedRoles = Model.UserRoles.TryGetValue(
+                    user.Id,
+                    out var userRoles)
+                ? userRoles
+                : [];
+            var assignedRoleIds = assignedRoles
+                .Select(role => role.Id)
+                .ToHashSet();
+            var availableRoles = Model.RoleCatalog
+                .Where(role => !assignedRoleIds.Contains(role.Id))
+                .ToArray();
 
             <article class="card admin-card admin-user-card">
                 <div class="card-body p-3">
@@ -328,10 +339,7 @@ else
                                     <h3 class="admin-panel-title">
                                         @Text["Admin.Users.RoleMembership"]
                                     </h3>
-                                    @if (Model.UserRoles.TryGetValue(
-                                            user.Id,
-                                            out var assignedRoles)
-                                        && assignedRoles.Count > 0)
+                                    @if (assignedRoles.Count > 0)
                                     {
                                         <div class="list-group admin-role-membership-list">
                                             @foreach (var role in assignedRoles)
@@ -376,38 +384,89 @@ else
                                         </p>
                                     }
 
-                                    <form method="post"
-                                          asp-page-handler="BeginRoleAction"
-                                          class="row g-2 align-items-end">
-                                        <input type="hidden"
-                                               name="userId"
-                                               value="@user.Id" />
-                                        <input type="hidden"
-                                               name="action"
-                                               value="assign" />
-                                        <input type="hidden"
-                                               name="Search"
-                                               value="@Model.Search" />
-                                        <input type="hidden"
-                                               name="Status"
-                                               value="@Model.Status" />
-                                        <div class="col-12 col-md">
-                                            <label class="form-label small mb-1"
-                                                   for="role-id-@user.Id.ToString("N")">
-                                                @Text["Admin.Roles.RoleId"]
-                                            </label>
-                                            <input class="form-control form-control-sm"
-                                                   id="role-id-@user.Id.ToString("N")"
-                                                   name="roleId"
-                                                   required />
-                                        </div>
-                                        <div class="col-12 col-md-auto d-grid">
-                                            <button class="btn btn-primary btn-sm"
-                                                    type="submit">
-                                                @Text["Admin.Roles.Assign"]
-                                            </button>
-                                        </div>
-                                    </form>
+                                    @if (availableRoles.Length > 0
+                                        || Model.RoleCatalogHasMore)
+                                    {
+                                        <form method="post"
+                                              asp-page-handler="BeginRoleAction"
+                                              class="row g-2 align-items-end">
+                                            <input type="hidden"
+                                                   name="userId"
+                                                   value="@user.Id" />
+                                            <input type="hidden"
+                                                   name="action"
+                                                   value="assign" />
+                                            <input type="hidden"
+                                                   name="Search"
+                                                   value="@Model.Search" />
+                                            <input type="hidden"
+                                                   name="Status"
+                                                   value="@Model.Status" />
+                                            <div class="col-12 col-md">
+                                                <label class="form-label small mb-1"
+                                                       for="role-id-@user.Id.ToString("N")">
+                                                    @Text["Admin.Users.RoleToAssign"]
+                                                </label>
+                                                @if (Model.RoleCatalogHasMore)
+                                                {
+                                                    var catalogHelpId =
+                                                        $"role-catalog-help-{user.Id:N}";
+                                                    <input class="form-control form-control-sm"
+                                                           id="role-id-@user.Id.ToString("N")"
+                                                           name="roleId"
+                                                           list="role-catalog-@user.Id.ToString("N")"
+                                                           aria-describedby="@catalogHelpId"
+                                                           placeholder="@Text["Admin.Users.SelectRoleOrEnterId"]"
+                                                           autocomplete="off"
+                                                           required />
+                                                    <datalist id="role-catalog-@user.Id.ToString("N")">
+                                                        @foreach (var role in availableRoles)
+                                                        {
+                                                            <option value="@role.Id"
+                                                                    label="@role.Name"></option>
+                                                        }
+                                                    </datalist>
+                                                    <div class="form-text"
+                                                         id="@catalogHelpId">
+                                                        @Text[
+                                                            "Admin.Users.RoleCatalogTruncated",
+                                                            UsersModel.RoleCatalogPageSize]
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <select class="form-select form-select-sm"
+                                                            id="role-id-@user.Id.ToString("N")"
+                                                            name="roleId"
+                                                            required>
+                                                        <option value="">
+                                                            @Text["Admin.Users.SelectRole"]
+                                                        </option>
+                                                        @foreach (var role in availableRoles)
+                                                        {
+                                                            <option value="@role.Id">
+                                                                @role.Name
+                                                            </option>
+                                                        }
+                                                    </select>
+                                                }
+                                            </div>
+                                            <div class="col-12 col-md-auto d-grid">
+                                                <button class="btn btn-primary btn-sm"
+                                                        type="submit">
+                                                    @Text["Admin.Roles.Assign"]
+                                                </button>
+                                            </div>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <p class="small text-body-secondary mb-0">
+                                            @(Model.RoleCatalog.Count == 0
+                                                ? Text["Admin.Users.NoAvailableRoles"]
+                                                : Text["Admin.Users.AllRolesAssigned"])
+                                        </p>
+                                    }
                                 </section>
                             </div>
 

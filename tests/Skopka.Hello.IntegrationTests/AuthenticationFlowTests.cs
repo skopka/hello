@@ -23,6 +23,7 @@ using Skopka.Identity.Errors;
 using Skopka.Identity.Roles;
 using Skopka.Identity.Roles.Commands;
 using Skopka.Identity.Users.Commands;
+using Skopka.Identity.Users.Queries;
 using Skopka.Identity.Verification;
 using Testcontainers.PostgreSql;
 
@@ -40,6 +41,8 @@ public sealed class AuthenticationFlowTests
     private const string UiCookieName = "__Host-Skopka.Hello.UI";
     private const string UiAdministratorPolicy =
         "Integration.Ui.Administrator";
+    private const string UiNoticeText =
+        "Test stand: <data> may be \"deleted\".";
 
     [Fact]
     public async Task AdministratorCanQueryAndOtpBlockUser()
@@ -999,6 +1002,7 @@ public sealed class AuthenticationFlowTests
             configureUi: options =>
             {
                 options.ApplicationHomeUrl = "/app";
+                options.NoticeText = UiNoticeText;
                 options.TermsOfServiceUrl = "/terms";
                 options.PrivacyPolicyUrl =
                     "https://legal.example.test/privacy";
@@ -1077,9 +1081,13 @@ public sealed class AuthenticationFlowTests
             });
         var apiConsentCompletedAt = DateTimeOffset.UtcNow;
         Assert.Equal(HttpStatusCode.Created, apiRegistration.StatusCode);
+        Guid apiTargetUserId;
         using (var apiAccountDocument = JsonDocument.Parse(
                    await apiRegistration.Content.ReadAsStringAsync()))
         {
+            apiTargetUserId = apiAccountDocument.RootElement
+                .GetProperty("id")
+                .GetGuid();
             var consent = apiAccountDocument.RootElement
                 .GetProperty("profile")
                 .GetProperty("registrationConsent");
@@ -1107,6 +1115,7 @@ public sealed class AuthenticationFlowTests
         MergeCookies(cookies, registerPage);
         var registerHtml =
             await registerPage.Content.ReadAsStringAsync();
+        AssertUiNotice(registerHtml);
         Assert.Contains(
             "/_content/Skopka.Hello.UI/css/hello.css",
             registerHtml,
@@ -1385,6 +1394,7 @@ public sealed class AuthenticationFlowTests
         Assert.Equal(HttpStatusCode.OK, loginPage.StatusCode);
         MergeCookies(cookies, loginPage);
         var loginHtml = await loginPage.Content.ReadAsStringAsync();
+        AssertUiNotice(loginHtml);
         Assert.DoesNotContain(
             "Input.Handle",
             loginHtml,
@@ -1439,13 +1449,179 @@ public sealed class AuthenticationFlowTests
             HttpStatusCode.Redirect,
             deniedUiAdministrator.StatusCode);
 
-        await app.GrantAdministratorAsync(uiUser.UserId);
+        var administratorRole =
+            await app.GrantAdministratorAsync(uiUser.UserId);
         using var allowedUiAdministrator = await SendAsync(
             client,
             HttpMethod.Get,
             "/integration/ui-administrator",
             cookies);
         Assert.Equal(HttpStatusCode.OK, allowedUiAdministrator.StatusCode);
+
+        var teacherRole = await app.CreateRoleAsync("iq-teacher");
+        using var adminUsers = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/admin/users",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, adminUsers.StatusCode);
+        MergeCookies(cookies, adminUsers);
+        var adminUsersHtml =
+            await adminUsers.Content.ReadAsStringAsync();
+        var administratorCard = ReadAdminUserCard(
+            adminUsersHtml,
+            uiUser.UserId);
+        var administratorRoleSelect = ReadRoleAssignmentSelect(
+            administratorCard);
+        Assert.Contains(
+            teacherRole.Id.ToString("D"),
+            administratorRoleSelect,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            teacherRole.Name,
+            administratorRoleSelect,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            $"value=\"{administratorRole.Id:D}\"",
+            administratorRoleSelect,
+            StringComparison.Ordinal);
+
+        var targetCard = ReadAdminUserCard(
+            adminUsersHtml,
+            apiTargetUserId);
+        var targetRoleSelect = ReadRoleAssignmentSelect(targetCard);
+        Assert.Contains(
+            $"value=\"{teacherRole.Id:D}\"",
+            targetRoleSelect,
+            StringComparison.Ordinal);
+        var adminRoleToken = ReadInputValue(
+            adminUsersHtml,
+            "__RequestVerificationToken");
+        using var beginRoleAssignment = await SendFormAsync(
+            client,
+            "/hello/admin/users?handler=BeginRoleAction",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["userId"] = apiTargetUserId.ToString("D"),
+                ["roleId"] = teacherRole.Id.ToString("D"),
+                ["action"] = "assign",
+                ["Status"] = IdentityUserStatus.Any.ToString(),
+                ["__RequestVerificationToken"] = adminRoleToken,
+            });
+        Assert.Equal(HttpStatusCode.OK, beginRoleAssignment.StatusCode);
+        MergeCookies(cookies, beginRoleAssignment);
+        var beginRoleAssignmentHtml =
+            await beginRoleAssignment.Content.ReadAsStringAsync();
+        Assert.Equal(
+            teacherRole.Id,
+            Guid.Parse(ReadInputValue(
+                beginRoleAssignmentHtml,
+                "roleId")));
+        var roleChallengeId = Guid.Parse(ReadInputValue(
+            beginRoleAssignmentHtml,
+            "challengeId"));
+        var roleAssignmentToken = ReadInputValue(
+            beginRoleAssignmentHtml,
+            "__RequestVerificationToken");
+        var roleAssignmentMessage = await app.WaitForMessageAsync(
+            HelloAccountMessageKind.AdminActionVerification);
+        var roleAssignmentCode = Assert.IsType<string>(
+            roleAssignmentMessage.VerificationCode);
+        using var completeRoleAssignment = await SendFormAsync(
+            client,
+            "/hello/admin/users?handler=CompleteRoleAction",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["userId"] = apiTargetUserId.ToString("D"),
+                ["roleId"] = teacherRole.Id.ToString("D"),
+                ["action"] = "assign",
+                ["challengeId"] = roleChallengeId.ToString("D"),
+                ["verificationCode"] = roleAssignmentCode,
+                ["Status"] = IdentityUserStatus.Any.ToString(),
+                ["__RequestVerificationToken"] = roleAssignmentToken,
+            });
+        Assert.Equal(
+            HttpStatusCode.Redirect,
+            completeRoleAssignment.StatusCode);
+        MergeCookies(cookies, completeRoleAssignment);
+
+        using var assignedAdminUsers = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/admin/users",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, assignedAdminUsers.StatusCode);
+        MergeCookies(cookies, assignedAdminUsers);
+        var assignedAdminUsersHtml =
+            await assignedAdminUsers.Content.ReadAsStringAsync();
+        var assignedTargetCard = ReadAdminUserCard(
+            assignedAdminUsersHtml,
+            apiTargetUserId);
+        Assert.Contains(
+            teacherRole.Name,
+            assignedTargetCard,
+            StringComparison.Ordinal);
+        var assignedTargetRoleSelect = ReadRoleAssignmentSelect(
+            assignedTargetCard);
+        Assert.DoesNotContain(
+            $"value=\"{teacherRole.Id:D}\"",
+            assignedTargetRoleSelect,
+            StringComparison.Ordinal);
+
+        await app.CreateRolesAsync(
+            Enumerable.Range(0, 100)
+                .Select(index => $"catalog-role-{index:D3}"));
+        using var truncatedAdminUsers = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/admin/users",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, truncatedAdminUsers.StatusCode);
+        MergeCookies(cookies, truncatedAdminUsers);
+        var truncatedAdminUsersHtml =
+            await truncatedAdminUsers.Content.ReadAsStringAsync();
+        var truncatedTargetCard = ReadAdminUserCard(
+            truncatedAdminUsersHtml,
+            apiTargetUserId);
+        var roleIdInput = Regex.Match(
+            truncatedTargetCard,
+            $"<input[^>]*id=\"role-id-{apiTargetUserId:N}\"[^>]*>",
+            RegexOptions.CultureInvariant).Value;
+        Assert.NotEmpty(roleIdInput);
+        Assert.Contains("name=\"roleId\"", roleIdInput);
+        Assert.Contains(
+            $"list=\"role-catalog-{apiTargetUserId:N}\"",
+            roleIdInput,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Only the first 100 roles are suggested.",
+            truncatedTargetCard,
+            StringComparison.Ordinal);
+        var manualRoleToken = ReadInputValue(
+            truncatedAdminUsersHtml,
+            "__RequestVerificationToken");
+        using var manualRoleAssignment = await SendFormAsync(
+            client,
+            "/hello/admin/users?handler=BeginRoleAction",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["userId"] = apiTargetUserId.ToString("D"),
+                ["roleId"] = administratorRole.Id.ToString("D"),
+                ["action"] = "assign",
+                ["Status"] = IdentityUserStatus.Any.ToString(),
+                ["__RequestVerificationToken"] = manualRoleToken,
+            });
+        Assert.Equal(HttpStatusCode.OK, manualRoleAssignment.StatusCode);
+        var manualRoleAssignmentHtml =
+            await manualRoleAssignment.Content.ReadAsStringAsync();
+        Assert.Equal(
+            administratorRole.Id,
+            Guid.Parse(ReadInputValue(
+                manualRoleAssignmentHtml,
+                "roleId")));
 
         using var account = await SendAsync(
             client,
@@ -1458,6 +1634,7 @@ public sealed class AuthenticationFlowTests
             account.Headers.CacheControl?.ToString(),
             StringComparison.OrdinalIgnoreCase);
         var accountHtml = await account.Content.ReadAsStringAsync();
+        AssertUiNotice(accountHtml);
         Assert.Contains(
             "Browser Alice",
             accountHtml,
@@ -1633,6 +1810,7 @@ public sealed class AuthenticationFlowTests
             securityPage.Headers.CacheControl?.ToString(),
             StringComparison.OrdinalIgnoreCase);
         var securityHtml = await securityPage.Content.ReadAsStringAsync();
+        AssertUiNotice(securityHtml);
         Assert.Contains(
             "A password is configured.",
             securityHtml,
@@ -1743,6 +1921,10 @@ public sealed class AuthenticationFlowTests
                 "/identity/login");
             Assert.Equal(HttpStatusCode.OK, loginPage.StatusCode);
             var loginHtml = await loginPage.Content.ReadAsStringAsync();
+            Assert.DoesNotContain(
+                "class=\"hello-notice\"",
+                loginHtml,
+                StringComparison.Ordinal);
             Assert.Contains(
                 "href=\"/identity/register\"",
                 loginHtml,
@@ -1784,7 +1966,9 @@ public sealed class AuthenticationFlowTests
         await using (var disabled = await TestApplication.CreateAsync(
             connectionString,
             uiPathPrefix: "/identity",
-            selfRegistrationEnabled: false))
+            selfRegistrationEnabled: false,
+            configureUi: options =>
+                options.NoticeText = String.Empty))
         {
             using var client = disabled.CreateClient(
                 allowAutoRedirect: false);
@@ -1818,6 +2002,10 @@ public sealed class AuthenticationFlowTests
             Assert.Equal(HttpStatusCode.OK, loginPage.StatusCode);
             MergeCookies(cookies, loginPage);
             var loginHtml = await loginPage.Content.ReadAsStringAsync();
+            Assert.DoesNotContain(
+                "class=\"hello-notice\"",
+                loginHtml,
+                StringComparison.Ordinal);
             Assert.DoesNotContain(
                 "href=\"/identity/register\"",
                 loginHtml,
@@ -2546,6 +2734,53 @@ public sealed class AuthenticationFlowTests
         }
     }
 
+    private static void AssertUiNotice(string html)
+    {
+        var matches = Regex.Matches(
+            html,
+            "<div class=\"hello-notice\">(.*?)</div>",
+            RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        var match = Assert.Single(matches.Cast<Match>());
+        Assert.Equal(
+            UiNoticeText,
+            WebUtility.HtmlDecode(match.Groups[1].Value));
+        Assert.DoesNotContain(
+            "<data>",
+            match.Value,
+            StringComparison.Ordinal);
+    }
+
+    private static string ReadAdminUserCard(string html, Guid userId)
+    {
+        var marker = $"id=\"admin-user-{userId:N}\"";
+        var markerIndex = html.IndexOf(marker, StringComparison.Ordinal);
+        Assert.True(
+            markerIndex >= 0,
+            $"Admin card for user '{userId:D}' was not found.");
+        var start = html.LastIndexOf(
+            "<article",
+            markerIndex,
+            StringComparison.Ordinal);
+        var end = html.IndexOf(
+            "</article>",
+            markerIndex,
+            StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start);
+        return html[start..(end + "</article>".Length)];
+    }
+
+    private static string ReadRoleAssignmentSelect(string userCard)
+    {
+        var match = Regex.Match(
+            userCard,
+            "<select[^>]*name=\"roleId\"[^>]*>.*?</select>",
+            RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        Assert.True(
+            match.Success,
+            "The role assignment select was not found.");
+        return match.Value;
+    }
+
     private static string ReadInputValue(
         string html,
         string name)
@@ -3151,7 +3386,7 @@ public sealed class AuthenticationFlowTests
                 messageSender);
         }
 
-        public async Task GrantAdministratorAsync(Guid userId)
+        public async Task<IdentityRole> GrantAdministratorAsync(Guid userId)
         {
             await using var scope =
                 application.Services.CreateAsyncScope();
@@ -3174,6 +3409,35 @@ public sealed class AuthenticationFlowTests
                 new AssignRoleCommand(userId, role.Id),
                 CancellationToken.None);
             Assert.True(assigned.IsSuccess);
+            return role;
+        }
+
+        public async Task<IdentityRole> CreateRoleAsync(string name)
+        {
+            await using var scope =
+                application.Services.CreateAsyncScope();
+            var roles = scope.ServiceProvider.GetRequiredService<
+                IIdentityRoleService<IntegrationProfile>>();
+            var created = await roles.CreateAsync(
+                new CreateRoleCommand(name),
+                CancellationToken.None);
+            Assert.True(created.IsSuccess);
+            return created.Value;
+        }
+
+        public async Task CreateRolesAsync(IEnumerable<string> names)
+        {
+            await using var scope =
+                application.Services.CreateAsyncScope();
+            var roles = scope.ServiceProvider.GetRequiredService<
+                IIdentityRoleService<IntegrationProfile>>();
+            foreach (var name in names)
+            {
+                var created = await roles.CreateAsync(
+                    new CreateRoleCommand(name),
+                    CancellationToken.None);
+                Assert.True(created.IsSuccess);
+            }
         }
 
         public HttpClient CreateClient(

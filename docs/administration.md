@@ -109,6 +109,11 @@ The protected `/hello/admin` entry route redirects to the user list.
 Every role mutation, including membership assignment and removal, requires the
 highest `DeletePolicyName`. This prevents an administrator limited to ordinary
 user management from granting themselves a higher authorization role.
+The user page loads the bounded role catalog and offers unassigned roles by
+name while posting their identifiers through the existing membership and
+step-up contract. When more than 100 roles exist, the field keeps catalog
+suggestions and also accepts a role identifier manually; the complete catalog
+remains available on the role page.
 
 Call `AddSkopkaHelloUi<TProfile, TProfileFactory>` before the admin registration
 when `RazorUiEnabled` is true. API-only hosts can set it to false; no admin

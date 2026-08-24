@@ -85,6 +85,10 @@
         </nav>
     </header>
     <main class="hello-main">
+        @if (!String.IsNullOrWhiteSpace(UiOptions.NoticeText))
+        {
+            <div class="hello-notice">@UiOptions.NoticeText</div>
+        }
         @RenderBody()
     </main>
     @if (showLanguageSelector || showLegalLinks)

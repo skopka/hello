@@ -194,6 +194,8 @@ route paths:
 services.AddSkopkaHelloUi<Profile, ProfileFactory>(options =>
 {
     options.ApplicationHomeUrl = "https://app.example.com/";
+    options.NoticeText =
+        "Test environment: data may be removed without notice.";
     options.TermsOfServiceUrl = "/terms";
     options.PrivacyPolicyUrl = "https://legal.example.com/privacy";
     options.Localization.Enabled = true;
@@ -210,6 +212,11 @@ services.AddSkopkaHelloUi<Profile, ProfileFactory>(options =>
 packaged header. It accepts a safe local absolute path or an absolute HTTPS URL
 without credentials, query or fragment; leave it unset when the identity UI is
 the application itself.
+
+`NoticeText` renders a host-owned message above the content of every packaged
+Hello page. Null, empty and whitespace-only values preserve the existing
+markup. Razor HTML-encodes the value, and host CSS can target `.hello-notice`.
+The ready Server reads `SkopkaHello:Ui:NoticeText`.
 
 `TermsOfServiceUrl` and `PrivacyPolicyUrl` add localized links to the packaged
 footer and a separate required consent checkbox for each configured document

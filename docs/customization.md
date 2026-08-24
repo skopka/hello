@@ -99,6 +99,8 @@ Register the Razor Class Library with an application-specific profile factory:
 ```csharp
 services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
 {
+    options.NoticeText =
+        "Test environment: data may be removed without notice.";
     options.CustomCssFilePath = "/themes/custom.css";
     options.Registration.Email =
         HelloUiRegistrationFieldMode.Required;
@@ -111,6 +113,14 @@ services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
 app.MapStaticAssets();
 app.MapSkopkaHelloUi();
 ```
+
+`NoticeText` adds one host-owned message above the body on every packaged
+Hello page. A null, empty or whitespace-only value emits no notice element.
+Razor renders the value as text and HTML-encodes it; HTML supplied in the
+option is never interpreted as markup. The stable `.hello-notice` class lets
+the custom stylesheet present the message as a banner. Hello does not localize
+the value; the host supplies text for its already selected language. The ready
+Server reads the same value from `SkopkaHello:Ui:NoticeText`.
 
 The packaged pages set their layout from
 `Pages/SkopkaHello/_ViewStart.cshtml` and use the absolute path
@@ -478,6 +488,7 @@ variables. Stable selectors and customization hooks include:
 .hello-provider-actions
 .hello-step-up
 .hello-status-error
+.hello-notice
 [data-hello-provider="google"]
 [data-hello-linked-providers]
 [data-hello-available-providers]

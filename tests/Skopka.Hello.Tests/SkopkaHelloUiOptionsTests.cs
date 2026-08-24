@@ -314,6 +314,16 @@ public sealed class SkopkaHelloUiOptionsTests
     }
 
     [Fact]
+    public void NoticeIsDisabledByDefault()
+    {
+        var options = new SkopkaHelloUiOptions();
+
+        options.Validate();
+
+        Assert.Null(options.NoticeText);
+    }
+
+    [Fact]
     public void ValidateRejectsInsecureHostAuthenticationCookie()
     {
         var options = new SkopkaHelloUiOptions

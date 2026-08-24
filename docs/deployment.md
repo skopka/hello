@@ -32,6 +32,10 @@ Use local absolute paths or absolute HTTPS URLs. The ready Server stores the
 trusted flags and server acceptance time in `HelloProfile`; operators still own
 document hosting, revision mapping and evidence-retention policy.
 
+Optional `SkopkaHello:Ui:NoticeText` renders a host-owned, HTML-encoded message
+above the content of every packaged Hello page. Empty values render no element;
+custom themes can style the message through `.hello-notice`.
+
 The admin API prefix is configured by
 `SkopkaHello:Admin:ApiPathPrefix` (`/admin` by default). Its Razor user page is
 served under the configured Hello UI prefix plus that value, for example

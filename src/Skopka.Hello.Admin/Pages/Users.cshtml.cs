@@ -6,6 +6,7 @@ using Skopka.Abstraction.OperationResult;
 using Skopka.Hello.UI;
 using Skopka.Identity.Errors;
 using Skopka.Identity.Roles;
+using Skopka.Identity.Roles.Queries;
 using Skopka.Identity.Users.Queries;
 
 namespace Skopka.Hello.Admin.Pages;
@@ -20,6 +21,9 @@ public sealed class UsersModel(
     IHelloUiLocalizer text)
     : PageModel
 {
+    public const int RoleCatalogPageSize =
+        IdentityRoleQueryLimits.MaximumPageSize;
+
     public IReadOnlyList<HelloAdminUser> Users { get; private set; } = [];
 
     public IdentityUserCursor? NextCursor { get; private set; }
@@ -27,6 +31,10 @@ public sealed class UsersModel(
     public IReadOnlyDictionary<Guid, IReadOnlyList<IdentityRole>> UserRoles
     { get; private set; } =
         new Dictionary<Guid, IReadOnlyList<IdentityRole>>();
+
+    public IReadOnlyList<IdentityRole> RoleCatalog { get; private set; } = [];
+
+    public bool RoleCatalogHasMore { get; private set; }
 
     [BindProperty(SupportsGet = true)]
     public string? Search { get; set; }
@@ -458,6 +466,21 @@ public sealed class UsersModel(
         {
             Users = result.Value.Items;
             NextCursor = result.Value.NextCursor;
+            var roleCatalog = await roleApplication.QueryRolesAsync(
+                new HelloAdminQueryRolesCommand(
+                    accessToken,
+                    PageSize: RoleCatalogPageSize),
+                cancellationToken);
+            if (!roleCatalog.IsSuccess)
+            {
+                AddErrors(roleCatalog.Errors);
+                return;
+            }
+
+            RoleCatalog = roleCatalog.Value.Items
+                .OrderBy(role => role.Name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            RoleCatalogHasMore = roleCatalog.Value.NextCursor is not null;
             var rolesByUser = new Dictionary<
                 Guid,
                 IReadOnlyList<IdentityRole>>();

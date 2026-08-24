@@ -508,6 +508,8 @@ builder.Services.AddSkopkaHelloUi<
         configuration["SkopkaHello:Ui:TermsOfServiceUrl"];
     options.PrivacyPolicyUrl =
         configuration["SkopkaHello:Ui:PrivacyPolicyUrl"];
+    options.NoticeText =
+        configuration["SkopkaHello:Ui:NoticeText"];
     options.CustomCssFilePath =
         configuration["SkopkaHello:Customization:CssFilePath"];
     options.CustomCssRequestPath =

@@ -332,15 +332,36 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
                             HelloAdminRoleActionResult>(changed.Errors);
                     }
 
+                    if (command.Action == HelloAdminRoleAction.Assign
+                        && !options.RevokeSessionsOnRoleGrant)
+                    {
+                        return MembershipChangedResult(
+                            targetUserId,
+                            sessionsRevoked: false,
+                            currentActorSessionRevoked: false);
+                    }
+
+                    if (command.Action == HelloAdminRoleAction.Assign
+                        && targetUserId == actorUserId
+                        && TryGetCurrentActorSessionId(
+                            actorUserId,
+                            out var currentSessionId))
+                    {
+                        return await RevokeOtherSessionsAsync(
+                            targetUserId,
+                            currentSessionId,
+                            cancellationToken);
+                    }
+
                     var revoked = await sessions.RevokeAllAsync(
                         new RevokeAllIdentitySessionsCommand(targetUserId),
                         cancellationToken);
                     return revoked.IsSuccess
-                        ? OperationResultFactory.Success(
-                            new HelloAdminRoleActionResult(
-                                Role: null,
-                                targetUserId,
-                                SessionsRevoked: true))
+                        ? MembershipChangedResult(
+                            targetUserId,
+                            sessionsRevoked: true,
+                            currentActorSessionRevoked:
+                                targetUserId == actorUserId)
                         : SessionCleanupRequired(revoked.Errors);
                 }
 
@@ -477,6 +498,83 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
         => sessions.ValidateAccessTokenAsync(
             accessToken,
             cancellationToken);
+
+    private bool TryGetCurrentActorSessionId(
+        Guid actorUserId,
+        out Guid sessionId)
+    {
+        sessionId = default;
+        var principal = httpContextAccessor.HttpContext?.User;
+        if (principal is null)
+        {
+            return false;
+        }
+
+        var subjectValue = principal.FindFirst("sub")?.Value
+            ?? principal.FindFirst(
+                System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(subjectValue, out var subjectUserId)
+            && subjectUserId == actorUserId
+            && Guid.TryParse(
+                principal.FindFirst(
+                    IdentitySessionClaimTypes.SessionId)?.Value,
+                out sessionId)
+            && sessionId != Guid.Empty;
+    }
+
+    private async Task<OperationResult<HelloAdminRoleActionResult>>
+        RevokeOtherSessionsAsync(
+            Guid targetUserId,
+            Guid currentSessionId,
+            CancellationToken cancellationToken)
+    {
+        var listed = await sessions.ListAsync(
+            new ListIdentitySessionsCommand(targetUserId),
+            cancellationToken);
+        if (!listed.IsSuccess)
+        {
+            return SessionCleanupRequired(listed.Errors);
+        }
+
+        var errors = new List<Error>();
+        foreach (var sessionId in listed.Value
+                     .Select(item => item.SessionId)
+                     .Where(sessionId => sessionId != currentSessionId)
+                     .Distinct())
+        {
+            var revoked = await sessions.RevokeByIdAsync(
+                new RevokeIdentitySessionByIdCommand(
+                    targetUserId,
+                    sessionId),
+                cancellationToken);
+            if (!revoked.IsSuccess)
+            {
+                errors.AddRange(revoked.Errors);
+            }
+        }
+
+        return errors.Count == 0
+            ? MembershipChangedResult(
+                targetUserId,
+                sessionsRevoked: true,
+                currentActorSessionRevoked: false)
+            : SessionCleanupRequired(errors);
+    }
+
+    private static OperationResult<HelloAdminRoleActionResult>
+        MembershipChangedResult(
+            Guid targetUserId,
+            bool sessionsRevoked,
+            bool currentActorSessionRevoked)
+        => OperationResultFactory.Success(
+            new HelloAdminRoleActionResult(
+                Role: null,
+                targetUserId,
+                sessionsRevoked)
+            {
+                CurrentActorSessionRevoked =
+                    currentActorSessionRevoked,
+            });
 
     private bool TryGetConfirmedDestination(
         IdentityUser<TProfile> actor,

@@ -26,6 +26,7 @@ services.AddSkopkaHelloAdmin<MyProfile, MyAdminProfileProjector>(options =>
     options.DeleteRoleName = "Skopka.Hello.Admin";
     options.ProtectedRoleNames = ["iq-author", "iq-teacher"];
     options.RoleManagementEnabled = false;
+    options.RevokeSessionsOnRoleGrant = false;
 });
 
 app.MapSkopkaHelloAdmin<MyProfile>();
@@ -99,7 +100,8 @@ The ready Server uses these independent policies and role settings:
       "ManageRoleName": "Skopka.Hello.Admin",
       "DeleteRoleName": "Skopka.Hello.Admin",
       "ProtectedRoleNames": [],
-      "RoleManagementEnabled": true
+      "RoleManagementEnabled": true,
+      "RevokeSessionsOnRoleGrant": true
     }
   }
 }
@@ -211,12 +213,19 @@ Removing another administrator's last membership is an explicit
 high-privilege operation; if operators lock out every administrator, recover
 with the bootstrap command.
 
-Assign and remove revoke all target refresh sessions after the membership
-change. The Admin policies themselves always query current membership, so the
-change affects this module immediately. A host policy based only on JWT role
-claims can continue accepting an already-issued stateless access token until
-expiry; enable online session validation where immediate revocation is
-required.
+Remove always revokes all target sessions after the membership change. Assign
+does the same by default; set `RevokeSessionsOnRoleGrant` to `false` when every
+relevant host policy queries current membership online and a grant does not
+need to invalidate existing tickets. For a self-grant with revocation enabled,
+the confirmed current session is retained and the actor's other sessions are
+revoked. A self-removal still ends the current session because an already-issued
+bearer token must not keep removed rights; the Razor UI redirects to sign-in
+with an explicit explanation.
+
+The Admin policies themselves always query current membership, so the change
+affects this module immediately. A host policy based only on JWT role claims
+can continue accepting an already-issued stateless access token until expiry;
+enable online session validation where immediate revocation is required.
 
 Identity emits the assign/remove security events. Hello emits post-commit
 `hello.admin.role.created`, `.updated` and `.deleted` events for role CRUD

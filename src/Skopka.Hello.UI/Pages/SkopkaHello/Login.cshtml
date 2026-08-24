@@ -56,6 +56,20 @@
         </p>
     }
 
+    @if (Model.RolesChanged)
+    {
+        <p class="hello-status" role="status">
+            @Text["Login.RolesChanged"]
+        </p>
+    }
+
+    @if (Model.RolesChangedSessionCleanup)
+    {
+        <p class="hello-status" role="status">
+            @Text["Login.RolesChangedSessionCleanup"]
+        </p>
+    }
+
     @if (Model.AccountSecurityChangedSessionCleanup)
     {
         <p class="hello-status" role="status">

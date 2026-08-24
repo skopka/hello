@@ -1,5 +1,6 @@
 using Skopka.Abstraction.OperationResult;
 using Microsoft.AspNetCore.Http;
+using System.Security.Claims;
 using Skopka.Hello.Admin;
 using Skopka.Identity.Roles;
 using Skopka.Identity.Roles.Commands;
@@ -80,6 +81,114 @@ public sealed class HelloAdminRoleApplicationTests
             fixture.StepUp.BeginCommand?.Binding,
             fixture.StepUp.AuthorizeCommand?.Binding);
         Assert.True(completed.Value.SessionsRevoked);
+        Assert.False(completed.Value.CurrentActorSessionRevoked);
+    }
+
+    [Fact]
+    public async Task SelfGrantKeepsCurrentSessionAndRevokesOtherSessions()
+    {
+        var fixture = new Fixture();
+        var begun = await fixture.Application.BeginRoleActionAsync(
+            new HelloAdminBeginRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Assign,
+                fixture.Role.Id,
+                fixture.Actor.Id,
+                new HelloAdminRoleActionParameters(),
+                ClientKey: null),
+            CancellationToken.None);
+
+        var completed = await fixture.Application.CompleteRoleActionAsync(
+            new HelloAdminCompleteRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Assign,
+                fixture.Role.Id,
+                fixture.Actor.Id,
+                new HelloAdminRoleActionParameters(),
+                begun.Value.ChallengeId,
+                "123456"),
+            CancellationToken.None);
+
+        Assert.True(completed.IsSuccess);
+        Assert.Equal(fixture.Actor.Id, fixture.Sessions.ListedUserId);
+        Assert.Null(fixture.Sessions.RevokedUserId);
+        Assert.Equal(
+            [fixture.OtherSessionId],
+            fixture.Sessions.RevokedSessionIds);
+        Assert.DoesNotContain(
+            fixture.CurrentSessionId,
+            fixture.Sessions.RevokedSessionIds);
+        Assert.True(completed.Value.SessionsRevoked);
+        Assert.False(completed.Value.CurrentActorSessionRevoked);
+    }
+
+    [Fact]
+    public async Task RoleGrantCanSkipSessionRevocation()
+    {
+        var fixture = new Fixture(
+            configureOptions: options =>
+                options.RevokeSessionsOnRoleGrant = false);
+        var targetUserId = Guid.NewGuid();
+        var begun = await fixture.Application.BeginRoleActionAsync(
+            new HelloAdminBeginRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Assign,
+                fixture.Role.Id,
+                targetUserId,
+                new HelloAdminRoleActionParameters(),
+                ClientKey: null),
+            CancellationToken.None);
+
+        var completed = await fixture.Application.CompleteRoleActionAsync(
+            new HelloAdminCompleteRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Assign,
+                fixture.Role.Id,
+                targetUserId,
+                new HelloAdminRoleActionParameters(),
+                begun.Value.ChallengeId,
+                "123456"),
+            CancellationToken.None);
+
+        Assert.True(completed.IsSuccess);
+        Assert.NotNull(fixture.Roles.Assigned);
+        Assert.Null(fixture.Sessions.RevokedUserId);
+        Assert.Null(fixture.Sessions.ListedUserId);
+        Assert.Empty(fixture.Sessions.RevokedSessionIds);
+        Assert.False(completed.Value.SessionsRevoked);
+        Assert.False(completed.Value.CurrentActorSessionRevoked);
+    }
+
+    [Fact]
+    public async Task SelfRemovalRevokesCurrentSession()
+    {
+        var fixture = new Fixture();
+        var begun = await fixture.Application.BeginRoleActionAsync(
+            new HelloAdminBeginRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Remove,
+                fixture.Role.Id,
+                fixture.Actor.Id,
+                new HelloAdminRoleActionParameters(),
+                ClientKey: null),
+            CancellationToken.None);
+
+        var completed = await fixture.Application.CompleteRoleActionAsync(
+            new HelloAdminCompleteRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Remove,
+                fixture.Role.Id,
+                fixture.Actor.Id,
+                new HelloAdminRoleActionParameters(),
+                begun.Value.ChallengeId,
+                "123456"),
+            CancellationToken.None);
+
+        Assert.True(completed.IsSuccess);
+        Assert.NotNull(fixture.Roles.Removed);
+        Assert.Equal(fixture.Actor.Id, fixture.Sessions.RevokedUserId);
+        Assert.True(completed.Value.SessionsRevoked);
+        Assert.True(completed.Value.CurrentActorSessionRevoked);
     }
 
     [Fact]
@@ -427,6 +536,8 @@ public sealed class HelloAdminRoleApplicationTests
             Action<SkopkaHelloAdminOptions>? configureOptions = null)
         {
             Actor = CreateUser(Guid.NewGuid());
+            CurrentSessionId = Guid.NewGuid();
+            OtherSessionId = Guid.NewGuid();
             Role = new IdentityRole(
                 Guid.NewGuid(),
                 roleName,
@@ -437,12 +548,28 @@ public sealed class HelloAdminRoleApplicationTests
                 DateTimeOffset.UtcNow);
             RoleQueries = new FakeRoleQueryService(Role);
             Roles = new FakeRoleService(Role);
-            Sessions = new FakeSessionService(Actor, revokeResult);
+            Sessions = new FakeSessionService(
+                Actor,
+                CurrentSessionId,
+                OtherSessionId,
+                revokeResult);
             StepUp = new FakeStepUpService();
             Messages = new FakeMessageSender();
             SecurityEvents = new RecordingSecurityEventSink();
             var options = new SkopkaHelloAdminOptions();
             configureOptions?.Invoke(options);
+            var httpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(
+                    new ClaimsIdentity(
+                    [
+                        new Claim("sub", Actor.Id.ToString("D")),
+                        new Claim(
+                            IdentitySessionClaimTypes.SessionId,
+                            CurrentSessionId.ToString("D")),
+                    ],
+                    "Test")),
+            };
             Application = new HelloAdminRoleApplication<TestProfile>(
                 RoleQueries,
                 Roles,
@@ -456,12 +583,19 @@ public sealed class HelloAdminRoleApplicationTests
                 },
                 options,
                 SecurityEvents,
-                new HttpContextAccessor());
+                new HttpContextAccessor
+                {
+                    HttpContext = httpContext,
+                });
         }
 
         public IdentityUser<TestProfile> Actor { get; }
 
         public IdentityRole Role { get; }
+
+        public Guid CurrentSessionId { get; }
+
+        public Guid OtherSessionId { get; }
 
         public FakeRoleQueryService RoleQueries { get; }
 
@@ -585,12 +719,18 @@ public sealed class HelloAdminRoleApplicationTests
 
     private sealed class FakeSessionService(
         IdentityUser<TestProfile> actor,
+        Guid currentSessionId,
+        Guid otherSessionId,
         OperationResult? revokeResult)
         : IIdentitySessionService<TestProfile>
     {
         public string? ValidatedAccessToken { get; private set; }
 
         public Guid? RevokedUserId { get; private set; }
+
+        public Guid? ListedUserId { get; private set; }
+
+        public List<Guid> RevokedSessionIds { get; } = [];
 
         public Task<OperationResult<IdentityUser<TestProfile>>>
             ValidateAccessTokenAsync(
@@ -624,12 +764,39 @@ public sealed class HelloAdminRoleApplicationTests
 
         public Task<OperationResult> RevokeByIdAsync(
             RevokeIdentitySessionByIdCommand command,
-            CancellationToken ct) => throw new NotSupportedException();
+            CancellationToken ct)
+        {
+            RevokedSessionIds.Add(command.SessionId);
+            return Task.FromResult(
+                revokeResult ?? OperationResultFactory.Success());
+        }
 
         public Task<OperationResult<IReadOnlyList<IdentitySessionInfo>>>
             ListAsync(
                 ListIdentitySessionsCommand command,
-                CancellationToken ct) => throw new NotSupportedException();
+                CancellationToken ct)
+        {
+            ListedUserId = command.UserId;
+            var now = DateTimeOffset.UtcNow;
+            IReadOnlyList<IdentitySessionInfo> listed =
+            [
+                new(
+                    currentSessionId,
+                    actor.Id,
+                    new IdentitySessionMetadata(),
+                    now.AddHours(1),
+                    now.AddMinutes(-2),
+                    now),
+                new(
+                    otherSessionId,
+                    actor.Id,
+                    new IdentitySessionMetadata(),
+                    now.AddHours(1),
+                    now.AddMinutes(-3),
+                    now.AddMinutes(-1)),
+            ];
+            return Task.FromResult(OperationResultFactory.Success(listed));
+        }
 
         public Task<int> PruneAsync(CancellationToken ct)
             => throw new NotSupportedException();

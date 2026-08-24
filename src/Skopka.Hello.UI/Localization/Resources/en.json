@@ -86,6 +86,8 @@
     "Login.PasswordChangedSessionCleanup": "Your password was changed, but session cleanup could not be completed. Sign in again with the new password.",
     "Login.AccountDeleted": "Your account was deleted and this browser session was cleared.",
     "Login.SecurityChanged": "Your sign-in credentials were changed. Sign in again.",
+    "Login.RolesChanged": "Your roles changed and your sessions were ended. Sign in again.",
+    "Login.RolesChangedSessionCleanup": "Your roles changed, but full session cleanup could not be confirmed. This browser session was ended; sign in again.",
     "Login.AccountSecurityChangedSessionCleanup": "The account security action completed, but full session cleanup could not be confirmed. This browser session was cleared.",
     "Login.ContinueWith": "Continue with {0}",
     "Login.OrUsePassword": "or use a password",

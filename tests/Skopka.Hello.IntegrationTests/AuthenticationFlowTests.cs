@@ -1610,6 +1610,174 @@ public sealed class AuthenticationFlowTests
             assignedTargetRoleSelect,
             StringComparison.Ordinal);
 
+        var selfGrantMessageCount = app.Messages.Count;
+        var selfGrantToken = ReadInputValue(
+            assignedAdminUsersHtml,
+            "__RequestVerificationToken");
+        using var beginSelfGrant = await SendFormAsync(
+            client,
+            "/hello/admin/users?handler=BeginRoleAction",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["userId"] = uiUser.UserId.ToString("D"),
+                ["roleId"] = teacherRole.Id.ToString("D"),
+                ["action"] = "assign",
+                ["Status"] = IdentityUserStatus.Any.ToString(),
+                ["__RequestVerificationToken"] = selfGrantToken,
+            });
+        Assert.Equal(HttpStatusCode.OK, beginSelfGrant.StatusCode);
+        MergeCookies(cookies, beginSelfGrant);
+        var beginSelfGrantHtml =
+            await beginSelfGrant.Content.ReadAsStringAsync();
+        var selfGrantChallengeId = Guid.Parse(ReadInputValue(
+            beginSelfGrantHtml,
+            "challengeId"));
+        var selfGrantCompletionToken = ReadInputValue(
+            beginSelfGrantHtml,
+            "__RequestVerificationToken");
+        var selfGrantMessage = Assert.Single(
+            app.Messages.Skip(selfGrantMessageCount),
+            message => message.Kind
+                == HelloAccountMessageKind.AdminActionVerification);
+        var selfGrantCode = Assert.IsType<string>(
+            selfGrantMessage.VerificationCode);
+        using var completeSelfGrant = await SendFormAsync(
+            client,
+            "/hello/admin/users?handler=CompleteRoleAction",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["userId"] = uiUser.UserId.ToString("D"),
+                ["roleId"] = teacherRole.Id.ToString("D"),
+                ["action"] = "assign",
+                ["challengeId"] = selfGrantChallengeId.ToString("D"),
+                ["verificationCode"] = selfGrantCode,
+                ["Status"] = IdentityUserStatus.Any.ToString(),
+                ["__RequestVerificationToken"] =
+                    selfGrantCompletionToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, completeSelfGrant.StatusCode);
+        Assert.StartsWith(
+            "/hello/admin/users",
+            completeSelfGrant.Headers.Location?.OriginalString,
+            StringComparison.Ordinal);
+        MergeCookies(cookies, completeSelfGrant);
+
+        using var usersAfterSelfGrant = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/admin/users",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, usersAfterSelfGrant.StatusCode);
+        MergeCookies(cookies, usersAfterSelfGrant);
+        var usersAfterSelfGrantHtml =
+            await usersAfterSelfGrant.Content.ReadAsStringAsync();
+        Assert.Contains(
+            teacherRole.Name,
+            ReadAdminUserCard(
+                usersAfterSelfGrantHtml,
+                uiUser.UserId),
+            StringComparison.Ordinal);
+        Assert.True(await app.IsUserInRoleAsync(
+            uiUser.UserId,
+            teacherRole.Id));
+
+        var selfRemoveMessageCount = app.Messages.Count;
+        var selfRemoveToken = ReadInputValue(
+            usersAfterSelfGrantHtml,
+            "__RequestVerificationToken");
+        using var beginSelfRemove = await SendFormAsync(
+            client,
+            "/hello/admin/users?handler=BeginRoleAction",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["userId"] = uiUser.UserId.ToString("D"),
+                ["roleId"] = teacherRole.Id.ToString("D"),
+                ["action"] = "remove",
+                ["Status"] = IdentityUserStatus.Any.ToString(),
+                ["__RequestVerificationToken"] = selfRemoveToken,
+            });
+        Assert.Equal(HttpStatusCode.OK, beginSelfRemove.StatusCode);
+        MergeCookies(cookies, beginSelfRemove);
+        var beginSelfRemoveHtml =
+            await beginSelfRemove.Content.ReadAsStringAsync();
+        var selfRemoveChallengeId = Guid.Parse(ReadInputValue(
+            beginSelfRemoveHtml,
+            "challengeId"));
+        var selfRemoveCompletionToken = ReadInputValue(
+            beginSelfRemoveHtml,
+            "__RequestVerificationToken");
+        var selfRemoveMessage = Assert.Single(
+            app.Messages.Skip(selfRemoveMessageCount),
+            message => message.Kind
+                == HelloAccountMessageKind.AdminActionVerification);
+        var selfRemoveCode = Assert.IsType<string>(
+            selfRemoveMessage.VerificationCode);
+        using var completeSelfRemove = await SendFormAsync(
+            client,
+            "/hello/admin/users?handler=CompleteRoleAction",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["userId"] = uiUser.UserId.ToString("D"),
+                ["roleId"] = teacherRole.Id.ToString("D"),
+                ["action"] = "remove",
+                ["challengeId"] = selfRemoveChallengeId.ToString("D"),
+                ["verificationCode"] = selfRemoveCode,
+                ["Status"] = IdentityUserStatus.Any.ToString(),
+                ["__RequestVerificationToken"] =
+                    selfRemoveCompletionToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, completeSelfRemove.StatusCode);
+        var selfRemoveLocation = new Uri(
+            client.BaseAddress!,
+            Assert.IsType<Uri>(completeSelfRemove.Headers.Location));
+        Assert.Equal("/hello/login", selfRemoveLocation.AbsolutePath);
+        Assert.True(bool.Parse(
+            QueryHelpers.ParseQuery(selfRemoveLocation.Query)
+                ["rolesChanged"].Single()!));
+        MergeCookies(cookies, completeSelfRemove);
+        Assert.False(await app.IsUserInRoleAsync(
+            uiUser.UserId,
+            teacherRole.Id));
+
+        using var rolesChangedLogin = await SendAsync(
+            client,
+            HttpMethod.Get,
+            selfRemoveLocation.PathAndQuery,
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, rolesChangedLogin.StatusCode);
+        MergeCookies(cookies, rolesChangedLogin);
+        var rolesChangedLoginHtml =
+            await rolesChangedLogin.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "Your roles changed and your sessions were ended. Sign in again.",
+            rolesChangedLoginHtml,
+            StringComparison.Ordinal);
+
+        var loginAfterSelfRemoveToken = ReadInputValue(
+            rolesChangedLoginHtml,
+            "__RequestVerificationToken");
+        using var loginAfterSelfRemove = await SendFormAsync(
+            client,
+            "/hello/login",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["Input.Login"] = "browser-alice@example.test",
+                ["Input.Password"] =
+                    "correct horse battery staple",
+                ["__RequestVerificationToken"] =
+                    loginAfterSelfRemoveToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, loginAfterSelfRemove.StatusCode);
+        Assert.Equal(
+            "/hello/account",
+            loginAfterSelfRemove.Headers.Location?.OriginalString);
+        MergeCookies(cookies, loginAfterSelfRemove);
+
         await app.CreateRolesAsync(
             Enumerable.Range(0, 100)
                 .Select(index => $"catalog-role-{index:D3}"));
@@ -3464,6 +3632,22 @@ public sealed class AuthenticationFlowTests
                 CancellationToken.None);
             Assert.True(created.IsSuccess);
             return created.Value;
+        }
+
+        public async Task<bool> IsUserInRoleAsync(
+            Guid userId,
+            Guid roleId)
+        {
+            await using var scope =
+                application.Services.CreateAsyncScope();
+            var roles = scope.ServiceProvider.GetRequiredService<
+                IIdentityRoleService<IntegrationProfile>>();
+            var result = await roles.IsUserInRoleAsync(
+                userId,
+                roleId,
+                CancellationToken.None);
+            Assert.True(result.IsSuccess);
+            return result.Value;
         }
 
         public async Task CreateRolesAsync(IEnumerable<string> names)

@@ -37,6 +37,12 @@ public sealed class LoginModel(
     public bool SecurityChanged { get; set; }
 
     [BindProperty(SupportsGet = true)]
+    public bool RolesChanged { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public bool RolesChangedSessionCleanup { get; set; }
+
+    [BindProperty(SupportsGet = true)]
     public bool AccountSecurityChangedSessionCleanup { get; set; }
 
     public IReadOnlyList<Skopka.Hello.Oidc.HelloOidcProvider>

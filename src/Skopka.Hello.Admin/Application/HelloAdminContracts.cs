@@ -183,7 +183,10 @@ public sealed record HelloAdminCompleteRoleActionCommand(
 public sealed record HelloAdminRoleActionResult(
     IdentityRole? Role,
     Guid? TargetUserId,
-    bool SessionsRevoked);
+    bool SessionsRevoked)
+{
+    public bool CurrentActorSessionRevoked { get; init; }
+}
 
 public interface IHelloAdminRoleApplication
 {

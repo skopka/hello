@@ -17,6 +17,8 @@ public sealed class UsersModel(
     IHelloAdminRoleApplication roleApplication,
     IHelloRequestContext requestContext,
     IAuthorizationService authorization,
+    IHelloUiUserAccessor userAccessor,
+    IHelloSessionCookieManager sessionCookies,
     SkopkaHelloAdminOptions options,
     IHelloUiLocalizer text)
     : PageModel
@@ -329,6 +331,9 @@ public sealed class UsersModel(
         }
 
         var parameters = new HelloAdminRoleActionParameters();
+        var currentUser = await userAccessor.GetAsync(
+            HttpContext,
+            cancellationToken);
         var result = await roleApplication.CompleteRoleActionAsync(
             new HelloAdminCompleteRoleActionCommand(
                 accessToken,
@@ -342,6 +347,14 @@ public sealed class UsersModel(
             cancellationToken);
         if (result.IsSuccess)
         {
+            if (result.Value.CurrentActorSessionRevoked)
+            {
+                await ClearLocalSessionAsync();
+                return RedirectToPage(
+                    "/SkopkaHello/Login",
+                    new { rolesChanged = true });
+            }
+
             StatusMessage = text[
                 "Admin.Common.ActionCompleted",
                 text[GetRoleActionTextKey(parsedAction)]];
@@ -356,6 +369,15 @@ public sealed class UsersModel(
 
         if (IsCommittedSessionCleanupFailure(result.Errors))
         {
+            if (parsedAction == HelloAdminRoleAction.Remove
+                && currentUser?.UserId == userId)
+            {
+                await ClearLocalSessionAsync();
+                return RedirectToPage(
+                    "/SkopkaHello/Login",
+                    new { rolesChangedSessionCleanup = true });
+            }
+
             StatusMessage = string.Join(
                 " ",
                 result.Errors.Select(error =>
@@ -380,6 +402,13 @@ public sealed class UsersModel(
             DeliveryChannel: null);
         await LoadUsersAsync(accessToken, cancellationToken);
         return Page();
+    }
+
+    private async Task ClearLocalSessionAsync()
+    {
+        sessionCookies.DeleteSessionCookies(HttpContext);
+        await HttpContext.SignOutAsync(
+            HelloUiDefaults.AuthenticationScheme);
     }
 
     public static string GetActionSlug(HelloAdminUserAction action)

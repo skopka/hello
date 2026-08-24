@@ -53,17 +53,29 @@ public sealed class HelloServerPersistenceTests
         await database.Database.MigrateAsync();
         Assert.Empty(await database.Database.GetPendingMigrationsAsync());
 
+        var applications = scope.ServiceProvider.GetRequiredService<
+            IOpenIddictApplicationManager>();
+        await applications.CreateAsync(
+            new OpenIddictApplicationDescriptor
+            {
+                ClientId = "removed-postgres-client",
+                ClientType = OpenIddictConstants.ClientTypes.Public,
+                ConsentType = OpenIddictConstants.ConsentTypes.Implicit,
+                DisplayName = "Removed PostgreSQL client",
+            });
+
         var clients = scope.ServiceProvider.GetRequiredService<
             IHelloAuthorizationClientSynchronizer>();
         await clients.SynchronizeAsync(CancellationToken.None);
-        var applications = scope.ServiceProvider.GetRequiredService<
-            IOpenIddictApplicationManager>();
         var application = await applications.FindByClientIdAsync(
             "postgres-native");
         Assert.NotNull(application);
         Assert.Equal(
             OpenIddictConstants.ClientTypes.Public,
             await applications.GetClientTypeAsync(application));
+        Assert.Null(
+            await applications.FindByClientIdAsync(
+                "removed-postgres-client"));
 
         await using var dataSource = NpgsqlDataSource.Create(
             connectionString);

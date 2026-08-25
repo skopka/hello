@@ -5,7 +5,9 @@ namespace Skopka.Hello.UI;
 internal sealed class HelloUiPageRouteModelConvention(
     HelloUiRoutePaths routes,
     bool selfRegistrationEnabled,
-    HelloUiPages enabledPages)
+    HelloUiPages enabledPages,
+    bool emailConfirmationEnabled,
+    bool phoneConfirmationEnabled)
     : IPageRouteModelConvention
 {
     private readonly Dictionary<string, string?> pageRoutes =
@@ -42,24 +44,28 @@ internal sealed class HelloUiPageRouteModelConvention(
                 IsEnabled(
                     enabledPages,
                     HelloUiPages.ContactConfirmation)
+                && emailConfirmationEnabled
                     ? routes.ResendConfirmationPath
                     : null,
             ["/Pages/SkopkaHello/ResendPhoneConfirmation.cshtml"] =
                 IsEnabled(
                     enabledPages,
                     HelloUiPages.ContactConfirmation)
+                && phoneConfirmationEnabled
                     ? routes.ResendPhoneConfirmationPath
                     : null,
             ["/Pages/SkopkaHello/ConfirmEmail.cshtml"] =
                 IsEnabled(
                     enabledPages,
                     HelloUiPages.ContactConfirmation)
+                && emailConfirmationEnabled
                     ? routes.ConfirmEmailPath
                     : null,
             ["/Pages/SkopkaHello/ConfirmPhone.cshtml"] =
                 IsEnabled(
                     enabledPages,
                     HelloUiPages.ContactConfirmation)
+                && phoneConfirmationEnabled
                     ? routes.ConfirmPhonePath
                     : null,
             ["/Pages/SkopkaHello/External/Complete.cshtml"] =

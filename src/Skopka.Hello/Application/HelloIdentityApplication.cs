@@ -63,9 +63,10 @@ internal sealed class HelloIdentityApplication<TProfile>(
                     HelloRegistrationErrors.Disabled());
         }
 
-        if (string.IsNullOrWhiteSpace(command.UserName)
-            && string.IsNullOrWhiteSpace(command.Email)
-            && string.IsNullOrWhiteSpace(command.Phone))
+        if (!HasConfiguredPasswordLoginHandle(
+                command.UserName,
+                command.Email,
+                command.Phone))
         {
             return OperationResultFactory.Fail<
                 HelloAccount<TProfile>>(
@@ -135,7 +136,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
 
         var authenticated = await authentication.AuthenticateAsync(
             new AuthenticatePasswordCommand(
-                PasswordLoginHandle.Automatic,
+                options.PasswordLoginHandle,
                 command.Login,
                 command.Password,
                 command.ClientKey),
@@ -1104,13 +1105,16 @@ internal sealed class HelloIdentityApplication<TProfile>(
             return OperationResultFactory.Fail(snapshot.Errors);
         }
 
-        if (!HasLocalHandle(user))
+        if (!HasConfiguredPasswordLoginHandle(
+                user.UserName,
+                user.Email,
+                user.Phone))
         {
             return OperationResultFactory.Fail(
                 new Error(
                     HelloAccountSecurityActionErrorCodes
                         .PasswordLoginHandleRequired,
-                    "Add a user name, email address or phone number before setting a password.",
+                    "Add the configured password login handle before setting a password.",
                     ErrorType.Conflict));
         }
 
@@ -1261,10 +1265,24 @@ internal sealed class HelloIdentityApplication<TProfile>(
         return qrCode.GetGraphic(4);
     }
 
-    private static bool HasLocalHandle(IdentityUser<TProfile> user)
-        => !string.IsNullOrWhiteSpace(user.UserName)
-            || !string.IsNullOrWhiteSpace(user.Email)
-            || !string.IsNullOrWhiteSpace(user.Phone);
+    private bool HasConfiguredPasswordLoginHandle(
+        string? userName,
+        string? email,
+        string? phone)
+        => options.PasswordLoginHandle switch
+        {
+            PasswordLoginHandle.UserName =>
+                !string.IsNullOrWhiteSpace(userName),
+            PasswordLoginHandle.Email =>
+                !string.IsNullOrWhiteSpace(email),
+            PasswordLoginHandle.Phone =>
+                !string.IsNullOrWhiteSpace(phone),
+            PasswordLoginHandle.Automatic =>
+                !string.IsNullOrWhiteSpace(userName)
+                || !string.IsNullOrWhiteSpace(email)
+                || !string.IsNullOrWhiteSpace(phone),
+            _ => false,
+        };
 
     private static OperationResult SignInMethodsUnavailable()
         => OperationResultFactory.Fail(

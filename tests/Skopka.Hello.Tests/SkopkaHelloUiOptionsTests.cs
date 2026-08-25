@@ -28,6 +28,41 @@ public sealed class SkopkaHelloUiOptionsTests
         Assert.Equal(
             HelloUiRegistrationFieldMode.Required,
             options.Registration.DisplayName);
+        Assert.Equal(
+            HelloUiAccountFieldMode.Editable,
+            options.Account.Phone);
+        Assert.True(options.ContactConfirmation.EmailEnabled);
+        Assert.True(options.ContactConfirmation.PhoneEnabled);
+    }
+
+    [Fact]
+    public void TrustedEmailDomainSkipsUiConfirmation()
+    {
+        var options = new SkopkaHelloUiOptions();
+        options.ContactConfirmation.TrustedEmailDomains.Add(
+            "skopi.club");
+
+        options.Validate();
+
+        Assert.False(options.ContactConfirmation
+            .IsEmailConfirmationRequired("owner@skopi.club"));
+        Assert.False(options.ContactConfirmation
+            .IsEmailConfirmationRequired("OWNER@SKOPI.CLUB"));
+        Assert.True(options.ContactConfirmation
+            .IsEmailConfirmationRequired("owner@example.test"));
+    }
+
+    [Theory]
+    [InlineData("@skopi.club")]
+    [InlineData(" skopi.club")]
+    [InlineData("skopi.club ")]
+    [InlineData("not a domain")]
+    public void ValidateRejectsInvalidTrustedEmailDomain(string domain)
+    {
+        var options = new SkopkaHelloUiOptions();
+        options.ContactConfirmation.TrustedEmailDomains.Add(domain);
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
     }
 
     [Fact]

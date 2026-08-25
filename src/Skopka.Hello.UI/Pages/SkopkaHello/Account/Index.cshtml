@@ -30,47 +30,86 @@
         </p>
     }
 
-    <dl class="hello-details">
-        <div>
-            <dt>@Text["Account.UserId"]</dt>
-            <dd><code>@Model.UserId</code></dd>
-        </div>
-        <div>
-            <dt>@Text["Field.UserName"]</dt>
-            <dd>@(Model.UserName ?? Text["Common.NotSet"])</dd>
-        </div>
-        <div>
-            <dt>@Text["Field.Email"]</dt>
-            <dd>@(Model.Email ?? Text["Common.NotSet"])</dd>
-        </div>
-        <div>
-            <dt>@Text["Account.EmailStatus"]</dt>
-            <dd>@(Model.EmailConfirmed
-                ? Text["Common.Confirmed"]
-                : Text["Common.NotConfirmed"])</dd>
-        </div>
-        <div>
-            <dt>@Text["Field.Phone"]</dt>
-            <dd>@(Model.Phone ?? Text["Common.NotSet"])</dd>
-        </div>
-        <div>
-            <dt>@Text["Account.PhoneStatus"]</dt>
-            <dd>@(Model.PhoneConfirmed
-                ? Text["Common.Confirmed"]
-                : Text["Common.NotConfirmed"])</dd>
-        </div>
-    </dl>
+    @if (UiOptions.Account.ShowUserId
+        || HelloUiAccountOptions.IsVisible(UiOptions.Account.UserName)
+        || HelloUiAccountOptions.IsVisible(UiOptions.Account.Email)
+        || HelloUiAccountOptions.IsVisible(UiOptions.Account.Phone))
+    {
+        <dl class="hello-details">
+            @if (UiOptions.Account.ShowUserId)
+            {
+                <div>
+                    <dt>@Text["Account.UserId"]</dt>
+                    <dd><code>@Model.UserId</code></dd>
+                </div>
+            }
+            @if (HelloUiAccountOptions.IsVisible(UiOptions.Account.UserName))
+            {
+                <div>
+                    <dt>@(UiOptions.Account.IsOnlyUserNameEditable
+                        ? Text["Field.LoginName"]
+                        : Text["Field.UserName"])</dt>
+                    <dd>@(Model.UserName ?? Text["Common.NotSet"])</dd>
+                </div>
+            }
+            @if (HelloUiAccountOptions.IsVisible(UiOptions.Account.Email))
+            {
+                <div>
+                    <dt>@Text["Field.Email"]</dt>
+                    <dd>@(Model.Email ?? Text["Common.NotSet"])</dd>
+                </div>
+            }
+            @if (Model.EmailConfirmationApplicable)
+            {
+                <div>
+                    <dt>@Text["Account.EmailStatus"]</dt>
+                    <dd>@(Model.EmailConfirmed
+                        ? Text["Common.Confirmed"]
+                        : Text["Common.NotConfirmed"])</dd>
+                </div>
+            }
+            @if (HelloUiAccountOptions.IsVisible(UiOptions.Account.Phone))
+            {
+                <div>
+                    <dt>@Text["Field.Phone"]</dt>
+                    <dd>@(Model.Phone ?? Text["Common.NotSet"])</dd>
+                </div>
+                @if (UiOptions.ContactConfirmation.PhoneEnabled)
+                {
+                    <div>
+                        <dt>@Text["Account.PhoneStatus"]</dt>
+                        <dd>@(Model.PhoneConfirmed
+                            ? Text["Common.Confirmed"]
+                            : Text["Common.NotConfirmed"])</dd>
+                    </div>
+                }
+            }
+        </dl>
+    }
 
-    <h2>@Text["Account.SignInHandles"]</h2>
-    <p class="hello-muted">
-        @Text["Account.SignInHandlesDescription"]
-    </p>
+    @if (HelloUiAccountOptions.IsEditable(UiOptions.Account.UserName)
+        || HelloUiAccountOptions.IsEditable(UiOptions.Account.Email)
+        || HelloUiAccountOptions.IsEditable(UiOptions.Account.Phone))
+    {
+        <h2>@(UiOptions.Account.IsOnlyUserNameEditable
+            ? Text["Account.LoginName"]
+            : Text["Account.SignInHandles"])</h2>
+        <p class="hello-muted">
+            @(UiOptions.Account.IsOnlyUserNameEditable
+                ? Text["Account.LoginNameDescription"]
+                : Text["Account.SignInHandlesDescription"])
+        </p>
+    }
 
-    <form method="post"
+    @if (HelloUiAccountOptions.IsEditable(UiOptions.Account.UserName))
+    {
+        <form method="post"
           asp-page-handler="ChangeUserName"
           class="hello-form">
         <input asp-for="UserNameInput.ExpectedVersion" type="hidden" />
-        <label asp-for="UserNameInput.UserName">@Text["Field.UserName"]</label>
+        <label asp-for="UserNameInput.UserName">@(UiOptions.Account.IsOnlyUserNameEditable
+            ? Text["Field.LoginName"]
+            : Text["Field.UserName"])</label>
         <input asp-for="UserNameInput.UserName"
                autocomplete="username" />
         <span asp-validation-for="UserNameInput.UserName"
@@ -79,9 +118,12 @@
                 type="submit">
             @Text["Account.ChangeUserName"]
         </button>
-    </form>
+        </form>
+    }
 
-    <form method="post"
+    @if (HelloUiAccountOptions.IsEditable(UiOptions.Account.Email))
+    {
+        <form method="post"
           asp-page-handler="ChangeEmail"
           class="hello-form">
         <input asp-for="EmailInput.ExpectedVersion" type="hidden" />
@@ -93,9 +135,12 @@
                 type="submit">
             @Text["Account.ChangeEmail"]
         </button>
-    </form>
+        </form>
+    }
 
-    <form method="post"
+    @if (HelloUiAccountOptions.IsEditable(UiOptions.Account.Phone))
+    {
+        <form method="post"
           asp-page-handler="ChangePhone"
           class="hello-form">
         <input asp-for="PhoneInput.ExpectedVersion" type="hidden" />
@@ -107,7 +152,8 @@
                 type="submit">
             @Text["Account.ChangePhone"]
         </button>
-    </form>
+        </form>
+    }
 
     @if (Model.ProfileFields.Count > 0)
     {
@@ -177,8 +223,7 @@
             </button>
         </form>
         @if ((UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0
-            && !Model.EmailConfirmed
-            && Model.Email is not null)
+            && Model.EmailConfirmationRequired)
         {
             <form method="post"
                   asp-page-handler="RequestEmailConfirmation">
@@ -189,8 +234,7 @@
             </form>
         }
         @if ((UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0
-            && !Model.PhoneConfirmed
-            && Model.Phone is not null)
+            && Model.PhoneConfirmationRequired)
         {
             <form method="post"
                   asp-page-handler="RequestPhoneConfirmation">

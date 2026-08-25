@@ -37,12 +37,19 @@ public sealed class SkopkaHelloUiOptions
 
     public HelloUiRegistrationOptions Registration { get; } = new();
 
+    public HelloUiAccountOptions Account { get; } = new();
+
+    public HelloUiContactConfirmationOptions ContactConfirmation { get; } =
+        new();
+
     public SkopkaHelloUiLocalizationOptions Localization { get; } =
         new();
 
     public void Validate()
     {
         Registration.Validate();
+        Account.Validate();
+        ContactConfirmation.Validate();
         Localization.Validate();
 
         if ((EnabledPages & ~HelloUiPages.All) != 0)

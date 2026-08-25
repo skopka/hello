@@ -288,6 +288,43 @@ public sealed class HelloRegistrationPolicyTests
             details.Fields.Keys.Order(StringComparer.Ordinal));
     }
 
+    [Fact]
+    public async Task PasswordRegistrationRequiresConfiguredUserNameHandle()
+    {
+        var options = new SkopkaHelloOptions
+        {
+            PasswordLoginHandle = Skopka.Identity.Authentication
+                .PasswordLoginHandle.UserName,
+        };
+        options.Validate();
+        var application = new HelloIdentityApplication<TestProfile>(
+            registration: new UnexpectedRegistrationService(),
+            authentication: null!,
+            sessions: null!,
+            credentials: null!,
+            users: null!,
+            stepUp: null!,
+            verification: null!,
+            anonymousMessageRequester: null!,
+            messageSender: CreateMessageSender(),
+            deliveryOptions: new HelloDeliveryOptions(),
+            options: options);
+
+        var result = await application.RegisterAsync(
+            new HelloRegisterCommand<TestProfile>(
+                null,
+                "alice@example.test",
+                null,
+                new TestProfile("Alice"),
+                "not-used"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            IdentityErrorCodes.Validation,
+            Assert.Single(result.Errors).Code);
+    }
+
     private static SkopkaHelloOptions CreateDisabledOptions()
     {
         var options = new SkopkaHelloOptions

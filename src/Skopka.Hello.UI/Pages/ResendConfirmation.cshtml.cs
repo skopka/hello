@@ -6,6 +6,7 @@ namespace Skopka.Hello.UI.Pages;
 
 public sealed class ResendConfirmationModel(
     IHelloUiApplication application,
+    SkopkaHelloUiOptions uiOptions,
     IHelloUiLocalizer text)
     : PageModel
 {
@@ -23,6 +24,13 @@ public sealed class ResendConfirmationModel(
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
         if (!ModelState.IsValid)
         {
+            return Page();
+        }
+
+        if (!uiOptions.ContactConfirmation
+                .IsEmailConfirmationRequired(Input.Email))
+        {
+            Sent = true;
             return Page();
         }
 

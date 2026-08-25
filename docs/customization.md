@@ -176,6 +176,43 @@ SkopkaHello__Ui__Registration__UserName=Hidden
 SkopkaHello__Ui__Registration__Phone=Hidden
 ```
 
+### Password login and account fields
+
+Password login resolves email, phone or user name by default. A host with one
+canonical login name can require that exact handle in the shared application
+policy:
+
+```csharp
+services.AddSkopkaHello<MyProfile>(options =>
+    options.PasswordLoginHandle = PasswordLoginHandle.UserName);
+```
+
+The setting applies to API and Razor login, password registration, and the
+precondition for adding a password. Email and phone can still be retained as
+contact data without becoming password login identifiers.
+
+Account-page fields can be independently editable, read-only or hidden.
+Confirmation channels can also be removed from the UI. Trusted email domains
+do not receive an email-confirmation prompt:
+
+```csharp
+services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
+{
+    options.Account.ShowUserId = false;
+    options.Account.UserName = HelloUiAccountFieldMode.Editable;
+    options.Account.Email = HelloUiAccountFieldMode.ReadOnly;
+    options.Account.Phone = HelloUiAccountFieldMode.Hidden;
+
+    options.ContactConfirmation.PhoneEnabled = false;
+    options.ContactConfirmation.TrustedEmailDomains.Add("example.test");
+});
+```
+
+Disabled confirmation channels have no Razor selectors or links. Trusted
+domains are an account-UI policy: hosts that create or update those addresses
+outside Hello remain responsible for setting the persisted confirmation state
+when downstream claims depend on it.
+
 These options intentionally govern the packaged Razor fields. The typed
 headless `POST /auth/register` contract remains host-facing and accepts the
 three optional identifiers subject to the shared Identity rule that at least

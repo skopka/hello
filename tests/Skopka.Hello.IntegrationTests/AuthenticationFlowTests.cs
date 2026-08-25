@@ -18,6 +18,7 @@ using Skopka.Hello.Admin;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.UI;
 using Skopka.Identity;
+using Skopka.Identity.Authentication;
 using Skopka.Identity.Ef.PostgreSql;
 using Skopka.Identity.Errors;
 using Skopka.Identity.Roles;
@@ -43,6 +44,50 @@ public sealed class AuthenticationFlowTests
         "Integration.Ui.Administrator";
     private const string UiNoticeText =
         "Test stand: <data> may be \"deleted\".";
+
+    [Fact]
+    public async Task ExplicitUserNameLoginRejectsEmailPasswordLogin()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            configureHello: options =>
+                options.PasswordLoginHandle =
+                    PasswordLoginHandle.UserName);
+        using var client = app.CreateClient();
+        const string password = "correct horse battery staple";
+
+        using var registration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "login-alice",
+                email = "login-alice@example.test",
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Login Alice",
+                    locale = "en",
+                },
+                password,
+            });
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+
+        using var emailLogin = await client.PostAsJsonAsync(
+            "/auth/login",
+            new
+            {
+                login = "login-alice@example.test",
+                password,
+            });
+        Assert.Equal(HttpStatusCode.Unauthorized, emailLogin.StatusCode);
+
+        _ = await LoginAsync(client, "login-alice", password);
+    }
 
     [Fact]
     public async Task AdministratorCanQueryAndOtpBlockUser()
@@ -3415,7 +3460,8 @@ public sealed class AuthenticationFlowTests
             HelloDeliveryChannel verificationChannel =
                 HelloDeliveryChannel.Email,
             Action<SkopkaHelloUiOptions>? configureUi = null,
-            Action<SkopkaHelloAdminOptions>? configureAdmin = null)
+            Action<SkopkaHelloAdminOptions>? configureAdmin = null,
+            Action<SkopkaHelloOptions>? configureHello = null)
         {
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions
@@ -3441,6 +3487,7 @@ public sealed class AuthenticationFlowTests
                     options.UiPathPrefix = uiPathPrefix;
                     options.SelfRegistrationEnabled =
                         selfRegistrationEnabled;
+                    configureHello?.Invoke(options);
                 })
                 .ConfigurePasswordPolicy(options =>
                 {

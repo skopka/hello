@@ -107,7 +107,10 @@
              class="hello-validation"
              role="alert"></div>
 
-        <label asp-for="Input.Login">@Text["Field.Login"]</label>
+        <label asp-for="Input.Login">@(HelloOptions.PasswordLoginHandle
+            == Skopka.Identity.Authentication.PasswordLoginHandle.UserName
+                ? Text["Field.LoginName"]
+                : Text["Field.Login"])</label>
         <input asp-for="Input.Login" autocomplete="username" />
         <span asp-validation-for="Input.Login"
               class="hello-field-error"></span>
@@ -133,7 +136,9 @@
 
     @if ((HelloOptions.SelfRegistrationEnabled
             && (UiOptions.EnabledPages & HelloUiPages.Registration) != 0)
-        || (UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0)
+        || (UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0
+            && (UiOptions.ContactConfirmation.EmailEnabled
+                || UiOptions.ContactConfirmation.PhoneEnabled))
     {
         <p class="hello-card-footer">
             @if (HelloOptions.SelfRegistrationEnabled
@@ -147,12 +152,20 @@
                     <br />
                 }
             }
-            @if ((UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0)
+            @if ((UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0
+                && UiOptions.ContactConfirmation.EmailEnabled)
             {
                 <a asp-page="/SkopkaHello/ResendConfirmation">
                     @Text["Login.ResendEmailConfirmation"]
                 </a>
-                <br />
+                @if (UiOptions.ContactConfirmation.PhoneEnabled)
+                {
+                    <br />
+                }
+            }
+            @if ((UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0
+                && UiOptions.ContactConfirmation.PhoneEnabled)
+            {
                 <a asp-page="/SkopkaHello/ResendPhoneConfirmation">
                     @Text["Login.ResendPhoneConfirmation"]
                 </a>

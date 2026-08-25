@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Skopka.Identity.Authentication;
 
 namespace Skopka.Hello;
 
@@ -10,6 +11,9 @@ public sealed class SkopkaHelloOptions
         new();
 
     public bool SelfRegistrationEnabled { get; set; } = true;
+
+    public PasswordLoginHandle PasswordLoginHandle { get; set; } =
+        Skopka.Identity.Authentication.PasswordLoginHandle.Automatic;
 
     public int RegistrationClientPermitLimit { get; set; } = 5;
 
@@ -48,6 +52,12 @@ public sealed class SkopkaHelloOptions
     public void Validate()
     {
         Totp.Validate();
+        if (!Enum.IsDefined(PasswordLoginHandle))
+        {
+            throw new InvalidOperationException(
+                "PasswordLoginHandle contains an unsupported value.");
+        }
+
         HelloUiRoutePaths.ValidatePathPrefix(UiPathPrefix);
         ArgumentException.ThrowIfNullOrWhiteSpace(RefreshCookieName);
         ArgumentException.ThrowIfNullOrWhiteSpace(AntiforgeryCookieName);

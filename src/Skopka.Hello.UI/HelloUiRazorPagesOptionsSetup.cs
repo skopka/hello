@@ -21,7 +21,9 @@ internal sealed class HelloUiRazorPagesOptionsSetup(
             new HelloUiPageRouteModelConvention(
                 routes,
                 helloOptions.SelfRegistrationEnabled,
-                uiOptions.EnabledPages));
+                uiOptions.EnabledPages,
+                uiOptions.ContactConfirmation.EmailEnabled,
+                uiOptions.ContactConfirmation.PhoneEnabled));
         options.Conventions.Add(
             new HelloUiPageApplicationModelConvention());
     }

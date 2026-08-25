@@ -33,6 +33,12 @@ public sealed class AccountModel(
 
     public bool PhoneConfirmationRequested { get; private set; }
 
+    public bool EmailConfirmationRequired { get; private set; }
+
+    public bool EmailConfirmationApplicable { get; private set; }
+
+    public bool PhoneConfirmationRequired { get; private set; }
+
     public IReadOnlyList<HelloUiProfileField> ProfileFields
     {
         get;
@@ -67,6 +73,11 @@ public sealed class AccountModel(
     {
         UserNameInput = input;
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (!HelloUiAccountOptions.IsEditable(uiOptions.Account.UserName))
+        {
+            return NotFound();
+        }
+
         if (!ModelState.IsValid)
         {
             return await LoadAccountAsync(
@@ -90,6 +101,11 @@ public sealed class AccountModel(
     {
         EmailInput = input;
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (!HelloUiAccountOptions.IsEditable(uiOptions.Account.Email))
+        {
+            return NotFound();
+        }
+
         if (!ModelState.IsValid)
         {
             return await LoadAccountAsync(
@@ -113,6 +129,11 @@ public sealed class AccountModel(
     {
         PhoneInput = input;
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (!HelloUiAccountOptions.IsEditable(uiOptions.Account.Phone))
+        {
+            return NotFound();
+        }
+
         if (!ModelState.IsValid)
         {
             return await LoadAccountAsync(
@@ -149,7 +170,8 @@ public sealed class AccountModel(
         OnPostRequestEmailConfirmationAsync(
             CancellationToken cancellationToken)
     {
-        if (!uiOptions.IsEnabled(HelloUiPages.ContactConfirmation))
+        if (!uiOptions.IsEnabled(HelloUiPages.ContactConfirmation)
+            || !uiOptions.ContactConfirmation.EmailEnabled)
         {
             return NotFound();
         }
@@ -168,6 +190,12 @@ public sealed class AccountModel(
                 string.Empty,
                 text["Account.NoEmailAddress"]);
             return Page();
+        }
+
+        if (!uiOptions.ContactConfirmation
+                .IsEmailConfirmationRequired(Email))
+        {
+            return NotFound();
         }
 
         var deliveryAvailable = messageSender.CheckAvailability(
@@ -203,7 +231,8 @@ public sealed class AccountModel(
         OnPostRequestPhoneConfirmationAsync(
             CancellationToken cancellationToken)
     {
-        if (!uiOptions.IsEnabled(HelloUiPages.ContactConfirmation))
+        if (!uiOptions.IsEnabled(HelloUiPages.ContactConfirmation)
+            || !uiOptions.ContactConfirmation.PhoneEnabled)
         {
             return NotFound();
         }
@@ -334,6 +363,13 @@ public sealed class AccountModel(
         EmailConfirmed = account.EmailConfirmed;
         Phone = account.Phone;
         PhoneConfirmed = account.PhoneConfirmed;
+        EmailConfirmationApplicable = uiOptions.ContactConfirmation
+            .IsEmailConfirmationRequired(Email);
+        EmailConfirmationRequired = !EmailConfirmed
+            && EmailConfirmationApplicable;
+        PhoneConfirmationRequired = !PhoneConfirmed
+            && uiOptions.ContactConfirmation.PhoneEnabled
+            && Phone is not null;
 
         UserNameInput.ExpectedVersion = account.Version;
         EmailInput.ExpectedVersion = account.Version;

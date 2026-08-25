@@ -1,3 +1,5 @@
+using Skopka.Identity.Authentication;
+
 namespace Skopka.Hello.Tests;
 
 public sealed class SkopkaHelloOptionsTests
@@ -10,7 +12,36 @@ public sealed class SkopkaHelloOptionsTests
         options.Validate();
 
         Assert.True(options.SelfRegistrationEnabled);
+        Assert.Equal(
+            PasswordLoginHandle.Automatic,
+            options.PasswordLoginHandle);
         Assert.Equal("/hello", options.UiPathPrefix);
+    }
+
+    [Fact]
+    public void ValidateAllowsExplicitPasswordLoginHandle()
+    {
+        var options = new SkopkaHelloOptions
+        {
+            PasswordLoginHandle = PasswordLoginHandle.UserName,
+        };
+
+        options.Validate();
+
+        Assert.Equal(
+            PasswordLoginHandle.UserName,
+            options.PasswordLoginHandle);
+    }
+
+    [Fact]
+    public void ValidateRejectsUnsupportedPasswordLoginHandle()
+    {
+        var options = new SkopkaHelloOptions
+        {
+            PasswordLoginHandle = (PasswordLoginHandle)42,
+        };
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
     }
 
     [Theory]

@@ -144,6 +144,24 @@ public sealed class HelloUiRoutingTests
     }
 
     [Fact]
+    public async Task DisabledPhoneConfirmationPublishesNoPhoneUiRoutes()
+    {
+        await using var application = CreateApplication(
+            "/identity",
+            selfRegistrationEnabled: false,
+            ui => ui.ContactConfirmation.PhoneEnabled = false);
+
+        var routes = GetRoutes(application);
+
+        Assert.Contains("/identity/resend-confirmation", routes);
+        Assert.Contains("/identity/confirm-email", routes);
+        Assert.DoesNotContain(
+            "/identity/resend-phone-confirmation",
+            routes);
+        Assert.DoesNotContain("/identity/confirm-phone", routes);
+    }
+
+    [Fact]
     public void RegistrationUiRequiresUrlForCoreConsentPolicy()
     {
         var exception = Assert.Throws<InvalidOperationException>(
@@ -177,7 +195,9 @@ public sealed class HelloUiRoutingTests
         var convention = new HelloUiPageRouteModelConvention(
             new HelloUiRoutePaths("/identity"),
             selfRegistrationEnabled: true,
-            enabledPages: HelloUiPages.All);
+            enabledPages: HelloUiPages.All,
+            emailConfirmationEnabled: true,
+            phoneConfirmationEnabled: true);
         var hostPage = CreatePageRouteModel(
             "/Pages/Index.cshtml",
             "/Index",

@@ -20,6 +20,7 @@
     "Legal.PrivacyPolicy": "Privacy Policy",
 
     "Field.Login": "Email, phone, or user name",
+    "Field.LoginName": "Login",
     "Field.Password": "Password",
     "Field.DisplayName": "Display name",
     "Field.Email": "Email",
@@ -145,6 +146,8 @@
     "Account.PhoneStatus": "Phone status",
     "Account.SignInHandles": "Sign-in handles",
     "Account.SignInHandlesDescription": "Changing an email address or phone number resets its confirmation. Leave an optional value empty to remove it. Password sign-in must retain at least one user name, email address or phone number.",
+    "Account.LoginName": "Login",
+    "Account.LoginNameDescription": "Use this login name when signing in with a password.",
     "Account.ChangeUserName": "Change user name",
     "Account.ChangeEmail": "Change email",
     "Account.ChangePhone": "Change phone",

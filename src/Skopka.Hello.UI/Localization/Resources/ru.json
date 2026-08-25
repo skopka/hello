@@ -20,6 +20,7 @@
     "Legal.PrivacyPolicy": "Политика конфиденциальности",
 
     "Field.Login": "Email, телефон или имя пользователя",
+    "Field.LoginName": "Логин",
     "Field.Password": "Пароль",
     "Field.DisplayName": "Отображаемое имя",
     "Field.Email": "Email",
@@ -145,6 +146,8 @@
     "Account.PhoneStatus": "Статус телефона",
     "Account.SignInHandles": "Идентификаторы входа",
     "Account.SignInHandlesDescription": "Изменение email или телефона сбрасывает их подтверждение. Оставьте необязательное значение пустым, чтобы удалить его. Для входа с паролем необходимо сохранить хотя бы имя пользователя, email или телефон.",
+    "Account.LoginName": "Логин",
+    "Account.LoginNameDescription": "Используйте этот логин для входа с паролем.",
     "Account.ChangeUserName": "Изменить имя пользователя",
     "Account.ChangeEmail": "Изменить email",
     "Account.ChangePhone": "Изменить телефон",

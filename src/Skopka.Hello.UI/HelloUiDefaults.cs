@@ -12,6 +12,12 @@ public static class HelloUiDefaults
 
     public const string AccessTokenName = "access_token";
 
+    public const string BuiltInStylesheetPath =
+        "/_content/Skopka.Hello.UI/css/hello.css";
+
+    public const string DefaultLayoutPath =
+        "/Pages/Shared/_SkopkaHelloLayout.cshtml";
+
     public const string RootPath =
         Skopka.Hello.HelloUiRoutePaths.DefaultPathPrefix;
 

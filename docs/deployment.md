@@ -24,6 +24,9 @@ mapping are not enabled.
 The account UI is served under the startup-configured
 `SkopkaHello:Ui:PathPrefix`, `/hello` by default. The packaged stylesheet is an
 RCL static asset; the mounted custom stylesheet is linked after it.
+An application composing the NuGet packages can set
+`SkopkaHelloUiOptions.LayoutPath` to a compiled host Razor layout; this applies
+to both Hello and Admin pages. The ready Server keeps the packaged layouts.
 Optional `SkopkaHello:Ui:TermsOfServiceUrl` and
 `SkopkaHello:Ui:PrivacyPolicyUrl` values add host-owned legal-document links to
 the footer and required consent checkboxes to both Razor registration forms.

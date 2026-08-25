@@ -194,6 +194,7 @@ route paths:
 services.AddSkopkaHelloUi<Profile, ProfileFactory>(options =>
 {
     options.ApplicationHomeUrl = "https://app.example.com/";
+    options.LayoutPath = "/Pages/Shared/_Layout.cshtml";
     options.NoticeText =
         "Test environment: data may be removed without notice.";
     options.TermsOfServiceUrl = "/terms";
@@ -217,6 +218,12 @@ the application itself.
 Hello page. Null, empty and whitespace-only values preserve the existing
 markup. Razor HTML-encodes the value, and host CSS can target `.hello-notice`.
 The ready Server reads `SkopkaHello:Ui:NoticeText`.
+
+`LayoutPath` places both Hello and Admin Razor page bodies inside a compiled
+host layout. Null preserves the packaged shells. Host layouts own the document
+title, navigation, footer, notices and resource links; use
+`HelloUiDefaults.BuiltInStylesheetPath` for the public `hello.css` URL and keep
+sections that package pages do not declare optional.
 
 `TermsOfServiceUrl` and `PrivacyPolicyUrl` add localized links to the packaged
 footer and a separate required consent checkbox for each configured document

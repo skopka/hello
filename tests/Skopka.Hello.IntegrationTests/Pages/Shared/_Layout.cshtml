@@ -1,7 +1,17 @@
 <!doctype html>
 <html lang="en">
+<head>
+    <title>@ViewData["Title"] · Integration Host</title>
+    <link rel="stylesheet"
+          href="@Skopka.Hello.UI.HelloUiDefaults.BuiltInStylesheetPath" />
+    <link rel="stylesheet"
+          href="@Skopka.Hello.Admin.HelloAdminDefaults.BuiltInStylesheetPath" />
+</head>
 <body>
-    <div id="integration-host-layout">Integration host layout</div>
-    @RenderBody()
+    <header id="integration-host-header">Integration host header</header>
+    <nav id="integration-host-navigation">Integration host navigation</nav>
+    <main id="integration-host-layout">@RenderBody()</main>
+    <footer id="integration-host-footer">Integration host footer</footer>
+    @await RenderSectionAsync("HostOptional", required: false)
 </body>
 </html>

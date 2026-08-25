@@ -99,6 +99,7 @@ Register the Razor Class Library with an application-specific profile factory:
 ```csharp
 services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
 {
+    options.LayoutPath = "/Pages/Shared/_Layout.cshtml";
     options.NoticeText =
         "Test environment: data may be removed without notice.";
     options.CustomCssFilePath = "/themes/custom.css";
@@ -122,13 +123,55 @@ the custom stylesheet present the message as a banner. Hello does not localize
 the value; the host supplies text for its already selected language. The ready
 Server reads the same value from `SkopkaHello:Ui:NoticeText`.
 
-The packaged pages set their layout from
-`Pages/SkopkaHello/_ViewStart.cshtml` and use the absolute path
-`/Pages/Shared/_SkopkaHelloLayout.cshtml`. A host's ordinary
-`Pages/_ViewStart.cshtml` and `Pages/Shared/_Layout.cshtml` therefore do not
-replace the Hello shell. To replace it deliberately, add
-`Pages/Shared/_SkopkaHelloLayout.cshtml` to the host with the same path and
-provide the required body, navigation, logout and localization UI there.
+`LayoutPath` lets the host render packaged pages inside its normal Razor
+shell. The value is a local absolute Razor layout path; the example above
+selects the host's compiled `Pages/Shared/_Layout.cshtml`. Hello and Admin
+pages still set `ViewData["Title"]`, but the selected layout owns `<html>`,
+`<head>`, `<title>`, navigation, notices, footer and every other document-level
+element. The same `LayoutPath` applies to `/hello/*` and to the Admin Razor
+pages composed below that prefix.
+
+`LayoutPath = null` is the compatibility default. Hello then uses
+`/Pages/Shared/_SkopkaHelloLayout.cshtml`, Admin uses its own
+`/Pages/Shared/_AdminLayout.cshtml`, `NoticeText` remains visible, and
+`ApplicationHomeUrl` continues to produce the localized return link. When a
+host layout is selected, it decides whether and where to render equivalent
+navigation or a notice; the packaged layouts are not nested inside it.
+
+A host layout must call `@RenderBody()`. Packaged pages currently declare no
+sections. Any sections required by the host layout must therefore be optional,
+for example `@await RenderSectionAsync("Scripts", required: false)`, unless the
+host supplies them through another convention. Stylesheet, script, icon and
+navigation URLs in the host layout must be root-absolute (or include
+`Context.Request.PathBase`); a relative URL would otherwise resolve below a
+route such as `/hello/login`.
+
+The host is also responsible for linking the styles needed by the packaged
+body. Stable public paths are available instead of duplicating RCL literals:
+
+```cshtml
+@using Skopka.Hello.Admin
+@using Skopka.Hello.UI
+@inject SkopkaHelloUiOptions HelloUi
+
+@if (HelloUi.BuiltInStylesEnabled)
+{
+    <link rel="stylesheet"
+          href="@HelloUiDefaults.BuiltInStylesheetPath" />
+    <link rel="stylesheet"
+          href="@HelloAdminDefaults.BuiltInStylesheetPath" />
+}
+@if (HelloUi.CustomCssFilePath is not null)
+{
+    <link rel="stylesheet" href="@HelloUi.CustomCssRequestPath" />
+}
+```
+
+Admin's packaged Bootstrap paths are also exposed as
+`HelloAdminDefaults.BootstrapStylesheetPath` and
+`HelloAdminDefaults.BootstrapScriptPath`. A host already using Bootstrap may
+prefer its own compatible assets. `NoticeText` remains available for hosts
+that keep the packaged shell.
 
 ### Registration fields
 
@@ -505,6 +548,11 @@ Set `BuiltInStylesEnabled = false` in `AddSkopkaHelloUi` to retain the
 page markup and custom stylesheet without loading the packaged CSS. The ready
 server also accepts
 `SkopkaHello__Customization__BuiltInStylesEnabled=false`.
+
+When `LayoutPath` selects a host layout, that layout owns all stylesheet links.
+It can inject `SkopkaHelloUiOptions` and honor `BuiltInStylesEnabled` as shown
+above. `HelloUiDefaults.BuiltInStylesheetPath` provides the stable public path
+to `hello.css`.
 
 The public custom CSS request URL can be changed with
 `SkopkaHello:Customization:CssRequestPath`. It must be an absolute path without

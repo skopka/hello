@@ -22,6 +22,8 @@ public sealed class SkopkaHelloUiOptions
 
     public bool BuiltInStylesEnabled { get; set; } = true;
 
+    public string? LayoutPath { get; set; }
+
     public HelloUiPages EnabledPages { get; set; } =
         HelloUiPages.All;
 
@@ -105,6 +107,7 @@ public sealed class SkopkaHelloUiOptions
         ValidateLegalDocumentUrl(
             PrivacyPolicyUrl,
             nameof(PrivacyPolicyUrl));
+        ValidateLayoutPath(LayoutPath);
 
         ArgumentException.ThrowIfNullOrWhiteSpace(
             CustomCssRequestPath);
@@ -154,7 +157,7 @@ public sealed class SkopkaHelloUiOptions
         if (UsesReservedNamespace(CustomCssRequestPath)
             || string.Equals(
                 CustomCssRequestPath,
-                "/_content/Skopka.Hello.UI/css/hello.css",
+                HelloUiDefaults.BuiltInStylesheetPath,
                 StringComparison.OrdinalIgnoreCase)
             || routes is not null
             && GetUiRoutes(routes).Contains(
@@ -266,6 +269,23 @@ public sealed class SkopkaHelloUiOptions
         {
             throw new InvalidOperationException(
                 $"{optionName} must be a local absolute path or an absolute HTTPS URL without credentials, a query, a fragment or unsafe path segments.");
+        }
+    }
+
+    private static void ValidateLayoutPath(string? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        if (value == "/"
+            || value.EndsWith('/')
+            || value.IndexOfAny(['{', '}', '*']) >= 0
+            || !IsLocalAbsolutePath(value))
+        {
+            throw new InvalidOperationException(
+                "LayoutPath must be a local absolute Razor layout path without an authority, query, fragment, escaping, whitespace, route syntax or dot segments.");
         }
     }
 

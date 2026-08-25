@@ -1386,6 +1386,116 @@ public sealed class AuthenticationFlowTests
     }
 
     [Fact]
+    public async Task HostLayoutWrapsHelloAndAdminRazorPages()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        const string email = "host-layout-admin@example.test";
+        const string password = "correct horse battery staple";
+        const string packagedNotice =
+            "This notice belongs only to the packaged layout.";
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            configureUi: options =>
+            {
+                options.LayoutPath = "/Pages/Shared/_Layout.cshtml";
+                options.NoticeText = packagedNotice;
+            });
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        var cookies = new Dictionary<string, string>(
+            StringComparer.Ordinal);
+
+        using var loginPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/login",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, loginPage.StatusCode);
+        MergeCookies(cookies, loginPage);
+        var loginHtml = await loginPage.Content.ReadAsStringAsync();
+
+        AssertHostLayout(loginHtml, "Sign in");
+        Assert.Contains(
+            "class=\"hello-card hello-auth-card\"",
+            loginHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            HelloUiDefaults.BuiltInStylesheetPath,
+            loginHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "class=\"hello-header\"",
+            loginHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            packagedNotice,
+            loginHtml,
+            StringComparison.Ordinal);
+
+        using var registration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "host-layout-admin",
+                email,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Host Layout Admin",
+                    locale = "en",
+                },
+                password,
+            });
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+        var administrator = await registration.Content.ReadFromJsonAsync<
+            AccountResponse<IntegrationProfile>>();
+        Assert.NotNull(administrator);
+        await app.GrantAdministratorAsync(administrator.Id);
+
+        var loginToken = ReadInputValue(
+            loginHtml,
+            "__RequestVerificationToken");
+        using var login = await SendFormAsync(
+            client,
+            "/hello/login",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["Input.Login"] = email,
+                ["Input.Password"] = password,
+                ["__RequestVerificationToken"] = loginToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, login.StatusCode);
+        MergeCookies(cookies, login);
+
+        using var usersPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/admin/users",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, usersPage.StatusCode);
+        var usersHtml = await usersPage.Content.ReadAsStringAsync();
+
+        AssertHostLayout(usersHtml, "User administration");
+        Assert.Contains(
+            "class=\"admin-page-header\"",
+            usersHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            HelloAdminDefaults.BuiltInStylesheetPath,
+            usersHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "class=\"admin-topbar",
+            usersHtml,
+            StringComparison.Ordinal);
+
+    }
+
+    [Fact]
     public async Task CompleteRazorUiFlow()
     {
         await using var postgres = new PostgreSqlBuilder(
@@ -3355,6 +3465,43 @@ public sealed class AuthenticationFlowTests
         Assert.DoesNotContain(
             "<data>",
             match.Value,
+            StringComparison.Ordinal);
+    }
+
+    private static void AssertHostLayout(
+        string html,
+        string expectedTitle)
+    {
+        Assert.Equal(
+            1,
+            Regex.Count(
+                html,
+                "<html\\b",
+                RegexOptions.CultureInvariant
+                    | RegexOptions.IgnoreCase));
+        Assert.Contains(
+            "id=\"integration-host-header\"",
+            html,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "id=\"integration-host-navigation\"",
+            html,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "id=\"integration-host-layout\"",
+            html,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "id=\"integration-host-footer\"",
+            html,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            $"<title>{expectedTitle} · Integration Host</title>",
+            html,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Skopka.Hello</title>",
+            html,
             StringComparison.Ordinal);
     }
 

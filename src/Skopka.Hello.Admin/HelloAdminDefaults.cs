@@ -16,4 +16,16 @@ public static class HelloAdminDefaults
     public const string AdministratorRole = "Skopka.Hello.Admin";
 
     public const string DefaultApiPathPrefix = "/admin";
+
+    public const string BuiltInStylesheetPath =
+        "/_content/Skopka.Hello.Admin/css/admin.css";
+
+    public const string BootstrapStylesheetPath =
+        "/_content/Skopka.Hello.Admin/lib/bootstrap/css/bootstrap.min.css";
+
+    public const string BootstrapScriptPath =
+        "/_content/Skopka.Hello.Admin/lib/bootstrap/js/bootstrap.bundle.min.js";
+
+    public const string DefaultLayoutPath =
+        "/Pages/Shared/_AdminLayout.cshtml";
 }

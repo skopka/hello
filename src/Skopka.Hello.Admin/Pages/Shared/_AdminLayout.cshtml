@@ -19,11 +19,11 @@
     {
         <link rel="stylesheet"
               href="@(Context.Request.PathBase
-                  + "/_content/Skopka.Hello.Admin/lib/bootstrap/css/bootstrap.min.css")"
+                  + HelloAdminDefaults.BootstrapStylesheetPath)"
               asp-append-version="true" />
         <link rel="stylesheet"
               href="@(Context.Request.PathBase
-                  + "/_content/Skopka.Hello.Admin/css/admin.css")"
+                  + HelloAdminDefaults.BuiltInStylesheetPath)"
               asp-append-version="true" />
     }
     @if (UiOptions.CustomCssFilePath is not null)
@@ -141,7 +141,7 @@
     }
 
     <script src="@(Context.Request.PathBase
-        + "/_content/Skopka.Hello.Admin/lib/bootstrap/js/bootstrap.bundle.min.js")"
+        + HelloAdminDefaults.BootstrapScriptPath)"
             asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>

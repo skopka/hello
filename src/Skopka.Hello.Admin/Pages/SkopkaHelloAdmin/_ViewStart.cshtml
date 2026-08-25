@@ -1,3 +1,4 @@
+@inject Skopka.Hello.UI.SkopkaHelloUiOptions UiOptions
 @{
-    Layout = "/Pages/Shared/_AdminLayout.cshtml";
+    Layout = UiOptions.LayoutPath ?? HelloAdminDefaults.DefaultLayoutPath;
 }

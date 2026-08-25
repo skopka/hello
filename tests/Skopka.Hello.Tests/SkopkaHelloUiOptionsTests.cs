@@ -20,6 +20,7 @@ public sealed class SkopkaHelloUiOptionsTests
         Assert.Equal(HelloUiPages.All, options.EnabledPages);
         Assert.Null(options.AuthenticatedRedirectPath);
         Assert.Null(options.ApplicationHomeUrl);
+        Assert.Null(options.LayoutPath);
         Assert.Null(options.TermsOfServiceUrl);
         Assert.Null(options.PrivacyPolicyUrl);
         Assert.Equal(
@@ -33,6 +34,51 @@ public sealed class SkopkaHelloUiOptionsTests
             options.Account.Phone);
         Assert.True(options.ContactConfirmation.EmailEnabled);
         Assert.True(options.ContactConfirmation.PhoneEnabled);
+        Assert.Equal(
+            "/_content/Skopka.Hello.UI/css/hello.css",
+            HelloUiDefaults.BuiltInStylesheetPath);
+    }
+
+    [Fact]
+    public void ValidateAllowsAbsoluteHostLayoutPath()
+    {
+        var options = new SkopkaHelloUiOptions
+        {
+            LayoutPath = "/Pages/Shared/_Layout.cshtml",
+        };
+
+        options.Validate();
+
+        Assert.Equal(
+            "/Pages/Shared/_Layout.cshtml",
+            options.LayoutPath);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("Pages/Shared/_Layout.cshtml")]
+    [InlineData("//example.test/_Layout.cshtml")]
+    [InlineData("/Pages/../Shared/_Layout.cshtml")]
+    [InlineData("/Pages/Shared/_Layout.cshtml?theme=host")]
+    [InlineData("/Pages/Shared/_Layout.cshtml#host")]
+    [InlineData("/Pages/%2e%2e/_Layout.cshtml")]
+    [InlineData("/Pages/{tenant}/_Layout.cshtml")]
+    [InlineData("/")]
+    public void ValidateRejectsUnsafeHostLayoutPath(string layoutPath)
+    {
+        var options = new SkopkaHelloUiOptions
+        {
+            LayoutPath = layoutPath,
+        };
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            options.Validate);
+
+        Assert.Contains(
+            nameof(SkopkaHelloUiOptions.LayoutPath),
+            exception.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]

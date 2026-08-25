@@ -21,6 +21,12 @@ if (typeof(IHelloAdminRoleApplication).Assembly
         != typeof(OperationResultProblemMapper).Assembly
     || string.IsNullOrWhiteSpace(
         HelloOidcDefaults.ApiCompletionPath)
+    || !HelloUiDefaults.BuiltInStylesheetPath.StartsWith(
+        "/_content/",
+        StringComparison.Ordinal)
+    || !HelloAdminDefaults.BuiltInStylesheetPath.StartsWith(
+        "/_content/",
+        StringComparison.Ordinal)
     || string.IsNullOrWhiteSpace(
         HelloAdminSecurityEventTypes.RoleCreated)
     || !Enum.IsDefined(HelloAuthorizationAccessTokenFormat.SelfContainedJwt)

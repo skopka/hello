@@ -125,6 +125,12 @@ requires an application restart. Prefixes inside the reserved `/auth`,
 `/signin-skopka-oidc` namespaces are rejected at startup to prevent ambiguous
 routes.
 
+Library hosts can set `SkopkaHelloUiOptions.LayoutPath` to a local absolute
+compiled Razor layout path when Hello and Admin pages should use the host's
+document shell. Null keeps the packaged layouts. The host layout must render
+the body, keep unsupported sections optional and use root-absolute resource
+URLs; see [customization](customization.md#ui-and-styles).
+
 `Ui:Localization:Enabled` enables the packaged English/Russian language
 selector. `Ui:Localization:DefaultCulture` supplies the fallback. Additional
 cultures and server-side JSON dictionaries can be configured through

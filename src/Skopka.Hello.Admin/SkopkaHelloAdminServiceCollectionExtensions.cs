@@ -31,6 +31,8 @@ public static class SkopkaHelloAdminServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.Admin.IHelloAdminRoleApplication,
             Skopka.Hello.Admin.HelloAdminRoleApplication<TProfile>>();
+        services.TryAddSingleton<
+            Skopka.Hello.Admin.HelloAdminRoleRulesEvaluator>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<
                 Skopka.Hello.IHelloStepUpRequirementProvider<TProfile>,
@@ -45,6 +47,22 @@ public static class SkopkaHelloAdminServiceCollectionExtensions
         services.AddSkopkaHelloCurrentRolePolicy<TProfile>(
             options.DeletePolicyName,
             options.DeleteRoleName);
+        services.TryAddEnumerable(
+            ServiceDescriptor.Scoped<
+                Microsoft.AspNetCore.Authorization.IAuthorizationHandler,
+                Skopka.Hello.Admin
+                    .HelloAdminRoleAssignmentHandler<TProfile>>());
+        services
+            .AddAuthorizationBuilder()
+            .AddPolicy(
+                options.RoleAssignmentPolicyName,
+                policy =>
+                {
+                    policy.RequireAuthenticatedUser();
+                    policy.AddRequirements(
+                        new Skopka.Hello.Admin
+                            .HelloAdminRoleAssignmentRequirement());
+                });
 
         if (options.RazorUiEnabled)
         {

@@ -108,10 +108,10 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
         CancellationToken cancellationToken)
     {
         ApplySensitiveResponseHeaders(httpContext);
-        if (!await IsAuthorizedAsync(
+        if (!await CanReadAssignmentCatalogAsync(
                 authorization,
                 httpContext,
-                options.ReadPolicyName))
+                options))
         {
             return TypedResults.Forbid();
         }
@@ -221,10 +221,10 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
         CancellationToken cancellationToken)
     {
         ApplySensitiveResponseHeaders(httpContext);
-        if (!await IsAuthorizedAsync(
+        if (!await CanReadAssignmentCatalogAsync(
                 authorization,
                 httpContext,
-                options.ReadPolicyName))
+                options))
         {
             return TypedResults.Forbid();
         }
@@ -270,10 +270,10 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
         CancellationToken cancellationToken)
     {
         ApplySensitiveResponseHeaders(httpContext);
-        if (!await IsAuthorizedAsync(
+        if (!await CanReadAssignmentCatalogAsync(
                 authorization,
                 httpContext,
-                options.ReadPolicyName))
+                options))
         {
             return TypedResults.Forbid();
         }
@@ -315,10 +315,14 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
                 "The role action is invalid.");
         }
 
+        var policyName = parsedAction is HelloAdminRoleAction.Assign
+                or HelloAdminRoleAction.Remove
+            ? options.RoleAssignmentPolicyName
+            : options.DeletePolicyName;
         if (!await IsAuthorizedAsync(
                 authorization,
                 httpContext,
-                options.DeletePolicyName))
+                policyName))
         {
             return TypedResults.Forbid();
         }
@@ -374,10 +378,14 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
                 "The role action is invalid.");
         }
 
+        var policyName = parsedAction is HelloAdminRoleAction.Assign
+                or HelloAdminRoleAction.Remove
+            ? options.RoleAssignmentPolicyName
+            : options.DeletePolicyName;
         if (!await IsAuthorizedAsync(
                 authorization,
                 httpContext,
-                options.DeletePolicyName))
+                policyName))
         {
             return TypedResults.Forbid();
         }
@@ -483,6 +491,19 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
             httpContext.User,
             httpContext,
             policyName)).Succeeded;
+
+    private static async Task<bool> CanReadAssignmentCatalogAsync(
+        IAuthorizationService authorization,
+        HttpContext httpContext,
+        SkopkaHelloAdminOptions options)
+        => await IsAuthorizedAsync(
+                authorization,
+                httpContext,
+                options.ReadPolicyName)
+            || await IsAuthorizedAsync(
+                authorization,
+                httpContext,
+                options.RoleAssignmentPolicyName);
 
     private static string? ReadBearerToken(HttpContext httpContext)
     {

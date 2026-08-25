@@ -24,7 +24,17 @@ services.AddSkopkaHelloAdmin<MyProfile, MyAdminProfileProjector>(options =>
     options.ReadRoleName = "Skopka.Hello.Admin";
     options.ManageRoleName = "Skopka.Hello.Admin";
     options.DeleteRoleName = "Skopka.Hello.Admin";
-    options.ProtectedRoleNames = ["iq-author", "iq-teacher"];
+    options.Roles.Protect(
+        "iq-author",
+        HelloRoleProtection.Retained);
+    options.Roles.Protect(
+        "iq-teacher",
+        HelloRoleProtection.Structural);
+    options.Roles.GrantableBy(
+        "iq-teacher",
+        ["Skopka.Hello.Admin", "iq-manager"]);
+    options.RoleAssignment.RoleName = "iq-manager";
+    options.RoleAssignment.Assignable = ["iq-author", "iq-teacher"];
     options.RoleManagementEnabled = false;
     options.RevokeSessionsOnRoleGrant = false;
 });
@@ -66,7 +76,8 @@ Authentication, authorization and step-up are three separate gates:
 
 1. API routes require bearer authentication; the Razor page requires the
    protected Hello UI cookie.
-2. Every handler explicitly evaluates a read, manage or delete policy. The
+2. Every handler explicitly evaluates a read, manage, delete or role-assignment
+   policy. The
    built-in policy handler looks up current role membership through
    `IIdentityRoleService<TProfile>` instead of trusting a possibly stale role
    claim.
@@ -96,10 +107,16 @@ The ready Server uses these independent policies and role settings:
       "ReadPolicyName": "Skopka.Hello.Admin.Read",
       "ManagePolicyName": "Skopka.Hello.Admin.Manage",
       "DeletePolicyName": "Skopka.Hello.Admin.Delete",
+      "RoleAssignmentPolicyName": "Skopka.Hello.Admin.RoleAssignment",
       "ReadRoleName": "Skopka.Hello.Admin",
       "ManageRoleName": "Skopka.Hello.Admin",
       "DeleteRoleName": "Skopka.Hello.Admin",
       "ProtectedRoleNames": [],
+      "RoleAssignment": {
+        "RoleName": null,
+        "Assignable": [],
+        "NotAssignable": []
+      },
       "RoleManagementEnabled": true,
       "RevokeSessionsOnRoleGrant": true
     }
@@ -112,9 +129,12 @@ must be separated. Policy names must be distinct. The Razor route is composed
 from the Hello UI prefix plus the admin API prefix, so the defaults expose API
 under `/admin` and UI under `/hello/admin/users` and `/hello/admin/roles`.
 The protected `/hello/admin` entry route redirects to the user list.
-Every role mutation, including membership assignment and removal, requires the
-highest `DeletePolicyName`. This prevents an administrator limited to ordinary
-user management from granting themselves a higher authorization role.
+Role catalog creation, update and deletion require `DeletePolicyName`.
+Membership assignment and removal require `RoleAssignmentPolicyName`; by
+default that policy accepts the configured delete role, preserving the old
+authorization behavior. A host can additionally set
+`RoleAssignment.RoleName` to delegate only membership work without granting
+user management or role catalog mutation.
 The user page loads the bounded role catalog and offers unassigned roles by
 name while posting their identifiers through the existing membership and
 step-up contract. When more than 100 roles exist, the field keeps catalog
@@ -197,21 +217,54 @@ and optional `parentId`; update additionally requires `roleId` and
 `expectedVersion`; delete requires `roleId` and `expectedVersion`; membership
 actions require `roleId` and `targetUserId`.
 
-Roles named by `ReadRoleName`, `ManageRoleName`, `DeleteRoleName` or
-`ProtectedRoleNames` cannot be renamed or deleted through this surface. Name
-matching trims configured values and ignores case. An administrator also
-cannot remove their own protected role. Assigning protected roles and removing
-them from other users remain available.
+Protect application-defined role names with `Roles.Protect`. Name matching
+trims configured values and ignores case:
 
-`ProtectedRoleNames` is empty by default. Set `RoleManagementEnabled` to
-`false` when the host owns the complete role catalog in code. Role creation,
-update and deletion are then rejected by both API and Razor handlers, and their
-Razor forms are hidden. Role queries and user membership assignment/removal
-remain available; `RoleManagementEnabled` defaults to `true`.
+| Protection | Rename/delete | Remove from self | Remove from another user |
+| --- | --- | --- | --- |
+| `System` | rejected | rejected | allowed |
+| `Retained` | rejected | rejected | allowed |
+| `Structural` | rejected | allowed | allowed |
+
+`ReadRoleName`, `ManageRoleName` and `DeleteRoleName` are always implicitly
+`System`, even if the same name is explicitly configured with a weaker level.
+The legacy `ProtectedRoleNames` option remains supported as a `Retained` alias;
+it is empty by default, so existing hosts keep their previous behavior.
+
+Use `Roles.GrantableBy(targetRole, actorRoleNames)` to constrain who may assign
+or remove one target role. An empty actor-role list means any actor who already
+has role-assignment capability. A non-empty rule is always enforced, including
+for the delete-role administrator. The actor-wide delegate filter only narrows
+that result:
+
+- `RoleAssignment.Assignable` is an allowlist;
+- `RoleAssignment.NotAssignable` is a denylist;
+- leaving both empty allows every target role not restricted by its own
+  `GrantableBy` rule.
+
+`Assignable` and `NotAssignable` are mutually exclusive, and configuring both
+fails during startup. The API rechecks these rules on both challenge creation
+and completion, while the Users page omits unavailable assignment/removal
+controls. A delegated actor can read the bounded user and role catalogs needed
+for membership work but receives no block, delete, session-revocation or role
+CRUD controls.
+
+Set `RoleManagementEnabled` to `false` when the host owns the complete role
+catalog in code. Role creation, update and deletion are then rejected by both
+API and Razor handlers, their Razor forms are hidden, and the role page explains
+that the application owns the catalog. Role queries and user membership
+assignment/removal remain available; `RoleManagementEnabled` defaults to
+`true`.
 
 Removing another administrator's last membership is an explicit
 high-privilege operation; if operators lock out every administrator, recover
 with the bootstrap command.
+
+Host-side operator commands call Identity services directly and are not
+restricted by the interactive `GrantableBy` or delegate filters. This includes
+the ready Server's `--bootstrap-admin` command and host-defined commands such as
+`--grant-role`, preserving operator recovery and application-controlled role
+provisioning.
 
 Remove always revokes all target sessions after the membership change. Assign
 does the same by default; set `RevokeSessionsOnRoleGrant` to `false` when every

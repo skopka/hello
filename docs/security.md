@@ -321,7 +321,8 @@ becoming unreachable.
 ## Administrative actions
 
 Admin API and Razor requests pass three independent gates: an authenticated
-bearer/UI session, a live role-backed read/manage/delete policy, and an
+bearer/UI session, a live role-backed read/manage/delete/role-assignment
+policy, and an
 Identity-owned step-up decision for mutations. The role policy queries current
 membership instead of relying only on the role claim embedded when a token was
 issued. The application also validates the administrator's access token online
@@ -340,13 +341,17 @@ the target's refresh sessions; deployments requiring already-issued access
 tokens to stop immediately must retain online session validation on protected
 resources.
 
-Role listing uses Identity's bounded query contract. Role CRUD and membership
-changes require the highest configured admin policy and a separate bound OTP.
-Configured policy roles cannot be renamed or deleted, and an actor cannot
-remove their own protected membership. Assign/remove revoke the target's
-sessions; the Admin policy handler also reads membership live instead of
-trusting a stale role claim. Role CRUD produces Hello post-commit security
-events with actor and resource ids for the configured audit sink.
+Role listing uses Identity's bounded query contract. Role CRUD requires the
+delete policy; membership changes require the dedicated role-assignment policy
+and a separate bound OTP. Configured policy roles cannot be renamed or deleted,
+and an actor cannot remove their own System or Retained membership. Additional
+host roles can be protected as System, Retained or Structural and can carry
+per-role grantor restrictions. Delegated membership actors are filtered again
+inside both halves of the step-up operation and cannot mutate users or the role
+catalog. Assign/remove revoke the target's sessions; the Admin policy handler
+also reads membership live instead of trusting a stale role claim. Role CRUD
+produces Hello post-commit security events with actor and resource ids for the
+configured audit sink.
 
 The explicit `--bootstrap-admin <user-id>` operator command assigns only the
 configured roles to an existing user and revokes that user's sessions. Do not

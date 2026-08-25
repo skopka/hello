@@ -50,8 +50,8 @@ The current `0.10.2` vertical slice contains:
 - bounded administrative user search with host-controlled profile projection;
 - live role-backed read/manage/delete policies and OTP-protected block,
   unblock, soft-delete, restore and session-revocation actions;
-- bounded role search plus OTP-protected role CRUD and user membership
-  administration;
+- bounded role search, named protection levels and OTP-protected role CRUD;
+- separately delegated, per-role constrained membership administration;
 - Razor user/role administration pages and explicit first-administrator
   bootstrap;
 - PostgreSQL persistence and packaged Skopka.Identity migrations;
@@ -133,13 +133,13 @@ The same client is covered by real Chromium tests.
 | `DELETE` | `/account/password` | Bearer + one-time code |
 | `POST` | `/account/delete/challenge` | Bearer |
 | `DELETE` | `/account` | Bearer + one-time code |
-| `GET` | `/admin/users` | Bearer + current read-role membership |
+| `GET` | `/admin/users` | Bearer + current read or role-assignment membership |
 | `POST` | `/admin/users/{userId}/actions/{action}/challenge` | Bearer + current manage/delete-role membership |
 | `POST` | `/admin/users/{userId}/actions/{action}` | Bearer + current manage/delete-role membership + one-time code |
-| `GET` | `/admin/roles` | Bearer + current read-role membership |
-| `GET` | `/admin/users/{userId}/roles` | Bearer + current read-role membership |
-| `POST` | `/admin/roles/actions/{action}/challenge` | Bearer + current delete-role membership |
-| `POST` | `/admin/roles/actions/{action}` | Bearer + current delete-role membership + one-time code |
+| `GET` | `/admin/roles` | Bearer + current read or role-assignment membership |
+| `GET` | `/admin/users/{userId}/roles` | Bearer + current read or role-assignment membership |
+| `POST` | `/admin/roles/actions/{action}/challenge` | Bearer + current delete-role membership for CRUD, or role-assignment membership for assign/remove |
+| `POST` | `/admin/roles/actions/{action}` | Same live role policy + one-time code |
 
 When `SkopkaHelloOptions.SelfRegistrationEnabled` is false, password and
 external self-registration operations return the shared

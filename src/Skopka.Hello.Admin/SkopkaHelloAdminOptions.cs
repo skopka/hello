@@ -27,6 +27,9 @@ public sealed class SkopkaHelloAdminOptions
     public string DeletePolicyName { get; set; } =
         HelloAdminDefaults.DeletePolicy;
 
+    public string RoleAssignmentPolicyName { get; set; } =
+        HelloAdminDefaults.RoleAssignmentPolicy;
+
     public string ReadRoleName { get; set; } =
         HelloAdminDefaults.AdministratorRole;
 
@@ -37,6 +40,10 @@ public sealed class SkopkaHelloAdminOptions
         HelloAdminDefaults.AdministratorRole;
 
     public string[] ProtectedRoleNames { get; set; } = [];
+
+    public HelloAdminRoleRulesOptions Roles { get; } = new();
+
+    public HelloAdminRoleAssignmentOptions RoleAssignment { get; } = new();
 
     public bool RoleManagementEnabled { get; set; } = true;
 
@@ -62,20 +69,28 @@ public sealed class SkopkaHelloAdminOptions
         ArgumentException.ThrowIfNullOrWhiteSpace(ReadPolicyName);
         ArgumentException.ThrowIfNullOrWhiteSpace(ManagePolicyName);
         ArgumentException.ThrowIfNullOrWhiteSpace(DeletePolicyName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(
+            RoleAssignmentPolicyName);
         ArgumentException.ThrowIfNullOrWhiteSpace(ReadRoleName);
         ArgumentException.ThrowIfNullOrWhiteSpace(ManageRoleName);
         ArgumentException.ThrowIfNullOrWhiteSpace(DeleteRoleName);
         ArgumentNullException.ThrowIfNull(ProtectedRoleNames);
+        ProtectedRoleNames = ValidateRoleNames(
+            ProtectedRoleNames,
+            nameof(ProtectedRoleNames));
+        Roles.Validate();
+        RoleAssignment.Validate();
 
         if (new[]
             {
                 ReadPolicyName,
                 ManagePolicyName,
                 DeletePolicyName,
-            }.Distinct(StringComparer.Ordinal).Count() != 3)
+                RoleAssignmentPolicyName,
+            }.Distinct(StringComparer.Ordinal).Count() != 4)
         {
             throw new InvalidOperationException(
-                "Admin read, manage and delete policies must have distinct names.");
+                "Admin read, manage, delete and role-assignment policies must have distinct names.");
         }
     }
 
@@ -104,5 +119,122 @@ public sealed class SkopkaHelloAdminOptions
         }
 
         return value;
+    }
+
+    internal static string[] ValidateRoleNames(
+        string[] roleNames,
+        string parameterName)
+    {
+        ArgumentNullException.ThrowIfNull(roleNames, parameterName);
+        if (roleNames.Any(string.IsNullOrWhiteSpace))
+        {
+            throw new InvalidOperationException(
+                $"{parameterName} cannot contain an empty role name.");
+        }
+
+        return roleNames
+            .Select(roleName => roleName.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+}
+
+public enum HelloRoleProtection
+{
+    Structural = 0,
+    Retained = 1,
+    System = 2,
+}
+
+public sealed class HelloAdminRoleRulesOptions
+{
+    private readonly Dictionary<string, HelloRoleProtection> protections =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string[]> grantableBy =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    public void Protect(
+        string roleName,
+        HelloRoleProtection protection)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(roleName);
+        if (!Enum.IsDefined(protection))
+        {
+            throw new ArgumentOutOfRangeException(nameof(protection));
+        }
+
+        protections[roleName.Trim()] = protection;
+    }
+
+    public void GrantableBy(
+        string roleName,
+        IEnumerable<string> roleNames)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(roleName);
+        ArgumentNullException.ThrowIfNull(roleNames);
+        grantableBy[roleName.Trim()] =
+            SkopkaHelloAdminOptions.ValidateRoleNames(
+                roleNames.ToArray(),
+                nameof(roleNames));
+    }
+
+    internal HelloRoleProtection? FindProtection(string roleName)
+        => protections.TryGetValue(roleName.Trim(), out var protection)
+            ? protection
+            : null;
+
+    internal IReadOnlyList<string> GetGrantableBy(string roleName)
+        => grantableBy.TryGetValue(roleName.Trim(), out var roleNames)
+            ? roleNames
+            : [];
+
+    internal void Validate()
+    {
+        foreach (var protection in protections.Values)
+        {
+            if (!Enum.IsDefined(protection))
+            {
+                throw new InvalidOperationException(
+                    "A configured role protection level is invalid.");
+            }
+        }
+    }
+}
+
+public sealed class HelloAdminRoleAssignmentOptions
+{
+    public string? RoleName { get; set; }
+
+    public string[] Assignable { get; set; } = [];
+
+    public string[] NotAssignable { get; set; } = [];
+
+    internal void Validate()
+    {
+        Assignable = SkopkaHelloAdminOptions.ValidateRoleNames(
+            Assignable,
+            nameof(Assignable));
+        NotAssignable = SkopkaHelloAdminOptions.ValidateRoleNames(
+            NotAssignable,
+            nameof(NotAssignable));
+        if (Assignable.Length > 0 && NotAssignable.Length > 0)
+        {
+            throw new InvalidOperationException(
+                "RoleAssignment.Assignable and RoleAssignment.NotAssignable cannot both be configured.");
+        }
+
+        if (string.IsNullOrWhiteSpace(RoleName))
+        {
+            if (Assignable.Length > 0 || NotAssignable.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    "RoleAssignment.RoleName is required when an assignable-role filter is configured.");
+            }
+
+            RoleName = null;
+            return;
+        }
+
+        RoleName = RoleName.Trim();
     }
 }

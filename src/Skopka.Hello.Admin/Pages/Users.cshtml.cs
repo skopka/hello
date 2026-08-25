@@ -23,6 +23,8 @@ public sealed class UsersModel(
     IHelloUiLocalizer text)
     : PageModel
 {
+    private readonly HelloAdminRoleRulesEvaluator roleRules = new(options);
+
     public const int RoleCatalogPageSize =
         IdentityRoleQueryLimits.MaximumPageSize;
 
@@ -37,6 +39,22 @@ public sealed class UsersModel(
     public IReadOnlyList<IdentityRole> RoleCatalog { get; private set; } = [];
 
     public bool RoleCatalogHasMore { get; private set; }
+
+    public bool CanReadUsers { get; private set; }
+
+    public bool CanReadRoles { get; private set; }
+
+    public bool CanManageUsers { get; private set; }
+
+    public bool CanDeleteUsers { get; private set; }
+
+    public bool CanAssignRoles { get; private set; }
+
+    private HashSet<Guid> ManageableRoleIds { get; set; } = [];
+
+    private Guid? ActorUserId { get; set; }
+
+    private bool AuthorizationLoaded { get; set; }
 
     [BindProperty(SupportsGet = true)]
     public string? Search { get; set; }
@@ -62,7 +80,8 @@ public sealed class UsersModel(
         CancellationToken cancellationToken)
     {
         ApplySensitiveResponseHeaders();
-        if (!await IsAuthorizedAsync(options.ReadPolicyName))
+        await LoadAuthorizationAsync();
+        if (!CanReadUsers && !CanAssignRoles)
         {
             return Forbid();
         }
@@ -255,8 +274,8 @@ public sealed class UsersModel(
             return await ReloadPageAsync(cancellationToken);
         }
 
-        if (!await IsAuthorizedAsync(options.ReadPolicyName)
-            || !await IsAuthorizedAsync(options.DeletePolicyName))
+        if (!await IsAuthorizedAsync(
+                options.RoleAssignmentPolicyName))
         {
             return Forbid();
         }
@@ -318,8 +337,8 @@ public sealed class UsersModel(
             return await ReloadPageAsync(cancellationToken);
         }
 
-        if (!await IsAuthorizedAsync(options.ReadPolicyName)
-            || !await IsAuthorizedAsync(options.DeletePolicyName))
+        if (!await IsAuthorizedAsync(
+                options.RoleAssignmentPolicyName))
         {
             return Forbid();
         }
@@ -457,10 +476,18 @@ public sealed class UsersModel(
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
 
+    public bool CanRemoveRole(IdentityRole role, Guid targetUserId)
+        => ManageableRoleIds.Contains(role.Id)
+            && (ActorUserId != targetUserId
+                || roleRules.GetProtection(role.Name) is not (
+                    HelloRoleProtection.System
+                        or HelloRoleProtection.Retained));
+
     private async Task<IActionResult> ReloadPageAsync(
         CancellationToken cancellationToken)
     {
-        if (!await IsAuthorizedAsync(options.ReadPolicyName))
+        await LoadAuthorizationAsync();
+        if (!CanReadUsers && !CanAssignRoles)
         {
             return Forbid();
         }
@@ -479,6 +506,7 @@ public sealed class UsersModel(
         string accessToken,
         CancellationToken cancellationToken)
     {
+        await LoadAuthorizationAsync();
         var result = await application.QueryUsersAsync(
             new HelloAdminQueryUsersCommand(
                 accessToken,
@@ -506,10 +534,31 @@ public sealed class UsersModel(
                 return;
             }
 
-            RoleCatalog = roleCatalog.Value.Items
-                .OrderBy(role => role.Name, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
             RoleCatalogHasMore = roleCatalog.Value.NextCursor is not null;
+            var currentUser = await userAccessor.GetAsync(
+                HttpContext,
+                cancellationToken);
+            if (currentUser is null)
+            {
+                ModelState.AddModelError(
+                    string.Empty,
+                    text["Errors.identity.session.refresh_token_invalid"]);
+                return;
+            }
+
+            ActorUserId = currentUser.UserId;
+
+            var actorRoles = await roleApplication.GetUserRolesAsync(
+                new HelloAdminGetUserRolesCommand(
+                    accessToken,
+                    currentUser.UserId),
+                cancellationToken);
+            if (!actorRoles.IsSuccess)
+            {
+                AddErrors(actorRoles.Errors);
+                return;
+            }
+
             var rolesByUser = new Dictionary<
                 Guid,
                 IReadOnlyList<IdentityRole>>();
@@ -536,6 +585,22 @@ public sealed class UsersModel(
             }
 
             UserRoles = rolesByUser;
+            var knownRoles = roleCatalog.Value.Items
+                .Concat(rolesByUser.Values.SelectMany(
+                    assignedRoles => assignedRoles))
+                .GroupBy(role => role.Id)
+                .Select(group => group.First())
+                .ToArray();
+            ManageableRoleIds = knownRoles
+                .Where(role => roleRules.CanManageMembership(
+                    actorRoles.Value,
+                    role))
+                .Select(role => role.Id)
+                .ToHashSet();
+            RoleCatalog = roleCatalog.Value.Items
+                .Where(role => ManageableRoleIds.Contains(role.Id))
+                .OrderBy(role => role.Name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
             return;
         }
 
@@ -557,6 +622,24 @@ public sealed class UsersModel(
             User,
             HttpContext,
             policyName)).Succeeded;
+
+    private async Task LoadAuthorizationAsync()
+    {
+        if (AuthorizationLoaded)
+        {
+            return;
+        }
+
+        CanReadUsers = await IsAuthorizedAsync(options.ReadPolicyName);
+        CanReadRoles = CanReadUsers;
+        CanManageUsers = await IsAuthorizedAsync(
+            options.ManagePolicyName);
+        CanDeleteUsers = await IsAuthorizedAsync(
+            options.DeletePolicyName);
+        CanAssignRoles = await IsAuthorizedAsync(
+            options.RoleAssignmentPolicyName);
+        AuthorizationLoaded = true;
+    }
 
     private string GetPolicy(HelloAdminUserAction action)
         => action is HelloAdminUserAction.Delete

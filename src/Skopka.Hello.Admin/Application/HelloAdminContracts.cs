@@ -28,6 +28,9 @@ public static class HelloAdminErrorCodes
 
     public const string SelfRoleRemovalForbidden =
         "hello.admin.self_role_removal_forbidden";
+
+    public const string RoleAssignmentForbidden =
+        "hello.admin.role_assignment_forbidden";
 }
 
 public static class HelloAdminSecurityEventTypes

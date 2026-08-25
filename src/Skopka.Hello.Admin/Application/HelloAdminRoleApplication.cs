@@ -25,7 +25,8 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
     IHelloSecurityEventSink securityEvents,
     IHttpContextAccessor httpContextAccessor,
     ILogger<HelloAdminRoleApplication<TProfile>>? logger = null,
-    HelloStepUpMethodResolver<TProfile>? stepUpMethodResolver = null)
+    HelloStepUpMethodResolver<TProfile>? stepUpMethodResolver = null,
+    HelloAdminRoleRulesEvaluator? roleRulesEvaluator = null)
     : IHelloAdminRoleApplication
 {
     private readonly HelloStepUpMethodResolver<TProfile> stepUpMethods =
@@ -33,6 +34,8 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
         ?? new HelloStepUpMethodResolver<TProfile>(
             deliveryOptions,
             messageSender);
+    private readonly HelloAdminRoleRulesEvaluator roleRules =
+        roleRulesEvaluator ?? new HelloAdminRoleRulesEvaluator(options);
 
     public async Task<OperationResult<IdentityRolePage>> QueryRolesAsync(
         HelloAdminQueryRolesCommand command,
@@ -443,7 +446,7 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
 
         if ((action is HelloAdminRoleAction.Update
                 or HelloAdminRoleAction.Delete)
-            && IsProtectedRole(role.Name))
+            && roleRules.GetProtection(role.Name) is not null)
         {
             return OperationResultFactory.Fail(
                 HelloAdminSecurity.ProtectedRoleMutationForbidden());
@@ -451,7 +454,9 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
 
         if (action == HelloAdminRoleAction.Remove
             && actorUserId == targetUserId
-            && IsProtectedRole(role.Name))
+            && roleRules.GetProtection(role.Name) is
+                HelloRoleProtection.System
+                    or HelloRoleProtection.Retained)
         {
             return OperationResultFactory.Fail(
                 HelloAdminSecurity.SelfRoleRemovalForbidden());
@@ -467,30 +472,28 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
             {
                 return OperationResultFactory.Fail(target.Errors);
             }
+
+            var actorRoles = actorUserId == targetUserId
+                ? target
+                : await roles.GetUserRolesAsync(
+                    actorUserId,
+                    cancellationToken);
+            if (!actorRoles.IsSuccess)
+            {
+                return OperationResultFactory.Fail(actorRoles.Errors);
+            }
+
+            if (!roleRules.CanManageMembership(
+                    actorRoles.Value,
+                    role))
+            {
+                return OperationResultFactory.Fail(
+                    HelloAdminSecurity.RoleAssignmentForbidden());
+            }
         }
 
         return OperationResultFactory.Success();
     }
-
-    private bool IsProtectedRole(string roleName)
-        => string.Equals(
-                roleName,
-                options.ReadRoleName.Trim(),
-                StringComparison.OrdinalIgnoreCase)
-            || string.Equals(
-                roleName,
-                options.ManageRoleName.Trim(),
-                StringComparison.OrdinalIgnoreCase)
-            || string.Equals(
-                roleName,
-                options.DeleteRoleName.Trim(),
-                StringComparison.OrdinalIgnoreCase)
-            || options.ProtectedRoleNames.Any(protectedRoleName =>
-                !string.IsNullOrWhiteSpace(protectedRoleName)
-                && string.Equals(
-                    roleName,
-                    protectedRoleName.Trim(),
-                    StringComparison.OrdinalIgnoreCase));
 
     private Task<OperationResult<IdentityUser<TProfile>>> ValidateActorAsync(
         string accessToken,

@@ -17,6 +17,13 @@
     </a>
 </header>
 
+@if (!Model.RoleManagementEnabled)
+{
+    <div class="alert alert-info shadow-sm" role="status">
+        @Text["Admin.Roles.ApplicationManaged"]
+    </div>
+}
+
 @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
 {
     <div class="alert alert-success shadow-sm" role="status">

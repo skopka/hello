@@ -36,6 +36,7 @@
     "Admin.Roles.Remove": "Remove role",
     "Admin.Roles.Edit": "Edit role",
     "Admin.Roles.None": "No roles matched the current filter.",
+    "Admin.Roles.ApplicationManaged": "Roles are defined by the application. This page remains available for browsing the catalog; assign roles to people from the Users page.",
 
     "Admin.Users.PageTitle": "User administration",
     "Admin.Users.Title": "Users",
@@ -90,6 +91,7 @@
     "Errors.hello.admin.session_cleanup_required": "The change was saved, but session cleanup could not be confirmed.",
     "Errors.hello.admin.protected_role_mutation_forbidden": "The protected role cannot be changed.",
     "Errors.hello.admin.role_management_disabled": "Role creation, update and deletion are disabled by the host.",
-    "Errors.hello.admin.self_role_removal_forbidden": "You cannot remove your own protected role."
+    "Errors.hello.admin.self_role_removal_forbidden": "You cannot remove your own protected role.",
+    "Errors.hello.admin.role_assignment_forbidden": "You are not allowed to assign or remove this role."
   }
 }

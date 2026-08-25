@@ -357,6 +357,357 @@ public sealed class AuthenticationFlowTests
     }
 
     [Fact]
+    public async Task DelegatedRoleAssignerIsBoundedInApiAndRazorUi()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            configureAdmin: options =>
+            {
+                options.RoleAssignment.RoleName = "iq-manager";
+                options.RoleAssignment.Assignable =
+                [
+                    HelloAdminDefaults.AdministratorRole,
+                    "iq-teacher",
+                ];
+                options.Roles.Protect(
+                    "iq-teacher",
+                    HelloRoleProtection.Structural);
+                options.Roles.GrantableBy(
+                    HelloAdminDefaults.AdministratorRole,
+                    [HelloAdminDefaults.AdministratorRole]);
+                options.Roles.GrantableBy(
+                    "iq-teacher",
+                    [
+                        HelloAdminDefaults.AdministratorRole,
+                        "iq-manager",
+                    ]);
+            });
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        const string managerEmail = "role-manager@example.test";
+        const string targetEmail = "role-target@example.test";
+        const string password = "correct horse battery staple";
+
+        using var managerRegistration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "role-manager",
+                email = managerEmail,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Role Manager",
+                    locale = "en",
+                },
+                password,
+            });
+        Assert.Equal(
+            HttpStatusCode.Created,
+            managerRegistration.StatusCode);
+        var manager = await managerRegistration.Content.ReadFromJsonAsync<
+            AccountResponse<IntegrationProfile>>();
+        Assert.NotNull(manager);
+
+        using var targetRegistration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "role-target",
+                email = targetEmail,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Role Target",
+                    locale = "en",
+                },
+                password,
+            });
+        Assert.Equal(
+            HttpStatusCode.Created,
+            targetRegistration.StatusCode);
+        var target = await targetRegistration.Content.ReadFromJsonAsync<
+            AccountResponse<IntegrationProfile>>();
+        Assert.NotNull(target);
+
+        using var confirmationRequest = await client.PostAsJsonAsync(
+            "/auth/email-confirmation/request",
+            new { email = managerEmail });
+        Assert.Equal(
+            HttpStatusCode.Accepted,
+            confirmationRequest.StatusCode);
+        var confirmationMessage = await app.WaitForMessageAsync(
+            HelloAccountMessageKind.EmailConfirmation);
+        var confirmationQuery = QueryHelpers.ParseQuery(
+            Assert.IsType<Uri>(confirmationMessage.ActionUrl).Query);
+        using var confirmation = await client.PostAsJsonAsync(
+            "/auth/email-confirmation/confirm",
+            new
+            {
+                userId = Guid.Parse(
+                    confirmationQuery["userId"].Single()!),
+                email = confirmationQuery["email"].Single(),
+                token = confirmationQuery["token"].Single(),
+            });
+        Assert.Equal(HttpStatusCode.NoContent, confirmation.StatusCode);
+
+        var managerRole = await app.CreateRoleAsync("iq-manager");
+        var teacherRole = await app.CreateRoleAsync("iq-teacher");
+        var administratorRole = await app.CreateRoleAsync(
+            HelloAdminDefaults.AdministratorRole);
+        await app.AssignRoleAsync(manager.Id, managerRole.Id);
+        await app.AssignRoleAsync(target.Id, administratorRole.Id);
+
+        var managerLogin = await LoginAsync(
+            client,
+            managerEmail,
+            password);
+        using (var usersRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/admin/users?search=role-target"))
+        {
+            usersRequest.Headers.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    managerLogin.AccessToken);
+            using var usersResponse = await client.SendAsync(usersRequest);
+            Assert.Equal(HttpStatusCode.OK, usersResponse.StatusCode);
+        }
+
+        using (var rolesRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/admin/roles"))
+        {
+            rolesRequest.Headers.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    managerLogin.AccessToken);
+            using var rolesResponse = await client.SendAsync(rolesRequest);
+            Assert.Equal(HttpStatusCode.OK, rolesResponse.StatusCode);
+        }
+
+        using var forbiddenBlock = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            $"/admin/users/{target.Id:D}/actions/block/challenge",
+            managerLogin.AccessToken,
+            new
+            {
+                expectedVersion = target.Version,
+                reason = "delegate must not block",
+            });
+        Assert.Equal(HttpStatusCode.Forbidden, forbiddenBlock.StatusCode);
+
+        using var forbiddenDelete = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            $"/admin/users/{target.Id:D}/actions/delete/challenge",
+            managerLogin.AccessToken,
+            new
+            {
+                expectedVersion = target.Version,
+                reason = "delegate must not delete",
+            });
+        Assert.Equal(HttpStatusCode.Forbidden, forbiddenDelete.StatusCode);
+
+        using var forbiddenSessionRevocation =
+            await SendAuthorizedJsonAsync(
+                client,
+                HttpMethod.Post,
+                $"/admin/users/{target.Id:D}/actions/revoke-sessions/challenge",
+                managerLogin.AccessToken,
+                new { });
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            forbiddenSessionRevocation.StatusCode);
+
+        using var forbiddenCreate = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/admin/roles/actions/create/challenge",
+            managerLogin.AccessToken,
+            new { name = "delegate-created" });
+        Assert.Equal(HttpStatusCode.Forbidden, forbiddenCreate.StatusCode);
+
+        using var forbiddenAdministratorGrant =
+            await SendAuthorizedJsonAsync(
+                client,
+                HttpMethod.Post,
+                "/admin/roles/actions/assign/challenge",
+                managerLogin.AccessToken,
+                new
+                {
+                    roleId = administratorRole.Id,
+                    targetUserId = target.Id,
+                });
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            forbiddenAdministratorGrant.StatusCode);
+
+        var cookies = new Dictionary<string, string>(
+            StringComparer.Ordinal);
+        using var loginPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/login",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, loginPage.StatusCode);
+        MergeCookies(cookies, loginPage);
+        var loginHtml = await loginPage.Content.ReadAsStringAsync();
+        var loginToken = ReadInputValue(
+            loginHtml,
+            "__RequestVerificationToken");
+        using var uiLogin = await SendFormAsync(
+            client,
+            "/hello/login",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["Input.Login"] = managerEmail,
+                ["Input.Password"] = password,
+                ["__RequestVerificationToken"] = loginToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, uiLogin.StatusCode);
+        MergeCookies(cookies, uiLogin);
+
+        using var usersPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/admin/users",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, usersPage.StatusCode);
+        MergeCookies(cookies, usersPage);
+        var usersHtml = await usersPage.Content.ReadAsStringAsync();
+        var managerCard = ReadAdminUserCard(usersHtml, manager.Id);
+        var managerRoleSelect = ReadRoleAssignmentSelect(managerCard);
+        Assert.Contains(
+            $"value=\"{teacherRole.Id:D}\"",
+            managerRoleSelect,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            $"value=\"{administratorRole.Id:D}\"",
+            managerRoleSelect,
+            StringComparison.Ordinal);
+        var targetCard = ReadAdminUserCard(usersHtml, target.Id);
+        var roleSelect = ReadRoleAssignmentSelect(targetCard);
+        Assert.Contains(
+            $"value=\"{teacherRole.Id:D}\"",
+            roleSelect,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            $"value=\"{administratorRole.Id:D}\"",
+            roleSelect,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            administratorRole.Name,
+            targetCard,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "value=\"remove\"",
+            targetCard,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "handler=BeginAction",
+            targetCard,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "/hello/admin/roles",
+            usersHtml,
+            StringComparison.Ordinal);
+
+        using var rolesPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/admin/roles",
+            cookies);
+        Assert.Equal(HttpStatusCode.Forbidden, rolesPage.StatusCode);
+
+        var actionMessageCount = app.Messages.Count;
+        using var beginAssign = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/admin/roles/actions/assign/challenge",
+            managerLogin.AccessToken,
+            new
+            {
+                roleId = teacherRole.Id,
+                targetUserId = target.Id,
+            });
+        Assert.Equal(HttpStatusCode.OK, beginAssign.StatusCode);
+        using var beginAssignJson = JsonDocument.Parse(
+            await beginAssign.Content.ReadAsStringAsync());
+        var assignChallengeId = beginAssignJson.RootElement
+            .GetProperty("challengeId")
+            .GetGuid();
+        var assignCode = Assert.IsType<string>(
+            Assert.Single(
+                    app.Messages.Skip(actionMessageCount),
+                    message => message.Kind
+                        == HelloAccountMessageKind.AdminActionVerification)
+                .VerificationCode);
+        using var completeAssign = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/admin/roles/actions/assign",
+            managerLogin.AccessToken,
+            new
+            {
+                challengeId = assignChallengeId,
+                verificationCode = assignCode,
+                roleId = teacherRole.Id,
+                targetUserId = target.Id,
+            });
+        Assert.Equal(HttpStatusCode.OK, completeAssign.StatusCode);
+        Assert.True(await app.IsUserInRoleAsync(
+            target.Id,
+            teacherRole.Id));
+
+        actionMessageCount = app.Messages.Count;
+        using var beginRemove = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/admin/roles/actions/remove/challenge",
+            managerLogin.AccessToken,
+            new
+            {
+                roleId = teacherRole.Id,
+                targetUserId = target.Id,
+            });
+        Assert.Equal(HttpStatusCode.OK, beginRemove.StatusCode);
+        using var beginRemoveJson = JsonDocument.Parse(
+            await beginRemove.Content.ReadAsStringAsync());
+        var removeChallengeId = beginRemoveJson.RootElement
+            .GetProperty("challengeId")
+            .GetGuid();
+        var removeCode = Assert.IsType<string>(
+            Assert.Single(
+                    app.Messages.Skip(actionMessageCount),
+                    message => message.Kind
+                        == HelloAccountMessageKind.AdminActionVerification)
+                .VerificationCode);
+        using var completeRemove = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/admin/roles/actions/remove",
+            managerLogin.AccessToken,
+            new
+            {
+                challengeId = removeChallengeId,
+                verificationCode = removeCode,
+                roleId = teacherRole.Id,
+                targetUserId = target.Id,
+            });
+        Assert.Equal(HttpStatusCode.OK, completeRemove.StatusCode);
+        Assert.False(await app.IsUserInRoleAsync(
+            target.Id,
+            teacherRole.Id));
+    }
+
+    [Fact]
     public async Task CompleteAuthenticationAndSessionFlow()
     {
         await using var postgres = new PostgreSqlBuilder(
@@ -1515,6 +1866,10 @@ public sealed class AuthenticationFlowTests
         var adminRolesHtml = await adminRoles.Content.ReadAsStringAsync();
         Assert.Contains(
             teacherRole.Name,
+            adminRolesHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Roles are defined by the application.",
             adminRolesHtml,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
@@ -3679,6 +4034,18 @@ public sealed class AuthenticationFlowTests
                 CancellationToken.None);
             Assert.True(created.IsSuccess);
             return created.Value;
+        }
+
+        public async Task AssignRoleAsync(Guid userId, Guid roleId)
+        {
+            await using var scope =
+                application.Services.CreateAsyncScope();
+            var roles = scope.ServiceProvider.GetRequiredService<
+                IIdentityRoleService<IntegrationProfile>>();
+            var assigned = await roles.AssignAsync(
+                new AssignRoleCommand(userId, roleId),
+                CancellationToken.None);
+            Assert.True(assigned.IsSuccess);
         }
 
         public async Task<bool> IsUserInRoleAsync(

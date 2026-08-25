@@ -36,6 +36,7 @@
     "Admin.Roles.Remove": "Снять роль",
     "Admin.Roles.Edit": "Изменить роль",
     "Admin.Roles.None": "Роли, соответствующие текущему фильтру, не найдены.",
+    "Admin.Roles.ApplicationManaged": "Роли задаются приложением. На этой странице можно просматривать каталог, а назначать роли людям — на странице пользователей.",
 
     "Admin.Users.PageTitle": "Администрирование пользователей",
     "Admin.Users.Title": "Пользователи",
@@ -90,6 +91,7 @@
     "Errors.hello.admin.session_cleanup_required": "Изменение сохранено, но очистку сессий подтвердить не удалось.",
     "Errors.hello.admin.protected_role_mutation_forbidden": "Защищённую роль нельзя изменить.",
     "Errors.hello.admin.role_management_disabled": "Создание, изменение и удаление ролей отключены хостом.",
-    "Errors.hello.admin.self_role_removal_forbidden": "Нельзя снять с себя собственную защищённую роль."
+    "Errors.hello.admin.self_role_removal_forbidden": "Нельзя снять с себя собственную защищённую роль.",
+    "Errors.hello.admin.role_assignment_forbidden": "Вам не разрешено назначать или снимать эту роль."
   }
 }

@@ -420,7 +420,7 @@ internal static class HelloAdminSecurity
     public static Error ProtectedRoleMutationForbidden()
         => new(
             HelloAdminErrorCodes.ProtectedRoleMutationForbidden,
-            "A role used by an admin authorization policy cannot be updated or deleted through this surface.",
+            "A protected role cannot be updated or deleted through this surface.",
             ErrorType.Forbidden);
 
     public static Error RoleManagementDisabled()
@@ -432,7 +432,13 @@ internal static class HelloAdminSecurity
     public static Error SelfRoleRemovalForbidden()
         => new(
             HelloAdminErrorCodes.SelfRoleRemovalForbidden,
-            "An administrator cannot remove their own role while that role protects an admin policy.",
+            "The current administrator cannot remove this protected role from themselves.",
+            ErrorType.Forbidden);
+
+    public static Error RoleAssignmentForbidden()
+        => new(
+            HelloAdminErrorCodes.RoleAssignmentForbidden,
+            "The current administrator is not allowed to assign or remove this role.",
             ErrorType.Forbidden);
 
     private static string Hash(string value)

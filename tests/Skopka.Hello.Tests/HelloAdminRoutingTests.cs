@@ -65,6 +65,38 @@ public sealed class HelloAdminRoutingTests
         Assert.Throws<InvalidOperationException>(options.Validate);
     }
 
+    [Fact]
+    public void AssignmentAllowAndDenyListsCannotBothBeConfigured()
+    {
+        var options = new SkopkaHelloAdminOptions();
+        options.RoleAssignment.RoleName = "iq-manager";
+        options.RoleAssignment.Assignable = ["iq-author"];
+        options.RoleAssignment.NotAssignable = ["iq-admin"];
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            options.Validate);
+
+        Assert.Contains(
+            "cannot both be configured",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AssignmentFilterRequiresDelegateRole()
+    {
+        var options = new SkopkaHelloAdminOptions();
+        options.RoleAssignment.Assignable = ["iq-author"];
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            options.Validate);
+
+        Assert.Contains(
+            "RoleAssignment.RoleName is required",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("/account/admin")]
     [InlineData("/swagger/admin")]

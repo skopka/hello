@@ -1,7 +1,13 @@
 @inject SkopkaHelloUiOptions UiOptions
 @inject HelloUiRoutePaths HelloRoutes
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService Authorization
+@inject SkopkaHelloAdminOptions AdminOptions
 @{
     var adminSection = ViewData["AdminSection"] as string;
+    var canReadRoles = (await Authorization.AuthorizeAsync(
+        User,
+        Context,
+        AdminOptions.ReadPolicyName)).Succeeded;
 }
 <!doctype html>
 <html lang="@System.Globalization.CultureInfo.CurrentUICulture.Name">
@@ -44,10 +50,13 @@
                        asp-page="/SkopkaHelloAdmin/Users">
                         @Text["Admin.Users.Title"]
                     </a>
-                    <a class="admin-nav-link @(adminSection == "roles" ? "active" : null)"
-                       asp-page="/SkopkaHelloAdmin/Roles">
-                        @Text["Admin.Roles.Title"]
-                    </a>
+                    @if (canReadRoles)
+                    {
+                        <a class="admin-nav-link @(adminSection == "roles" ? "active" : null)"
+                           asp-page="/SkopkaHelloAdmin/Roles">
+                            @Text["Admin.Roles.Title"]
+                        </a>
+                    }
                     @if (UiOptions.ApplicationHomeUrl is not null)
                     {
                         <a class="admin-nav-link"

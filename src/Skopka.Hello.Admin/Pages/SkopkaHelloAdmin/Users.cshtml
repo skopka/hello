@@ -11,10 +11,13 @@
         <h1>@Text["Admin.Users.Title"]</h1>
         <p>@Text["Admin.Users.Instructions"]</p>
     </div>
-    <a class="btn btn-outline-primary btn-sm"
-       asp-page="/SkopkaHelloAdmin/Roles">
-        @Text["Admin.Users.ManageRoles"]
-    </a>
+    @if (Model.CanReadRoles)
+    {
+        <a class="btn btn-outline-primary btn-sm"
+           asp-page="/SkopkaHelloAdmin/Roles">
+            @Text["Admin.Users.ManageRoles"]
+        </a>
+    }
 </header>
 
 @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
@@ -351,28 +354,33 @@ else
                                                             (@role.Id)
                                                         </span>
                                                     </span>
-                                                    <form method="post"
-                                                          asp-page-handler="BeginRoleAction">
-                                                        <input type="hidden"
-                                                               name="userId"
-                                                               value="@user.Id" />
-                                                        <input type="hidden"
-                                                               name="roleId"
-                                                               value="@role.Id" />
-                                                        <input type="hidden"
-                                                               name="action"
-                                                               value="remove" />
-                                                        <input type="hidden"
-                                                               name="Search"
-                                                               value="@Model.Search" />
-                                                        <input type="hidden"
-                                                               name="Status"
-                                                               value="@Model.Status" />
-                                                        <button class="btn btn-outline-danger btn-sm"
-                                                                type="submit">
-                                                            @Text["Common.Remove"]
-                                                        </button>
-                                                    </form>
+                                                    @if (Model.CanRemoveRole(
+                                                        role,
+                                                        user.Id))
+                                                    {
+                                                        <form method="post"
+                                                              asp-page-handler="BeginRoleAction">
+                                                            <input type="hidden"
+                                                                   name="userId"
+                                                                   value="@user.Id" />
+                                                            <input type="hidden"
+                                                                   name="roleId"
+                                                                   value="@role.Id" />
+                                                            <input type="hidden"
+                                                                   name="action"
+                                                                   value="remove" />
+                                                            <input type="hidden"
+                                                                   name="Search"
+                                                                   value="@Model.Search" />
+                                                            <input type="hidden"
+                                                                   name="Status"
+                                                                   value="@Model.Status" />
+                                                            <button class="btn btn-outline-danger btn-sm"
+                                                                    type="submit">
+                                                                @Text["Common.Remove"]
+                                                            </button>
+                                                        </form>
+                                                    }
                                                 </div>
                                             }
                                         </div>
@@ -384,8 +392,9 @@ else
                                         </p>
                                     }
 
-                                    @if (availableRoles.Length > 0
-                                        || Model.RoleCatalogHasMore)
+                                    @if (Model.CanAssignRoles
+                                        && (availableRoles.Length > 0
+                                            || Model.RoleCatalogHasMore))
                                     {
                                         <form method="post"
                                               asp-page-handler="BeginRoleAction"
@@ -459,7 +468,7 @@ else
                                             </div>
                                         </form>
                                     }
-                                    else
+                                    else if (Model.CanAssignRoles)
                                     {
                                         <p class="small text-body-secondary mb-0">
                                             @(Model.RoleCatalog.Count == 0
@@ -470,6 +479,8 @@ else
                                 </section>
                             </div>
 
+                            @if (Model.CanManageUsers || Model.CanDeleteUsers)
+                            {
                             <div class="col-12 col-xl-4">
                                 <section class="admin-panel-section admin-danger-panel">
                                     <h3 class="admin-panel-title">
@@ -478,6 +489,8 @@ else
                                     <div class="admin-action-stack">
                                         @if (user.DeletedAt is not null)
                                         {
+                                            @if (Model.CanManageUsers)
+                                            {
                                             <form method="post"
                                                   asp-page-handler="BeginAction">
                                                 <input type="hidden"
@@ -500,9 +513,12 @@ else
                                                     @Text["Admin.Users.Restore"]
                                                 </button>
                                             </form>
+                                            }
                                         }
                                         else
                                         {
+                                            @if (Model.CanManageUsers)
+                                            {
                                             <div class="admin-action-block">
                                                 @if (isBlocked)
                                                 {
@@ -578,8 +594,11 @@ else
                                                     </form>
                                                 }
                                             </div>
+                                            }
 
                                             <div class="admin-action-block d-flex flex-wrap gap-2">
+                                                @if (Model.CanManageUsers)
+                                                {
                                                 <form method="post"
                                                       asp-page-handler="BeginAction">
                                                     <input type="hidden"
@@ -599,6 +618,9 @@ else
                                                         @Text["Admin.Users.RevokeSessions"]
                                                     </button>
                                                 </form>
+                                                }
+                                                @if (Model.CanDeleteUsers)
+                                                {
                                                 <form method="post"
                                                       asp-page-handler="BeginAction">
                                                     <input type="hidden"
@@ -618,8 +640,11 @@ else
                                                         @Text["Admin.Users.ResetAuthenticator"]
                                                     </button>
                                                 </form>
+                                                }
                                             </div>
 
+                                            @if (Model.CanDeleteUsers)
+                                            {
                                             <div class="admin-action-block">
                                                 <form method="post"
                                                       asp-page-handler="BeginAction"
@@ -657,10 +682,12 @@ else
                                                     </div>
                                                 </form>
                                             </div>
+                                            }
                                         }
                                     </div>
                                 </section>
                             </div>
+                            }
                         </div>
                     </div>
                 </div>

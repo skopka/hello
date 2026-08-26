@@ -66,6 +66,28 @@ public sealed class HelloAdminRoutingTests
     }
 
     [Fact]
+    public void RoleRemovalSessionRevocationDefaultsToAlways()
+    {
+        var options = new SkopkaHelloAdminOptions();
+
+        Assert.Equal(
+            HelloSessionRevocationScope.Always,
+            options.RevokeSessionsOnRoleRemoval);
+    }
+
+    [Fact]
+    public void InvalidRoleRemovalSessionRevocationScopeIsRejected()
+    {
+        var options = new SkopkaHelloAdminOptions
+        {
+            RevokeSessionsOnRoleRemoval =
+                (HelloSessionRevocationScope)(-1),
+        };
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Fact]
     public void AssignmentAllowAndDenyListsCannotBothBeConfigured()
     {
         var options = new SkopkaHelloAdminOptions();

@@ -17,8 +17,10 @@ uses an Identity-owned OTP proof bound to actor, target, action, optimistic
 version and action parameters. Role mutations require the highest configured
 admin policy, protected policy roles cannot be renamed or deleted, and an
 actor cannot remove their own protected role. Membership changes revoke the
-target user's sessions and must report a committed-mutation cleanup failure
-without inviting a replay.
+target user's sessions by default. A host may preserve sessions after role
+removal through the explicit revocation-scope option; retained sessions must
+be reported truthfully, and any attempted cleanup failure after a committed
+mutation must not invite a replay.
 
 The Admin Razor UI owns a separate full-width layout and locally packaged
 Bootstrap assets. Keep third-party assets versioned with their license, never

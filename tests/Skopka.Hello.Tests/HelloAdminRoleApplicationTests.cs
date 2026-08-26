@@ -191,6 +191,146 @@ public sealed class HelloAdminRoleApplicationTests
         Assert.True(completed.Value.CurrentActorSessionRevoked);
     }
 
+    [Theory]
+    [InlineData(HelloRoleProtection.System, true)]
+    [InlineData(HelloRoleProtection.Retained, true)]
+    [InlineData(HelloRoleProtection.Structural, false)]
+    [InlineData(null, false)]
+    public async Task ProtectedOnlyRevokesOnlyRetainedOrSystemRoles(
+        HelloRoleProtection? protection,
+        bool sessionsRevoked)
+    {
+        const string roleName = "iq-teacher";
+        var fixture = new Fixture(
+            roleName: roleName,
+            configureOptions: options =>
+            {
+                if (protection is { } configuredProtection)
+                {
+                    options.Roles.Protect(roleName, configuredProtection);
+                }
+
+                options.RevokeSessionsOnRoleRemoval =
+                    HelloSessionRevocationScope.ProtectedOnly;
+            });
+        var targetUserId = Guid.NewGuid();
+        var begun = await fixture.Application.BeginRoleActionAsync(
+            new HelloAdminBeginRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Remove,
+                fixture.Role.Id,
+                targetUserId,
+                new HelloAdminRoleActionParameters(),
+                ClientKey: null),
+            CancellationToken.None);
+
+        var completed = await fixture.Application.CompleteRoleActionAsync(
+            new HelloAdminCompleteRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Remove,
+                fixture.Role.Id,
+                targetUserId,
+                new HelloAdminRoleActionParameters(),
+                begun.Value.ChallengeId,
+                "123456"),
+            CancellationToken.None);
+
+        Assert.True(completed.IsSuccess);
+        Assert.NotNull(fixture.Roles.Removed);
+        Assert.Equal(sessionsRevoked, completed.Value.SessionsRevoked);
+        Assert.False(completed.Value.CurrentActorSessionRevoked);
+        Assert.Equal(
+            sessionsRevoked ? targetUserId : null,
+            fixture.Sessions.RevokedUserId);
+    }
+
+    [Fact]
+    public async Task NeverDoesNotRevokeRetainedRoleSessions()
+    {
+        const string roleName = "iq-author";
+        var fixture = new Fixture(
+            roleName: roleName,
+            configureOptions: options =>
+            {
+                options.Roles.Protect(
+                    roleName,
+                    HelloRoleProtection.Retained);
+                options.RevokeSessionsOnRoleRemoval =
+                    HelloSessionRevocationScope.Never;
+            });
+        var targetUserId = Guid.NewGuid();
+        var begun = await fixture.Application.BeginRoleActionAsync(
+            new HelloAdminBeginRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Remove,
+                fixture.Role.Id,
+                targetUserId,
+                new HelloAdminRoleActionParameters(),
+                ClientKey: null),
+            CancellationToken.None);
+
+        var completed = await fixture.Application.CompleteRoleActionAsync(
+            new HelloAdminCompleteRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Remove,
+                fixture.Role.Id,
+                targetUserId,
+                new HelloAdminRoleActionParameters(),
+                begun.Value.ChallengeId,
+                "123456"),
+            CancellationToken.None);
+
+        Assert.True(completed.IsSuccess);
+        Assert.NotNull(fixture.Roles.Removed);
+        Assert.Null(fixture.Sessions.RevokedUserId);
+        Assert.False(completed.Value.SessionsRevoked);
+        Assert.False(completed.Value.CurrentActorSessionRevoked);
+    }
+
+    [Fact]
+    public async Task SelfRemovalOfStructuralRoleWithNeverKeepsActorSession()
+    {
+        const string roleName = "iq-teacher";
+        var fixture = new Fixture(
+            roleName: roleName,
+            configureOptions: options =>
+            {
+                options.Roles.Protect(
+                    roleName,
+                    HelloRoleProtection.Structural);
+                options.RevokeSessionsOnRoleRemoval =
+                    HelloSessionRevocationScope.Never;
+            });
+        var begun = await fixture.Application.BeginRoleActionAsync(
+            new HelloAdminBeginRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Remove,
+                fixture.Role.Id,
+                fixture.Actor.Id,
+                new HelloAdminRoleActionParameters(),
+                ClientKey: null),
+            CancellationToken.None);
+
+        var completed = await fixture.Application.CompleteRoleActionAsync(
+            new HelloAdminCompleteRoleActionCommand(
+                "access-token",
+                HelloAdminRoleAction.Remove,
+                fixture.Role.Id,
+                fixture.Actor.Id,
+                new HelloAdminRoleActionParameters(),
+                begun.Value.ChallengeId,
+                "123456"),
+            CancellationToken.None);
+
+        Assert.True(completed.IsSuccess);
+        Assert.NotNull(fixture.Roles.Removed);
+        Assert.Null(fixture.Sessions.RevokedUserId);
+        Assert.Null(fixture.Sessions.ListedUserId);
+        Assert.Empty(fixture.Sessions.RevokedSessionIds);
+        Assert.False(completed.Value.SessionsRevoked);
+        Assert.False(completed.Value.CurrentActorSessionRevoked);
+    }
+
     [Fact]
     public async Task ProtectedAdminRoleCannotBeUpdated()
     {

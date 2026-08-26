@@ -27,6 +27,7 @@ if (typeof(IHelloAdminRoleApplication).Assembly
     || !HelloAdminDefaults.BuiltInStylesheetPath.StartsWith(
         "/_content/",
         StringComparison.Ordinal)
+    || !Enum.IsDefined(HelloSessionRevocationScope.ProtectedOnly)
     || string.IsNullOrWhiteSpace(
         HelloAdminSecurityEventTypes.RoleCreated)
     || !Enum.IsDefined(HelloAuthorizationAccessTokenFormat.SelfContainedJwt)

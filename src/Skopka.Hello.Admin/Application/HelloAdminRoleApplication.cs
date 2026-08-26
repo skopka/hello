@@ -256,6 +256,7 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
         var mutated = await MutateAsync(
             actor.Value.Id,
             command,
+            allowed.Value.RoleProtection,
             cancellationToken);
         return mutated.IsSuccess
             || mutated.Errors.Any(item => string.Equals(
@@ -270,6 +271,7 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
         MutateAsync(
             Guid actorUserId,
             HelloAdminCompleteRoleActionCommand command,
+            HelloRoleProtection? roleProtection,
             CancellationToken cancellationToken)
     {
         switch (command.Action)
@@ -344,6 +346,16 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
                             currentActorSessionRevoked: false);
                     }
 
+                    if (command.Action == HelloAdminRoleAction.Remove
+                        && !ShouldRevokeSessionsOnRoleRemoval(
+                            roleProtection))
+                    {
+                        return MembershipChangedResult(
+                            targetUserId,
+                            sessionsRevoked: false,
+                            currentActorSessionRevoked: false);
+                    }
+
                     if (command.Action == HelloAdminRoleAction.Assign
                         && targetUserId == actorUserId
                         && TryGetCurrentActorSessionId(
@@ -411,25 +423,27 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
             cancellationToken);
     }
 
-    private async Task<OperationResult> ValidateRoleTargetAsync(
-        Guid actorUserId,
-        HelloAdminRoleAction action,
-        Guid? roleId,
-        Guid? targetUserId,
-        CancellationToken cancellationToken)
+    private async Task<OperationResult<ValidatedRoleTarget>>
+        ValidateRoleTargetAsync(
+            Guid actorUserId,
+            HelloAdminRoleAction action,
+            Guid? roleId,
+            Guid? targetUserId,
+            CancellationToken cancellationToken)
     {
         if (!options.RoleManagementEnabled
             && action is HelloAdminRoleAction.Create
                 or HelloAdminRoleAction.Update
                 or HelloAdminRoleAction.Delete)
         {
-            return OperationResultFactory.Fail(
+            return OperationResultFactory.Fail<ValidatedRoleTarget>(
                 HelloAdminSecurity.RoleManagementDisabled());
         }
 
         if (action == HelloAdminRoleAction.Create)
         {
-            return OperationResultFactory.Success();
+            return OperationResultFactory.Success(
+                new ValidatedRoleTarget(RoleProtection: null));
         }
 
         var role = await roles.FindByIdAsync(
@@ -437,28 +451,30 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
             cancellationToken);
         if (role is null)
         {
-            return OperationResultFactory.Fail(
+            return OperationResultFactory.Fail<ValidatedRoleTarget>(
                 new Error(
                     IdentityErrorCodes.RoleNotFound,
                     "Role not found.",
                     ErrorType.NotFound));
         }
 
+        var roleProtection = roleRules.GetProtection(role.Name);
+
         if ((action is HelloAdminRoleAction.Update
                 or HelloAdminRoleAction.Delete)
-            && roleRules.GetProtection(role.Name) is not null)
+            && roleProtection is not null)
         {
-            return OperationResultFactory.Fail(
+            return OperationResultFactory.Fail<ValidatedRoleTarget>(
                 HelloAdminSecurity.ProtectedRoleMutationForbidden());
         }
 
         if (action == HelloAdminRoleAction.Remove
             && actorUserId == targetUserId
-            && roleRules.GetProtection(role.Name) is
+            && roleProtection is
                 HelloRoleProtection.System
                     or HelloRoleProtection.Retained)
         {
-            return OperationResultFactory.Fail(
+            return OperationResultFactory.Fail<ValidatedRoleTarget>(
                 HelloAdminSecurity.SelfRoleRemovalForbidden());
         }
 
@@ -470,7 +486,8 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
                 cancellationToken);
             if (!target.IsSuccess)
             {
-                return OperationResultFactory.Fail(target.Errors);
+                return OperationResultFactory.Fail<ValidatedRoleTarget>(
+                    target.Errors);
             }
 
             var actorRoles = actorUserId == targetUserId
@@ -480,20 +497,35 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
                     cancellationToken);
             if (!actorRoles.IsSuccess)
             {
-                return OperationResultFactory.Fail(actorRoles.Errors);
+                return OperationResultFactory.Fail<ValidatedRoleTarget>(
+                    actorRoles.Errors);
             }
 
             if (!roleRules.CanManageMembership(
                     actorRoles.Value,
                     role))
             {
-                return OperationResultFactory.Fail(
+                return OperationResultFactory.Fail<ValidatedRoleTarget>(
                     HelloAdminSecurity.RoleAssignmentForbidden());
             }
         }
 
-        return OperationResultFactory.Success();
+        return OperationResultFactory.Success(
+            new ValidatedRoleTarget(roleProtection));
     }
+
+    private bool ShouldRevokeSessionsOnRoleRemoval(
+        HelloRoleProtection? roleProtection)
+        => options.RevokeSessionsOnRoleRemoval switch
+        {
+            HelloSessionRevocationScope.Always => true,
+            HelloSessionRevocationScope.ProtectedOnly =>
+                roleProtection is HelloRoleProtection.System
+                    or HelloRoleProtection.Retained,
+            HelloSessionRevocationScope.Never => false,
+            _ => throw new InvalidOperationException(
+                "The role-removal session revocation scope is invalid."),
+        };
 
     private Task<OperationResult<IdentityUser<TProfile>>> ValidateActorAsync(
         string accessToken,
@@ -707,6 +739,9 @@ internal sealed partial class HelloAdminRoleApplication<TProfile>(
                 {
                     [field] = [message],
                 }));
+
+    private sealed record ValidatedRoleTarget(
+        HelloRoleProtection? RoleProtection);
 
     [LoggerMessage(
         EventId = 2101,

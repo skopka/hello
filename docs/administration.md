@@ -37,6 +37,8 @@ services.AddSkopkaHelloAdmin<MyProfile, MyAdminProfileProjector>(options =>
     options.RoleAssignment.Assignable = ["iq-author", "iq-teacher"];
     options.RoleManagementEnabled = false;
     options.RevokeSessionsOnRoleGrant = false;
+    options.RevokeSessionsOnRoleRemoval =
+        HelloSessionRevocationScope.ProtectedOnly;
 });
 
 app.MapSkopkaHelloAdmin<MyProfile>();
@@ -118,7 +120,8 @@ The ready Server uses these independent policies and role settings:
         "NotAssignable": []
       },
       "RoleManagementEnabled": true,
-      "RevokeSessionsOnRoleGrant": true
+      "RevokeSessionsOnRoleGrant": true,
+      "RevokeSessionsOnRoleRemoval": "Always"
     }
   }
 }
@@ -266,19 +269,34 @@ the ready Server's `--bootstrap-admin` command and host-defined commands such as
 `--grant-role`, preserving operator recovery and application-controlled role
 provisioning.
 
-Remove always revokes all target sessions after the membership change. Assign
-does the same by default; set `RevokeSessionsOnRoleGrant` to `false` when every
-relevant host policy queries current membership online and a grant does not
-need to invalidate existing tickets. For a self-grant with revocation enabled,
-the confirmed current session is retained and the actor's other sessions are
-revoked. A self-removal still ends the current session because an already-issued
-bearer token must not keep removed rights; the Razor UI redirects to sign-in
-with an explicit explanation.
+Assign revokes all target sessions by default; set
+`RevokeSessionsOnRoleGrant` to `false` when every relevant host policy queries
+current membership online and a grant does not need to invalidate existing
+tickets. For a self-grant with revocation enabled, the confirmed current
+session is retained and the actor's other sessions are revoked.
 
-The Admin policies themselves always query current membership, so the change
-affects this module immediately. A host policy based only on JWT role claims
-can continue accepting an already-issued stateless access token until expiry;
-enable online session validation where immediate revocation is required.
+`RevokeSessionsOnRoleRemoval` controls removal separately and defaults to
+`HelloSessionRevocationScope.Always`, preserving the secure behavior of earlier
+hosts. `ProtectedOnly` revokes all sessions when the role protection resolved
+by `HelloAdminRoleRulesEvaluator` is `System` or `Retained`, but preserves them
+for `Structural` and unprotected roles. `Never` preserves sessions for every
+removable role. The existing self-removal rules are unchanged: an actor still
+cannot remove their own `System` or `Retained` role. When removal preserves
+sessions, `HelloAdminRoleActionResult.SessionsRevoked` and
+`CurrentActorSessionRevoked` are both `false`, so the Razor UI stays on the
+users page instead of redirecting the actor to sign-in.
+
+The Admin policies themselves query current membership, so they observe a
+removal immediately even when sessions are preserved. Refresh also projects
+claims from the current role store, and the removed role is absent from the new
+access token. However, role claims already embedded in an issued OAuth access
+token remain until that token is refreshed or expires. This residual window is
+bounded by `HelloAuthorizationServerOptions.AccessTokenLifetime`, which
+defaults to 15 minutes. A host that authorizes from token role claims and cannot
+accept that window must keep `RevokeSessionsOnRoleRemoval =
+HelloSessionRevocationScope.Always`. Online policies such as
+`AddSkopkaHelloCurrentRolePolicy` can safely observe removals without ending
+the logical session.
 
 Identity emits the assign/remove security events. Hello emits post-commit
 `hello.admin.role.created`, `.updated` and `.deleted` events for role CRUD

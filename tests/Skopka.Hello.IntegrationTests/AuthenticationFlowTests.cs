@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Hello.Admin;
 using Skopka.Hello.Endpoints;
@@ -23,6 +24,7 @@ using Skopka.Identity.Ef.PostgreSql;
 using Skopka.Identity.Errors;
 using Skopka.Identity.Roles;
 using Skopka.Identity.Roles.Commands;
+using Skopka.Identity.Sessions;
 using Skopka.Identity.Users.Commands;
 using Skopka.Identity.Users.Queries;
 using Skopka.Identity.Verification;
@@ -705,6 +707,145 @@ public sealed class AuthenticationFlowTests
         Assert.False(await app.IsUserInRoleAsync(
             target.Id,
             teacherRole.Id));
+    }
+
+    [Fact]
+    public async Task RoleRemovalWithNeverKeepsSessionAndRefreshDropsRole()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        const string teacherRoleName = "iq-teacher";
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            configureAdmin: options =>
+            {
+                options.Roles.Protect(
+                    teacherRoleName,
+                    HelloRoleProtection.Structural);
+                options.RevokeSessionsOnRoleRemoval =
+                    HelloSessionRevocationScope.Never;
+            });
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        const string email = "self-removing-teacher@example.test";
+        const string password = "correct horse battery staple";
+
+        using var registration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "self-removing-teacher",
+                email,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Self-removing teacher",
+                    locale = "en",
+                },
+                password,
+            });
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+        var user = await registration.Content.ReadFromJsonAsync<
+            AccountResponse<IntegrationProfile>>();
+        Assert.NotNull(user);
+
+        using var confirmationRequest = await client.PostAsJsonAsync(
+            "/auth/email-confirmation/request",
+            new { email });
+        Assert.Equal(HttpStatusCode.Accepted, confirmationRequest.StatusCode);
+        var confirmationMessage = await app.WaitForMessageAsync(
+            HelloAccountMessageKind.EmailConfirmation);
+        var confirmationQuery = QueryHelpers.ParseQuery(
+            Assert.IsType<Uri>(confirmationMessage.ActionUrl).Query);
+        using var confirmation = await client.PostAsJsonAsync(
+            "/auth/email-confirmation/confirm",
+            new
+            {
+                userId = Guid.Parse(
+                    confirmationQuery["userId"].Single()!),
+                email = confirmationQuery["email"].Single(),
+                token = confirmationQuery["token"].Single(),
+            });
+        Assert.Equal(HttpStatusCode.NoContent, confirmation.StatusCode);
+
+        await app.GrantAdministratorAsync(user.Id);
+        var teacherRole = await app.CreateRoleAsync(teacherRoleName);
+        await app.AssignRoleAsync(user.Id, teacherRole.Id);
+
+        var login = await LoginAsync(client, email, password);
+        Assert.True(AccessTokenHasRole(
+            login.AccessToken,
+            teacherRoleName));
+
+        var actionMessageCount = app.Messages.Count;
+        using var beginRemove = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/admin/roles/actions/remove/challenge",
+            login.AccessToken,
+            new
+            {
+                roleId = teacherRole.Id,
+                targetUserId = user.Id,
+            });
+        Assert.Equal(HttpStatusCode.OK, beginRemove.StatusCode);
+        using var beginRemoveJson = JsonDocument.Parse(
+            await beginRemove.Content.ReadAsStringAsync());
+        var challengeId = beginRemoveJson.RootElement
+            .GetProperty("challengeId")
+            .GetGuid();
+        var verificationCode = Assert.IsType<string>(
+            Assert.Single(
+                    app.Messages.Skip(actionMessageCount),
+                    message => message.Kind
+                        == HelloAccountMessageKind.AdminActionVerification)
+                .VerificationCode);
+
+        using var completeRemove = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/admin/roles/actions/remove",
+            login.AccessToken,
+            new
+            {
+                challengeId,
+                verificationCode,
+                roleId = teacherRole.Id,
+                targetUserId = user.Id,
+            });
+        Assert.Equal(HttpStatusCode.OK, completeRemove.StatusCode);
+        using var completedJson = JsonDocument.Parse(
+            await completeRemove.Content.ReadAsStringAsync());
+        Assert.False(completedJson.RootElement
+            .GetProperty("sessionsRevoked")
+            .GetBoolean());
+        Assert.False(completedJson.RootElement
+            .GetProperty("currentActorSessionRevoked")
+            .GetBoolean());
+        Assert.False(await app.IsUserInRoleAsync(
+            user.Id,
+            teacherRole.Id));
+
+        using var currentSessionRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/account/me");
+        currentSessionRequest.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                login.AccessToken);
+        using var currentSession = await client.SendAsync(
+            currentSessionRequest);
+        Assert.Equal(HttpStatusCode.OK, currentSession.StatusCode);
+        Assert.True(AccessTokenHasRole(
+            login.AccessToken,
+            teacherRoleName));
+
+        var refreshed = await RefreshAsync(client, login.Cookies);
+        Assert.False(AccessTokenHasRole(
+            refreshed.AccessToken,
+            teacherRoleName));
     }
 
     [Fact]
@@ -3631,6 +3772,22 @@ public sealed class AuthenticationFlowTests
         => account.RootElement
             .GetProperty("phoneConfirmed")
             .GetBoolean();
+
+    private static bool AccessTokenHasRole(
+        string accessToken,
+        string roleName)
+        => new JsonWebTokenHandler()
+            .ReadJsonWebToken(accessToken)
+            .Claims
+            .Any(claim =>
+                string.Equals(
+                    claim.Type,
+                    IdentitySessionClaimTypes.Role,
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    claim.Value,
+                    roleName,
+                    StringComparison.Ordinal));
 
     private static async Task<LoginResult> RefreshAsync(
         HttpClient client,

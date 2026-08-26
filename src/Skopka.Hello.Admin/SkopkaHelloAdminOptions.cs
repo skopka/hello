@@ -49,6 +49,9 @@ public sealed class SkopkaHelloAdminOptions
 
     public bool RevokeSessionsOnRoleGrant { get; set; } = true;
 
+    public HelloSessionRevocationScope RevokeSessionsOnRoleRemoval
+    { get; set; } = HelloSessionRevocationScope.Always;
+
     public void Validate()
     {
         ApiPathPrefix = ValidatePathPrefix(
@@ -80,6 +83,11 @@ public sealed class SkopkaHelloAdminOptions
             nameof(ProtectedRoleNames));
         Roles.Validate();
         RoleAssignment.Validate();
+        if (!Enum.IsDefined(RevokeSessionsOnRoleRemoval))
+        {
+            throw new InvalidOperationException(
+                "The role-removal session revocation scope is invalid.");
+        }
 
         if (new[]
             {
@@ -137,6 +145,13 @@ public sealed class SkopkaHelloAdminOptions
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
+}
+
+public enum HelloSessionRevocationScope
+{
+    Always = 0,
+    ProtectedOnly = 1,
+    Never = 2,
 }
 
 public enum HelloRoleProtection

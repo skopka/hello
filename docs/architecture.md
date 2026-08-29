@@ -74,6 +74,15 @@ It then passes the returned user id and current security stamp to session creati
 delegates strict rotation to Skopka.Identity. Minimal API and Razor handlers
 call the same operations and never call EF stores directly.
 
+Optional cross-device sign-in follows the same boundary.
+`IHelloCrossDeviceSignInApplication<TProfile>` validates local continuation
+URLs and A's online session, drives a TOTP-bound Identity step-up decision and
+delegates the durable state machine to
+`IIdentityDeviceAuthorizationService<TProfile>`. Consumption creates B's own
+Identity session; transports use the existing session-cookie manager. The raw
+browser verifier remains only in B's Secure HttpOnly cookie. See
+[cross-device sign-in](cross-device-sign-in.md).
+
 Registration consent is also a shared application invariant. Configured core
 requirements and UI legal-document requirements are combined before password
 or external Identity registration. Transports submit only acceptance flags;

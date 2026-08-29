@@ -18,6 +18,8 @@ public static class SkopkaHelloServiceCollectionExtensions
         options.Validate();
 
         services.AddSingleton(options);
+        services.TryAddSingleton(
+            new Skopka.Hello.HelloCrossDeviceSignInOptions());
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         services.TryAddSingleton<
             Skopka.Hello.IHelloRegistrationConsentPolicy,

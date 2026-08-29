@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -34,6 +36,9 @@ namespace Skopka.Hello.IntegrationTests;
 
 public sealed class AuthenticationFlowTests
 {
+    private static readonly JsonSerializerOptions WebJsonOptions =
+        new(JsonSerializerDefaults.Web);
+
     private const string RefreshCookieName =
         "__Host-Skopka.Hello.Refresh";
     private const string AntiforgeryCookieName =
@@ -42,10 +47,229 @@ public sealed class AuthenticationFlowTests
         "__Host-Skopka.Hello.XSRF-TOKEN";
     private const string AntiforgeryHeaderName = "X-CSRF-TOKEN";
     private const string UiCookieName = "__Host-Skopka.Hello.UI";
+    private const string CrossDeviceCookieName =
+        "__Host-Skopka.Hello.CrossDevice";
     private const string UiAdministratorPolicy =
         "Integration.Ui.Administrator";
     private const string UiNoticeText =
         "Test stand: <data> may be \"deleted\".";
+
+    [Fact]
+    public async Task CrossDeviceApprovalCreatesIndependentSessionAndKeepsActor()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            configureUi: options =>
+                options.Localization.Enabled = true,
+            crossDeviceEnabled: true);
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        const string email = "cross-device@example.test";
+        const string password = "correct horse battery staple";
+
+        using var englishLoginRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/hello/login");
+        englishLoginRequest.Headers.AcceptLanguage.ParseAdd("en");
+        using var englishLogin = await client.SendAsync(englishLoginRequest);
+        Assert.Equal(HttpStatusCode.OK, englishLogin.StatusCode);
+        Assert.Contains(
+            "Sign in with another device",
+            await englishLogin.Content.ReadAsStringAsync(),
+            StringComparison.Ordinal);
+
+        using var russianLoginRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/hello/login");
+        russianLoginRequest.Headers.AcceptLanguage.ParseAdd("ru");
+        using var russianLogin = await client.SendAsync(russianLoginRequest);
+        Assert.Equal(HttpStatusCode.OK, russianLogin.StatusCode);
+        var russianLoginHtml = WebUtility.HtmlDecode(
+            await russianLogin.Content.ReadAsStringAsync());
+        Assert.Contains(
+            "Войти с помощью другого устройства",
+            russianLoginHtml,
+            StringComparison.Ordinal);
+
+        using var registration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "cross-device-alice",
+                email,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Cross-device Alice",
+                    locale = "en",
+                },
+                password,
+            });
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+        var actor = await LoginAsync(client, email, password);
+
+        using var enrollmentRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/account/authenticator/enrollment");
+        enrollmentRequest.Headers.Authorization =
+            new AuthenticationHeaderValue("Bearer", actor.AccessToken);
+        using var enrollmentResponse = await client.SendAsync(
+            enrollmentRequest);
+        Assert.Equal(HttpStatusCode.OK, enrollmentResponse.StatusCode);
+        var enrollment = await enrollmentResponse.Content.ReadFromJsonAsync<
+            TotpEnrollmentResponse>();
+        Assert.NotNull(enrollment);
+        var enrollmentCode = ComputeTotp(enrollment.Secret);
+        using var confirmedEnrollment = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/account/authenticator/enrollment/confirm",
+            actor.AccessToken,
+            new
+            {
+                enrollmentId = enrollment.EnrollmentId,
+                code = enrollmentCode,
+            });
+        Assert.Equal(HttpStatusCode.OK, confirmedEnrollment.StatusCode);
+        actor = await LoginAsync(client, email, password);
+        var sessionCountBefore = await app.GetSessionCountAsync();
+
+        const string returnUrl =
+            "/connect/authorize?client_id=native&response_type=code";
+        using var beginResponse = await client.PostAsJsonAsync(
+            "/auth/cross-device",
+            new
+            {
+                returnUrl,
+                clientId = "native",
+            });
+        Assert.Equal(HttpStatusCode.OK, beginResponse.StatusCode);
+        var beginJson = await beginResponse.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(
+            "browserVerifier",
+            beginJson,
+            StringComparison.OrdinalIgnoreCase);
+        var begin = JsonSerializer.Deserialize<
+            BeginCrossDeviceSignInResponse>(
+                beginJson,
+                WebJsonOptions);
+        Assert.NotNull(begin);
+        Assert.Contains(
+            begin.DeviceCode,
+            begin.ApprovalUrl,
+            StringComparison.Ordinal);
+        var verifierCookie = ReadSetCookie(
+            beginResponse,
+            CrossDeviceCookieName);
+
+        using var waitingRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/hello/cross-device?deviceCode={begin.DeviceCode}");
+        waitingRequest.Headers.AcceptLanguage.ParseAdd("ru");
+        waitingRequest.Headers.TryAddWithoutValidation(
+            "Cookie",
+            $"{CrossDeviceCookieName}={verifierCookie}");
+        using var waitingResponse = await client.SendAsync(waitingRequest);
+        Assert.Equal(HttpStatusCode.OK, waitingResponse.StatusCode);
+        var waitingHtml = WebUtility.HtmlDecode(
+            await waitingResponse.Content.ReadAsStringAsync());
+        Assert.Contains(begin.UserCode, waitingHtml, StringComparison.Ordinal);
+        Assert.Contains("<svg", waitingHtml, StringComparison.Ordinal);
+        Assert.Contains(
+            "Подтвердите этот вход",
+            waitingHtml,
+            StringComparison.Ordinal);
+
+        using var challengeRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/account/cross-device/{begin.DeviceCode}/challenge");
+        challengeRequest.Headers.Authorization =
+            new AuthenticationHeaderValue("Bearer", actor.AccessToken);
+        using var challengeResponse = await client.SendAsync(challengeRequest);
+        Assert.Equal(HttpStatusCode.OK, challengeResponse.StatusCode);
+        var challenge = await challengeResponse.Content.ReadFromJsonAsync<
+            StepUpChallengeResponse>();
+        Assert.NotNull(challenge);
+
+        using var rejectedApproval = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            $"/account/cross-device/{begin.DeviceCode}/approve",
+            actor.AccessToken,
+            new
+            {
+                challengeId = challenge.ChallengeId,
+                totpCode = "invalid",
+            });
+        Assert.Equal(HttpStatusCode.Unauthorized, rejectedApproval.StatusCode);
+
+        var approvalCode = ComputeTotp(enrollment.Secret, counterOffset: 1);
+        using var approved = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            $"/account/cross-device/{begin.DeviceCode}/approve",
+            actor.AccessToken,
+            new
+            {
+                challengeId = challenge.ChallengeId,
+                totpCode = approvalCode,
+            });
+        Assert.Equal(HttpStatusCode.NoContent, approved.StatusCode);
+
+        using var statusRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/auth/cross-device/{begin.DeviceCode}/status");
+        statusRequest.Headers.TryAddWithoutValidation(
+            "Cookie",
+            $"{CrossDeviceCookieName}={verifierCookie}");
+        using var statusResponse = await client.SendAsync(statusRequest);
+        Assert.Equal(HttpStatusCode.OK, statusResponse.StatusCode);
+        var status = await statusResponse.Content.ReadFromJsonAsync<
+            CrossDeviceSignInStatusResponse>();
+        Assert.NotNull(status);
+        Assert.Equal("approved", status.State);
+
+        using var completeRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/auth/cross-device/{begin.DeviceCode}/complete");
+        completeRequest.Headers.TryAddWithoutValidation(
+            "Cookie",
+            $"{CrossDeviceCookieName}={verifierCookie}");
+        using var completeResponse = await client.SendAsync(completeRequest);
+        Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
+        var completed = await completeResponse.Content.ReadFromJsonAsync<
+            CompleteCrossDeviceSignInResponse>();
+        Assert.NotNull(completed);
+        Assert.Equal(returnUrl, completed.ReturnUrl);
+        Assert.Equal("native", completed.ClientId);
+        Assert.NotEqual(actor.SessionId, completed.Session.SessionId);
+
+        using var actorAccount = await GetAuthorizedAsync(
+            client,
+            "/account/me",
+            actor.AccessToken);
+        using var deviceAccount = await GetAuthorizedAsync(
+            client,
+            "/account/me",
+            completed.Session.AccessToken);
+        Assert.Equal(HttpStatusCode.OK, actorAccount.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, deviceAccount.StatusCode);
+        Assert.Equal(
+            sessionCountBefore + 1,
+            await app.GetSessionCountAsync());
+
+        using var replayRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/auth/cross-device/{begin.DeviceCode}/complete");
+        replayRequest.Headers.TryAddWithoutValidation(
+            "Cookie",
+            $"{CrossDeviceCookieName}={verifierCookie}");
+        using var replay = await client.SendAsync(replayRequest);
+        Assert.Equal(HttpStatusCode.Conflict, replay.StatusCode);
+    }
 
     [Fact]
     public async Task ExplicitUserNameLoginRejectsEmailPasswordLogin()
@@ -3708,6 +3932,78 @@ public sealed class AuthenticationFlowTests
         return await client.SendAsync(request);
     }
 
+    private static async Task<HttpResponseMessage> GetAuthorizedAsync(
+        HttpClient client,
+        string requestUri,
+        string accessToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            accessToken);
+        return await client.SendAsync(request);
+    }
+
+    private static string ReadSetCookie(
+        HttpResponseMessage response,
+        string name)
+    {
+        var prefix = $"{name}=";
+        var header = response.Headers
+            .GetValues("Set-Cookie")
+            .Single(value => value.StartsWith(
+                prefix,
+                StringComparison.Ordinal));
+        var separator = header.IndexOf(';', prefix.Length);
+        return separator < 0
+            ? header[prefix.Length..]
+            : header[prefix.Length..separator];
+    }
+
+    private static string ComputeTotp(
+        string secret,
+        long counterOffset = 0)
+    {
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        var normalized = secret.Trim().TrimEnd('=').ToUpperInvariant();
+        var bytes = new byte[normalized.Length * 5 / 8];
+        var buffer = 0;
+        var bits = 0;
+        var destination = 0;
+        foreach (var character in normalized)
+        {
+            var value = alphabet.IndexOf(character);
+            Assert.True(value >= 0, "The TOTP secret is not valid base32.");
+            buffer = (buffer << 5) | value;
+            bits += 5;
+            if (bits < 8)
+            {
+                continue;
+            }
+
+            bits -= 8;
+            bytes[destination++] = (byte)(buffer >> bits);
+            buffer &= (1 << bits) - 1;
+        }
+
+        Span<byte> counter = stackalloc byte[sizeof(long)];
+        BinaryPrimitives.WriteInt64BigEndian(
+            counter,
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30
+                + counterOffset);
+        // The product uses the interoperable RFC 6238 HMAC-SHA1 profile;
+        // this test generator must match that protocol profile exactly.
+#pragma warning disable CA5350
+        var hash = HMACSHA1.HashData(bytes, counter);
+#pragma warning restore CA5350
+        var offset = hash[^1] & 0x0f;
+        var binary = BinaryPrimitives.ReadInt32BigEndian(
+            hash.AsSpan(offset, sizeof(int))) & 0x7fffffff;
+        return (binary % 1_000_000).ToString(
+            "D6",
+            CultureInfo.InvariantCulture);
+    }
+
     private static async Task<LoginResult> LoginAsync(
         HttpClient client,
         string login = "alice@example.test",
@@ -4120,7 +4416,8 @@ public sealed class AuthenticationFlowTests
                 HelloDeliveryChannel.Email,
             Action<SkopkaHelloUiOptions>? configureUi = null,
             Action<SkopkaHelloAdminOptions>? configureAdmin = null,
-            Action<SkopkaHelloOptions>? configureHello = null)
+            Action<SkopkaHelloOptions>? configureHello = null,
+            bool crossDeviceEnabled = false)
         {
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions
@@ -4146,6 +4443,11 @@ public sealed class AuthenticationFlowTests
                     options.UiPathPrefix = uiPathPrefix;
                     options.SelfRegistrationEnabled =
                         selfRegistrationEnabled;
+                    if (crossDeviceEnabled)
+                    {
+                        options.Totp.Enabled = true;
+                    }
+
                     configureHello?.Invoke(options);
                 })
                 .ConfigurePasswordPolicy(options =>
@@ -4159,7 +4461,8 @@ public sealed class AuthenticationFlowTests
                     options.Iterations = 1_000;
                     options.MaximumAcceptedIterations = 1_000;
                 })
-                .UseDataProtectionActionTokens();
+                .UseDataProtectionActionTokens()
+                .UseDataProtectionTotp();
             var jwtKeys = new Dictionary<string, byte[]>
             {
                 ["v1"] = RandomNumberGenerator.GetBytes(32),
@@ -4233,6 +4536,11 @@ public sealed class AuthenticationFlowTests
                 {
                     CryptographicOperations.ZeroMemory(key);
                 }
+            }
+
+            if (crossDeviceEnabled)
+            {
+                identity.AddCrossDeviceSignIn();
             }
 
             identity.AddRoles();
@@ -4424,6 +4732,18 @@ public sealed class AuthenticationFlowTests
                 .Distinct()
                 .OrderBy(version => version)
                 .ToArrayAsync();
+        }
+
+        public async Task<int> GetSessionCountAsync()
+        {
+            await using var serviceScope =
+                application.Services.CreateAsyncScope();
+            var database = serviceScope.ServiceProvider
+                .GetRequiredService<
+                    PostgreSqlIdentityDbContext<IntegrationProfile>>();
+            return await database.Sessions.CountAsync(session =>
+                session.RevokedAt == null
+                && session.ExpiresAt > DateTimeOffset.UtcNow);
         }
 
         public async Task UpdateProfileAsync(

@@ -309,6 +309,8 @@ public sealed class SkopkaHelloUiOptions
             routes.ExternalCompletionPath,
             routes.ExternalRegistrationPath,
             routes.ExternalLoginsPath,
+            routes.CrossDeviceWaitingPath,
+            routes.CrossDeviceApprovalPath,
             routes.CulturePath,
         ];
 }

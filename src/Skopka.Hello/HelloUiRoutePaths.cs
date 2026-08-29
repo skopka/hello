@@ -27,6 +27,8 @@ public sealed class HelloUiRoutePaths
         ExternalCompletionPath = Append("/external/complete");
         ExternalRegistrationPath = Append("/external/register");
         ExternalLoginsPath = Append("/account/external-logins");
+        CrossDeviceWaitingPath = Append("/cross-device");
+        CrossDeviceApprovalPath = Append("/cross-device/approve");
         CulturePath = Append("/culture");
     }
 
@@ -63,6 +65,10 @@ public sealed class HelloUiRoutePaths
     public string ExternalRegistrationPath { get; }
 
     public string ExternalLoginsPath { get; }
+
+    public string CrossDeviceWaitingPath { get; }
+
+    public string CrossDeviceApprovalPath { get; }
 
     public string CulturePath { get; }
 

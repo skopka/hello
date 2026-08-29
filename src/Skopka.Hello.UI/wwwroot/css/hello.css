@@ -374,6 +374,39 @@ select {
   );
 }
 
+.hello-status-warning {
+  border: 1px solid color-mix(
+    in srgb,
+    var(--skopka-hello-color-primary) 35%,
+    transparent
+  );
+}
+
+.hello-cross-device-details {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.4fr) 1fr;
+  gap: 0.75rem 1rem;
+  margin: 1.5rem 0;
+}
+
+.hello-cross-device-details dt {
+  color: var(--skopka-hello-color-muted);
+  font-weight: 650;
+}
+
+.hello-cross-device-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.hello-verification-code {
+  margin: 1rem 0;
+  font-family: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  font-size: clamp(1.5rem, 5vw, 2.25rem);
+  font-weight: 750;
+  letter-spacing: 0.12em;
+}
+
 .hello-legal-notice {
   margin-bottom: 0.75rem;
   color: var(--skopka-hello-color-muted);

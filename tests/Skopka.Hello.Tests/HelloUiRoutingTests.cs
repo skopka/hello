@@ -118,6 +118,42 @@ public sealed class HelloUiRoutingTests
         Assert.Contains("/auth/login", routes);
         Assert.Contains("/identity/login", routes);
         Assert.Contains("/identity/external/complete", routes);
+        Assert.DoesNotContain("/auth/cross-device", routes);
+        Assert.DoesNotContain("/identity/cross-device", routes);
+        Assert.DoesNotContain("/identity/cross-device/approve", routes);
+    }
+
+    [Fact]
+    public async Task EnabledCrossDeviceSignInPublishesApiAndUiRoutes()
+    {
+        await using var application = CreateApplication(
+            "/identity",
+            selfRegistrationEnabled: false,
+            crossDeviceEnabled: true);
+
+        var routes = GetRoutes(application);
+
+        Assert.Contains("/auth/cross-device", routes);
+        Assert.Contains(
+            "/auth/cross-device/{deviceCode}/status",
+            routes);
+        Assert.Contains(
+            "/auth/cross-device/{deviceCode}/complete",
+            routes);
+        Assert.Contains(
+            "/account/cross-device/{deviceCode}",
+            routes);
+        Assert.Contains(
+            "/account/cross-device/{deviceCode}/challenge",
+            routes);
+        Assert.Contains(
+            "/account/cross-device/{deviceCode}/approve",
+            routes);
+        Assert.Contains(
+            "/account/cross-device/{deviceCode}/deny",
+            routes);
+        Assert.Contains("/identity/cross-device", routes);
+        Assert.Contains("/identity/cross-device/approve", routes);
     }
 
     [Fact]
@@ -195,6 +231,7 @@ public sealed class HelloUiRoutingTests
         var convention = new HelloUiPageRouteModelConvention(
             new HelloUiRoutePaths("/identity"),
             selfRegistrationEnabled: true,
+            crossDeviceEnabled: false,
             enabledPages: HelloUiPages.All,
             emailConfirmationEnabled: true,
             phoneConfirmationEnabled: true);
@@ -224,16 +261,29 @@ public sealed class HelloUiRoutingTests
         string pathPrefix,
         bool selfRegistrationEnabled,
         Action<SkopkaHelloUiOptions>? configureUi = null,
-        Action<SkopkaHelloOptions>? configureHello = null)
+        Action<SkopkaHelloOptions>? configureHello = null,
+        bool crossDeviceEnabled = false)
     {
         var builder = WebApplication.CreateBuilder();
-        builder.Services.AddSkopkaHello<TestProfile>(options =>
+        var hello = builder.Services.AddSkopkaHello<TestProfile>(options =>
         {
             options.UiPathPrefix = pathPrefix;
             options.SelfRegistrationEnabled =
                 selfRegistrationEnabled;
+            if (crossDeviceEnabled)
+            {
+                options.PublicOrigin = new Uri(
+                    "https://accounts.example.test");
+                options.Totp.Enabled = true;
+            }
+
             configureHello?.Invoke(options);
         });
+        if (crossDeviceEnabled)
+        {
+            hello.AddCrossDeviceSignIn();
+        }
+
         builder.Services.AddSkopkaHelloUi<
             TestProfile,
             TestProfileFactory>(configureUi);

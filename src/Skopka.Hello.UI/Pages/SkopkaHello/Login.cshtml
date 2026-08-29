@@ -134,6 +134,22 @@
         </button>
     </form>
 
+    @if (Model.CrossDeviceEnabled)
+    {
+        <div class="hello-divider" role="separator">
+            <span>@Text["Login.OrUseAnotherDevice"]</span>
+        </div>
+        <form method="post"
+              asp-page-handler="CrossDevice"
+              class="hello-form">
+            <input asp-for="ReturnUrl" type="hidden" />
+            <button class="hello-button hello-button-secondary"
+                    type="submit">
+                @Text["Login.CrossDeviceAction"]
+            </button>
+        </form>
+    }
+
     @if ((HelloOptions.SelfRegistrationEnabled
             && (UiOptions.EnabledPages & HelloUiPages.Registration) != 0)
         || (UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0

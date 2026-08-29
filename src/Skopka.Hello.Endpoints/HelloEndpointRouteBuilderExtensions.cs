@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Hello;
@@ -33,6 +34,47 @@ public static class HelloEndpointRouteBuilderExtensions
                 "/auth/login",
                 LoginAsync<TProfile>)
             .WithName("SkopkaHelloLogin");
+
+        var crossDeviceOptions = endpoints.ServiceProvider
+            .GetRequiredService<HelloCrossDeviceSignInOptions>();
+        if (crossDeviceOptions.Enabled)
+        {
+            endpoints.MapPost(
+                    "/auth/cross-device",
+                    BeginCrossDeviceSignInAsync<TProfile>)
+                .AllowAnonymous()
+                .WithName("SkopkaHelloBeginCrossDeviceSignIn");
+            endpoints.MapGet(
+                    "/auth/cross-device/{deviceCode}/status",
+                    GetCrossDeviceSignInStatusAsync<TProfile>)
+                .AllowAnonymous()
+                .WithName("SkopkaHelloGetCrossDeviceSignInStatus");
+            endpoints.MapPost(
+                    "/auth/cross-device/{deviceCode}/complete",
+                    CompleteCrossDeviceSignInAsync<TProfile>)
+                .AllowAnonymous()
+                .WithName("SkopkaHelloCompleteCrossDeviceSignIn");
+            endpoints.MapGet(
+                    "/account/cross-device/{deviceCode}",
+                    GetCrossDeviceApprovalDetailsAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloGetCrossDeviceApprovalDetails");
+            endpoints.MapPost(
+                    "/account/cross-device/{deviceCode}/challenge",
+                    BeginCrossDeviceApprovalAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloBeginCrossDeviceApproval");
+            endpoints.MapPost(
+                    "/account/cross-device/{deviceCode}/approve",
+                    ApproveCrossDeviceSignInAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloApproveCrossDeviceSignIn");
+            endpoints.MapPost(
+                    "/account/cross-device/{deviceCode}/deny",
+                    DenyCrossDeviceSignInAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloDenyCrossDeviceSignIn");
+        }
 
         endpoints.MapGet(
                 "/auth/antiforgery",
@@ -368,6 +410,278 @@ public static class HelloEndpointRouteBuilderExtensions
             authenticated.Value.Session);
         return TypedResults.Ok(
             ToSessionResponse(authenticated.Value.Session));
+    }
+
+    private static async Task<IResult> BeginCrossDeviceSignInAsync<TProfile>(
+        BeginCrossDeviceSignInRequest request,
+        IHelloCrossDeviceSignInApplication<TProfile> application,
+        IHelloCrossDeviceCookieManager verifierCookies,
+        IHelloSessionCookieManager sessionCookies,
+        IHelloRequestContext requestContext,
+        SkopkaHelloOptions helloOptions,
+        HelloCrossDeviceSignInOptions crossDeviceOptions,
+        HelloUiRoutePaths routes,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var transport = sessionCookies.ValidateTransport(httpContext);
+        if (!transport.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                transport,
+                httpContext);
+        }
+
+        var clientKey = requestContext.CreateClientKey(httpContext);
+        var metadata = requestContext.CreateSessionMetadata(
+            httpContext,
+            crossDeviceOptions.SessionClientName
+                ?? helloOptions.ClientName);
+        var userAgent = httpContext.Request.Headers.UserAgent.ToString();
+        var result = await application.BeginAsync(
+            new HelloBeginCrossDeviceSignInCommand(
+                request.ReturnUrl,
+                request.ClientId,
+                clientKey,
+                string.IsNullOrWhiteSpace(userAgent) ? null : userAgent,
+                metadata.DeviceName,
+                metadata,
+                clientKey),
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+        }
+
+        verifierCookies.Write(
+            httpContext,
+            result.Value.DeviceCode,
+            result.Value.BrowserVerifier,
+            result.Value.ExpiresAt);
+        return TypedResults.Ok(
+            new BeginCrossDeviceSignInResponse(
+                result.Value.RequestId,
+                result.Value.DeviceCode,
+                result.Value.UserCode,
+                CreateCrossDeviceApprovalUrl(
+                    httpContext,
+                    helloOptions,
+                    routes,
+                    result.Value.DeviceCode),
+                result.Value.CreatedAt,
+                result.Value.ExpiresAt));
+    }
+
+    private static async Task<IResult>
+        GetCrossDeviceSignInStatusAsync<TProfile>(
+            string deviceCode,
+            IHelloCrossDeviceSignInApplication<TProfile> application,
+            IHelloCrossDeviceCookieManager verifierCookies,
+            IHelloRequestContext requestContext,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        if (!verifierCookies.TryRead(
+                httpContext,
+                deviceCode,
+                out var browserVerifier))
+        {
+            return InvalidCrossDeviceRequest(httpContext);
+        }
+
+        var result = await application.GetStatusAsync(
+            deviceCode,
+            browserVerifier,
+            requestContext.CreateClientKey(httpContext),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Ok(
+                new CrossDeviceSignInStatusResponse(
+                    result.Value.State.ToString().ToLowerInvariant(),
+                    result.Value.UserCode,
+                    result.Value.CreatedAt,
+                    result.Value.ExpiresAt,
+                    result.Value.ResolvedAt))
+            : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    private static async Task<IResult>
+        GetCrossDeviceApprovalDetailsAsync<TProfile>(
+            string deviceCode,
+            IHelloCrossDeviceSignInApplication<TProfile> application,
+            IHelloRequestContext requestContext,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.GetApprovalDetailsAsync(
+            accessToken,
+            deviceCode,
+            requestContext.CreateClientKey(httpContext),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Ok(
+                new CrossDeviceApprovalDetailsResponse(
+                    result.Value.DeviceCode,
+                    result.Value.UserCode,
+                    result.Value.CreatedAt,
+                    result.Value.ExpiresAt,
+                    result.Value.IpAddress,
+                    result.Value.UserAgent,
+                    result.Value.DeviceDisplayName))
+            : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    private static async Task<IResult>
+        BeginCrossDeviceApprovalAsync<TProfile>(
+            string deviceCode,
+            IHelloCrossDeviceSignInApplication<TProfile> application,
+            IHelloRequestContext requestContext,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.BeginApprovalAsync(
+            new HelloBeginCrossDeviceApprovalCommand(
+                accessToken,
+                deviceCode,
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+        return ToStepUpResult(result, httpContext);
+    }
+
+    private static async Task<IResult> ApproveCrossDeviceSignInAsync<TProfile>(
+        string deviceCode,
+        ApproveCrossDeviceSignInRequest request,
+        IHelloCrossDeviceSignInApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.ApproveAsync(
+            new HelloApproveCrossDeviceSignInCommand(
+                accessToken,
+                deviceCode,
+                request.ChallengeId,
+                request.TotpCode,
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.NoContent()
+            : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    private static async Task<IResult> DenyCrossDeviceSignInAsync<TProfile>(
+        string deviceCode,
+        IHelloCrossDeviceSignInApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.DenyAsync(
+            new HelloDenyCrossDeviceSignInCommand(
+                accessToken,
+                deviceCode,
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.NoContent()
+            : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    private static async Task<IResult>
+        CompleteCrossDeviceSignInAsync<TProfile>(
+            string deviceCode,
+            IHelloCrossDeviceSignInApplication<TProfile> application,
+            IHelloCrossDeviceCookieManager verifierCookies,
+            IHelloSessionCookieManager sessionCookies,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var transport = sessionCookies.ValidateTransport(httpContext);
+        if (!transport.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                transport,
+                httpContext);
+        }
+
+        if (!verifierCookies.TryRead(
+                httpContext,
+                deviceCode,
+                out var browserVerifier))
+        {
+            return InvalidCrossDeviceRequest(httpContext);
+        }
+
+        var result = await application.CompleteAsync(
+            deviceCode,
+            browserVerifier,
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                result,
+                httpContext);
+        }
+
+        verifierCookies.Delete(httpContext);
+        sessionCookies.WriteSessionCookies(
+            httpContext,
+            result.Value.SignIn.Session);
+        return TypedResults.Ok(
+            new CompleteCrossDeviceSignInResponse(
+                ToSessionResponse(result.Value.SignIn.Session),
+                result.Value.ClientId,
+                result.Value.ReturnUrl));
+    }
+
+    private static string CreateCrossDeviceApprovalUrl(
+        HttpContext httpContext,
+        SkopkaHelloOptions helloOptions,
+        HelloUiRoutePaths routes,
+        string deviceCode)
+    {
+        var path = QueryHelpers.AddQueryString(
+            routes.CrossDeviceApprovalPath,
+            "deviceCode",
+            deviceCode);
+        return helloOptions.PublicOrigin is not null
+            ? new Uri(helloOptions.PublicOrigin, path).AbsoluteUri
+            : $"{httpContext.Request.Scheme}://"
+                + $"{httpContext.Request.Host}"
+                + $"{httpContext.Request.PathBase}{path}";
     }
 
     private static IResult IssueAuthenticatedAntiforgery(
@@ -1671,6 +1985,16 @@ public static class HelloEndpointRouteBuilderExtensions
                         "The session is invalid or expired.",
                         ErrorType.Unauthorized),
                 }),
+            httpContext);
+
+    private static Microsoft.AspNetCore.Http.HttpResults.ProblemHttpResult
+        InvalidCrossDeviceRequest(HttpContext httpContext)
+        => OperationResultProblemMapper.ToResult(
+            OperationResultFactory.Fail(
+                new Error(
+                    IdentityErrorCodes.DeviceAuthorizationInvalid,
+                    "The device authorization request is invalid or expired.",
+                    ErrorType.Unauthorized)),
             httpContext);
 
     private static HelloOidcLocalSession? TryReadBearerSession(

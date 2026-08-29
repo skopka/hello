@@ -331,6 +331,18 @@ identity.UseJwtBearerAuthentication(options =>
         false);
 });
 
+var crossDeviceSection = configuration.GetSection(
+    "SkopkaHello:CrossDeviceSignIn");
+var crossDeviceEnabled = crossDeviceSection.GetValue("Enabled", false);
+if (crossDeviceEnabled)
+{
+    identity.AddCrossDeviceSignIn(options =>
+    {
+        crossDeviceSection.Bind(options);
+        options.Enabled = true;
+    });
+}
+
 if (authorizationEnabled)
 {
     AddAuthorizationStorage(
@@ -567,6 +579,12 @@ builder.Services.AddSkopkaHelloAdmin<
 });
 builder.Services.AddHostedService<
     IdentitySessionPruningWorker<HelloProfile>>();
+if (crossDeviceEnabled)
+{
+    builder.Services.AddHostedService<
+        IdentityDeviceAuthorizationPruningWorker<HelloProfile>>();
+}
+
 var rateLimitPruningOptions = new IdentityRateLimitPruningOptions();
 configuration.GetSection("SkopkaHello:RateLimitPruning")
     .Bind(rateLimitPruningOptions);

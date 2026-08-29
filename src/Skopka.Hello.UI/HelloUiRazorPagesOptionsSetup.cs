@@ -6,6 +6,7 @@ namespace Skopka.Hello.UI;
 internal sealed class HelloUiRazorPagesOptionsSetup(
     HelloUiRoutePaths routes,
     SkopkaHelloOptions helloOptions,
+    HelloCrossDeviceSignInOptions crossDeviceOptions,
     SkopkaHelloUiOptions uiOptions,
     IEnumerable<HelloRegistrationConsentRequirement>
         consentRequirements)
@@ -21,6 +22,7 @@ internal sealed class HelloUiRazorPagesOptionsSetup(
             new HelloUiPageRouteModelConvention(
                 routes,
                 helloOptions.SelfRegistrationEnabled,
+                crossDeviceOptions.Enabled,
                 uiOptions.EnabledPages,
                 uiOptions.ContactConfirmation.EmailEnabled,
                 uiOptions.ContactConfirmation.PhoneEnabled));

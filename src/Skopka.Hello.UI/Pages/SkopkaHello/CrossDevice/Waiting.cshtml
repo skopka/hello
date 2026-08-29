@@ -1,0 +1,90 @@
+@page
+@model CrossDeviceWaitingModel
+@using Skopka.Identity.DeviceAuthorization
+@{
+    ViewData["Title"] = Text["CrossDevice.Waiting.Title"];
+}
+
+<section class="hello-card hello-auth-card"
+         data-cross-device-waiting
+         data-status-url="@Url.Page("/SkopkaHello/CrossDevice/Waiting", "Status", new { deviceCode = Model.DeviceCode })"
+         data-polling-interval="@Model.PollingIntervalMilliseconds">
+    <p class="hello-eyebrow">@Text["CrossDevice.Eyebrow"]</p>
+    <h1>@Text["CrossDevice.Waiting.Title"]</h1>
+
+    <div asp-validation-summary="ModelOnly"
+         class="hello-validation"
+         role="alert"></div>
+
+    @if (Model.RequestState is { } request)
+    {
+        @if (request.State is DeviceAuthorizationState.Pending)
+        {
+            <p class="hello-muted">@Text["CrossDevice.Waiting.Instructions"]</p>
+            <div class="hello-qr-code" aria-label="@Text["CrossDevice.QrCode"]">
+                @Html.Raw(request.QrCodeSvg)
+            </div>
+            <p class="hello-verification-code">@request.UserCode</p>
+            <p class="hello-muted">
+                @Text["CrossDevice.Waiting.CompareCode"]
+            </p>
+            <p role="status"
+               data-cross-device-countdown
+               data-expires-at="@request.ExpiresAt.ToString("O")">
+                @Text["CrossDevice.Waiting.ExpiresAt",
+                    request.ExpiresAt.ToUniversalTime().ToString("T")]
+            </p>
+        }
+        else if (request.State is DeviceAuthorizationState.Approved)
+        {
+            <p class="hello-status" role="status">
+                @Text["CrossDevice.Waiting.Approved"]
+            </p>
+        }
+        else if (request.State is DeviceAuthorizationState.Denied)
+        {
+            <p class="hello-status hello-status-error" role="alert">
+                @Text["CrossDevice.Waiting.Denied"]
+            </p>
+        }
+        else if (request.State is DeviceAuthorizationState.Expired)
+        {
+            <p class="hello-status hello-status-error" role="alert">
+                @Text["CrossDevice.Waiting.Expired"]
+            </p>
+        }
+
+        <form method="post"
+              asp-page-handler="Complete"
+              data-cross-device-complete
+              class="hello-form"
+              hidden="@(request.State is not DeviceAuthorizationState.Approved
+                  ? "hidden"
+                  : null)">
+            <input asp-for="DeviceCode" type="hidden" />
+            <input asp-for="ReturnUrl" type="hidden" />
+            <button class="hello-button" type="submit">
+                @Text["CrossDevice.Waiting.Complete"]
+            </button>
+        </form>
+
+        @if (request.State is DeviceAuthorizationState.Denied
+            or DeviceAuthorizationState.Expired)
+        {
+            <form method="post"
+                  asp-page-handler="Restart"
+                  class="hello-form">
+                <input asp-for="ReturnUrl" type="hidden" />
+                <button class="hello-button" type="submit">
+                    @Text["CrossDevice.Waiting.Restart"]
+                </button>
+            </form>
+        }
+    }
+
+    <p class="hello-card-footer">
+        <a asp-page="/SkopkaHello/Login">@Text["CrossDevice.BackToLogin"]</a>
+    </p>
+</section>
+
+<script src="/_content/Skopka.Hello.UI/js/cross-device.js" defer></script>

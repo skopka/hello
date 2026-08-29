@@ -1,0 +1,85 @@
+@page
+@model CrossDeviceApproveModel
+@{
+    ViewData["Title"] = Text["CrossDevice.Approve.Title"];
+}
+
+<section class="hello-card hello-auth-card">
+    <p class="hello-eyebrow">@Text["CrossDevice.Eyebrow"]</p>
+    <h1>@Text["CrossDevice.Approve.Title"]</h1>
+
+    <div asp-validation-summary="ModelOnly"
+         class="hello-validation"
+         role="alert"></div>
+
+    @if (Model.Approved)
+    {
+        <p class="hello-status" role="status">
+            @Text["CrossDevice.Approve.Success"]
+        </p>
+    }
+    else if (Model.Denied)
+    {
+        <p class="hello-status" role="status">
+            @Text["CrossDevice.Approve.Denied"]
+        </p>
+    }
+    else if (Model.Details is { } details)
+    {
+        <p class="hello-status hello-status-warning" role="alert">
+            @Text["CrossDevice.Approve.Warning"]
+        </p>
+        <dl class="hello-cross-device-details">
+            <dt>@Text["CrossDevice.Code"]</dt>
+            <dd class="hello-verification-code">@details.UserCode</dd>
+            <dt>@Text["CrossDevice.Device"]</dt>
+            <dd>@(details.DeviceDisplayName ?? details.UserAgent ?? Text["Common.Unknown"])</dd>
+            <dt>@Text["CrossDevice.IpAddress"]</dt>
+            <dd>@(details.IpAddress ?? Text["Common.Unknown"])</dd>
+            <dt>@Text["CrossDevice.CreatedAt"]</dt>
+            <dd>@details.CreatedAt.ToLocalTime().ToString("g")</dd>
+        </dl>
+
+        @if (Model.Input.ChallengeId == Guid.Empty)
+        {
+            <form method="post"
+                  asp-page-handler="RequestCode"
+                  class="hello-form">
+                <input asp-for="DeviceCode" type="hidden" />
+                <button class="hello-button" type="submit">
+                    @Text["CrossDevice.Approve.RequestTotp"]
+                </button>
+            </form>
+        }
+        else
+        {
+            <form method="post"
+                  asp-page-handler="Approve"
+                  class="hello-form">
+                <input asp-for="DeviceCode" type="hidden" />
+                <input asp-for="Input.ChallengeId" type="hidden" />
+                <input asp-for="Input.ExpiresAt" type="hidden" />
+                <label asp-for="Input.TotpCode">
+                    @Text["CrossDevice.Approve.TotpCode"]
+                </label>
+                <input asp-for="Input.TotpCode"
+                       autocomplete="one-time-code"
+                       inputmode="numeric" />
+                <span asp-validation-for="Input.TotpCode"
+                      class="hello-field-error"></span>
+                <button class="hello-button" type="submit">
+                    @Text["CrossDevice.Approve.Action"]
+                </button>
+            </form>
+        }
+
+        <form method="post"
+              asp-page-handler="Deny"
+              class="hello-form">
+            <input asp-for="DeviceCode" type="hidden" />
+            <button class="hello-button hello-button-danger" type="submit">
+                @Text["CrossDevice.Approve.DenyAction"]
+            </button>
+        </form>
+    }
+</section>

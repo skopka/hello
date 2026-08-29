@@ -5,6 +5,7 @@ namespace Skopka.Hello.UI;
 internal sealed class HelloUiPageRouteModelConvention(
     HelloUiRoutePaths routes,
     bool selfRegistrationEnabled,
+    bool crossDeviceEnabled,
     HelloUiPages enabledPages,
     bool emailConfirmationEnabled,
     bool phoneConfirmationEnabled)
@@ -106,6 +107,16 @@ internal sealed class HelloUiPageRouteModelConvention(
                     enabledPages,
                     HelloUiPages.ExternalIdentity)
                     ? routes.ExternalLoginsPath
+                    : null,
+            ["/Pages/SkopkaHello/CrossDevice/Waiting.cshtml"] =
+                crossDeviceEnabled
+                && IsEnabled(enabledPages, HelloUiPages.Login)
+                    ? routes.CrossDeviceWaitingPath
+                    : null,
+            ["/Pages/SkopkaHello/CrossDevice/Approve.cshtml"] =
+                crossDeviceEnabled
+                && IsEnabled(enabledPages, HelloUiPages.Login)
+                    ? routes.CrossDeviceApprovalPath
                     : null,
         };
 

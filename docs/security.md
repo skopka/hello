@@ -83,6 +83,23 @@ Bearer-authorized account mutations do not derive authority from cookies.
 Razor form mutations use the framework antiforgery hidden field and cookie.
 Login and registration are also antiforgery protected.
 
+## Cross-device sign-in
+
+The optional flow uses a separate `__Host-` cookie for B's high-entropy
+browser verifier. It is always Secure and HttpOnly, defaults to
+`SameSite=Strict`, and is never returned in a response body or placed in the
+QR code. Cross-device registration requires an HTTPS `PublicOrigin`, so QR
+approval links never depend on an untrusted request `Host` value.
+
+A must have an online-valid existing session and provide a current TOTP for a
+step-up challenge bound to the exact random device code. The visual user code,
+IP and User-Agent are comparison/display hints only. B receives a newly
+created Identity session through the ordinary session service and cookie
+manager; A's session artifacts are not copied or revoked. Stored continuation
+URLs are local-only, which permits a first-party `/connect/authorize` flow but
+prevents an external redirect. Full state, failure and deployment rules are in
+[cross-device sign-in](cross-device-sign-in.md).
+
 ## External OIDC providers
 
 External sign-in uses `Microsoft.AspNetCore.Authentication.OpenIdConnect`, not

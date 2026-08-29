@@ -62,4 +62,10 @@ public static class HelloUiDefaults
 
     public const string ExternalLoginsPath =
         RootPath + "/account/external-logins";
+
+    public const string CrossDeviceWaitingPath =
+        RootPath + "/cross-device";
+
+    public const string CrossDeviceApprovalPath =
+        RootPath + "/cross-device/approve";
 }

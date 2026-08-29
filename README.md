@@ -24,6 +24,8 @@ The current `0.10.2` vertical slice contains:
   link/unlink flows without exposing provider tokens or subjects;
 - configurable confirmed-email, confirmed-phone or RFC 6238 authenticator
   step-up for sensitive account and administrative actions;
+- optional TOTP-approved cross-device sign-in with a separate new-device
+  session, local QR generation and persistent single-use requests;
 - enumeration-safe email/phone confirmation and password-reset requests;
 - bounded pre-lookup queuing with persistent client/target admission limits
   for anonymous account messages;
@@ -88,6 +90,9 @@ The same client is covered by real Chromium tests.
 | --- | --- | --- |
 | `POST` | `/auth/register` | Anonymous, when self-registration is enabled |
 | `POST` | `/auth/login` | Anonymous |
+| `POST` | `/auth/cross-device` | Anonymous, when cross-device sign-in is enabled |
+| `GET` | `/auth/cross-device/{deviceCode}/status` | New-device verifier cookie |
+| `POST` | `/auth/cross-device/{deviceCode}/complete` | New-device verifier cookie |
 | `GET` | `/connect/authorize` | Browser SSO; authorization code + PKCE when enabled |
 | `POST` | `/connect/token` | Authorization-code or refresh-token grant when enabled |
 | `GET` | `/auth/antiforgery` | Bearer; issues identity-bound CSRF cookies |
@@ -113,6 +118,10 @@ The same client is covered by real Chromium tests.
 | `PUT` | `/account/phone` | Bearer |
 | `PUT` | `/account/profile` | Bearer |
 | `GET` | `/account/sessions` | Bearer |
+| `GET` | `/account/cross-device/{deviceCode}` | Bearer, when cross-device sign-in is enabled |
+| `POST` | `/account/cross-device/{deviceCode}/challenge` | Bearer; starts TOTP step-up |
+| `POST` | `/account/cross-device/{deviceCode}/approve` | Bearer + current TOTP |
+| `POST` | `/account/cross-device/{deviceCode}/deny` | Bearer |
 | `GET` | `/account/external-logins` | Bearer |
 | `POST` | `/account/external-logins/{providerId}/link` | Bearer + CSRF header; creates browser preflight |
 | `POST` | `/account/external-logins/link/challenge` | Bearer + pending-flow cookie + CSRF header |
@@ -150,6 +159,11 @@ account linking remain available. Registration calls
 implemented as separate user creation and password mutation. Login calls
 `IPasswordAuthenticationService<TProfile>`, then creates a session through
 `IIdentitySessionService<TProfile>`.
+
+The optional [cross-device sign-in flow](docs/cross-device-sign-in.md) also
+creates the approved browser's independent session through the same session
+service and cookie manager. It is disabled unless the host explicitly calls
+`AddCrossDeviceSignIn`.
 
 ## Browser UI
 

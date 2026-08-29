@@ -12,7 +12,8 @@ public sealed class LoginModel(
     IHelloSessionCookieManager sessionCookies,
     SkopkaHelloUiOptions uiOptions,
     HelloUiRoutePaths routes,
-    IHelloUiLocalizer text)
+    IHelloUiLocalizer text,
+    IHelloUiCrossDeviceApplication? crossDevice = null)
     : PageModel
 {
     [BindProperty]
@@ -54,6 +55,8 @@ public sealed class LoginModel(
     public bool Registered { get; private set; }
 
     public bool PasswordReset { get; private set; }
+
+    public bool CrossDeviceEnabled => crossDevice is not null;
 
     public async Task<IActionResult> OnGetAsync(
         bool registered,
@@ -162,6 +165,41 @@ public sealed class LoginModel(
         return Challenge(
             challenge.Value.Properties,
             challenge.Value.AuthenticationScheme);
+    }
+
+    public async Task<IActionResult> OnPostCrossDeviceAsync(
+        CancellationToken cancellationToken)
+    {
+        ModelState.Clear();
+        if (crossDevice is null)
+        {
+            return NotFound();
+        }
+
+        var transport = sessionCookies.ValidateTransport(HttpContext);
+        if (!transport.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, transport.Errors, text);
+            return Page();
+        }
+
+        var result = await crossDevice.BeginAsync(
+            ReturnUrl,
+            HttpContext,
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
+            return Page();
+        }
+
+        return RedirectToPage(
+            "/SkopkaHello/CrossDevice/Waiting",
+            new
+            {
+                deviceCode = result.Value.DeviceCode,
+                returnUrl = Url.IsLocalUrl(ReturnUrl) ? ReturnUrl : null,
+            });
     }
 
     public sealed class InputModel

@@ -613,8 +613,7 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseExceptionHandler();
-app.UseStatusCodePages();
+app.UseSkopkaHelloUiErrorPages();
 if (useForwardedHeaders)
 {
     app.UseForwardedHeaders();

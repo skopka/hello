@@ -1684,8 +1684,7 @@ public sealed class ExternalOidcFlowTests
                 });
 
             var application = builder.Build();
-            application.UseExceptionHandler();
-            application.UseStatusCodePages();
+            application.UseSkopkaHelloUiErrorPages();
             application.Use(
                 static (context, next) =>
                 {

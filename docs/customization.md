@@ -111,9 +111,19 @@ services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
         HelloUiRegistrationFieldMode.Hidden;
 });
 
+app.UseSkopkaHelloUiErrorPages();
 app.MapStaticAssets();
 app.MapSkopkaHelloUi();
 ```
+
+`UseSkopkaHelloUiErrorPages` must be added before authentication and endpoint
+mapping. Browser navigations and requests that explicitly prefer `text/html`
+are re-executed through the themed, localized `<prefix>/error` Razor page for
+400–599 responses and unhandled exceptions. API clients keep RFC 9457
+ProblemDetails by requesting `application/json` or `application/problem+json`;
+an absent or wildcard-only `Accept` header is treated as an API request. Error
+pages never include exception messages or stack traces and expose only the
+request id needed to correlate server logs.
 
 `NoticeText` adds one host-owned message above the body on every packaged
 Hello page. A null, empty or whitespace-only value emits no notice element.

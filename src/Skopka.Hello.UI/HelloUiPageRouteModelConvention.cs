@@ -18,6 +18,7 @@ internal sealed class HelloUiPageRouteModelConvention(
                 IsEnabled(enabledPages, HelloUiPages.Account)
                     ? routes.RootPath
                     : null,
+            ["/Pages/SkopkaHello/Error.cshtml"] = routes.ErrorPath,
             ["/Pages/SkopkaHello/Login.cshtml"] =
                 IsEnabled(enabledPages, HelloUiPages.Login)
                     ? routes.LoginPath
@@ -150,5 +151,6 @@ internal sealed class HelloUiPageRouteModelConvention(
                     Template = route.TrimStart('/'),
                 },
             });
+
     }
 }

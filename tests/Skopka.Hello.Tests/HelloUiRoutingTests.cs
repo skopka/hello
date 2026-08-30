@@ -23,6 +23,7 @@ public sealed class HelloUiRoutingTests
 
         Assert.Contains("/auth/register", routes);
         Assert.Contains("/identity/hello", routes);
+        Assert.Contains("/identity/hello/error", routes);
         Assert.Contains("/identity/hello/login", routes);
         Assert.Contains("/identity/hello/register", routes);
         Assert.Contains(
@@ -93,6 +94,9 @@ public sealed class HelloUiRoutingTests
         Assert.Equal(
             "/identity/hello/account/security",
             configuredRoutes.AccountSecurityPath);
+        Assert.Equal(
+            "/identity/hello/error",
+            configuredRoutes.ErrorPath);
 
         var cookie = application.Services
             .GetRequiredService<
@@ -157,7 +161,7 @@ public sealed class HelloUiRoutingTests
     }
 
     [Fact]
-    public async Task LoginOnlyPublishesOnlyLoginHelloPageRoute()
+    public async Task LoginOnlyStillPublishesErrorPageRoute()
     {
         await using var application = CreateApplication(
             "/identity",
@@ -176,7 +180,9 @@ public sealed class HelloUiRoutingTests
                     StringComparison.Ordinal))
             .ToArray();
 
-        Assert.Equal(["/identity/login"], routes);
+        Assert.Equal(
+            ["/identity/error", "/identity/login"],
+            routes.Order(StringComparer.Ordinal).ToArray());
     }
 
     [Fact]

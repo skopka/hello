@@ -1,0 +1,25 @@
+@page
+@model ErrorModel
+@{
+    ViewData["Title"] = Text[Model.TitleKey];
+}
+
+<section class="hello-card hello-auth-card">
+    <p class="hello-eyebrow">
+        @Text["Error.Eyebrow"] · @Model.ErrorStatusCode
+    </p>
+    <h1>@Text[Model.TitleKey]</h1>
+    <p class="hello-muted">@Text[Model.DetailKey]</p>
+
+    @if (!String.IsNullOrWhiteSpace(Model.RequestId))
+    {
+        <p class="hello-muted">
+            @Text["Error.RequestId"]
+            <code>@Model.RequestId</code>
+        </p>
+    }
+
+    <p class="hello-card-footer">
+        <a asp-page="/SkopkaHello/Index">@Text["Error.Return"]</a>
+    </p>
+</section>

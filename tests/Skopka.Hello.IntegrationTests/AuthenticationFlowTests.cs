@@ -1895,6 +1895,87 @@ public sealed class AuthenticationFlowTests
         Dictionary<string, string> cookies =
             new(StringComparer.Ordinal);
 
+        using var directErrorRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/hello/error?statusCode=404");
+        directErrorRequest.Headers.Accept.ParseAdd("text/html");
+        directErrorRequest.Headers.AcceptLanguage.ParseAdd("ru");
+        using var directError = await client.SendAsync(
+            directErrorRequest);
+        Assert.Equal(HttpStatusCode.NotFound, directError.StatusCode);
+        Assert.Equal(
+            "text/html",
+            directError.Content.Headers.ContentType?.MediaType);
+
+        using var missingHtmlRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/missing-browser-page");
+        missingHtmlRequest.Headers.TryAddWithoutValidation(
+            "Sec-Fetch-Mode",
+            "navigate");
+        missingHtmlRequest.Headers.Accept.ParseAdd("text/html");
+        missingHtmlRequest.Headers.AcceptLanguage.ParseAdd("ru");
+        using var missingHtml = await client.SendAsync(
+            missingHtmlRequest);
+        Assert.Equal(HttpStatusCode.NotFound, missingHtml.StatusCode);
+        Assert.Equal(
+            "text/html",
+            missingHtml.Content.Headers.ContentType?.MediaType);
+        var missingHtmlBody = WebUtility.HtmlDecode(
+            await missingHtml.Content.ReadAsStringAsync());
+        Assert.Contains(
+            "Страница не найдена",
+            missingHtmlBody,
+            StringComparison.Ordinal);
+
+        using var missingJsonRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/missing-api-resource");
+        missingJsonRequest.Headers.Accept.ParseAdd("application/json");
+        using var missingJson = await client.SendAsync(
+            missingJsonRequest);
+        Assert.Equal(HttpStatusCode.NotFound, missingJson.StatusCode);
+        Assert.Equal(
+            "application/problem+json",
+            missingJson.Content.Headers.ContentType?.MediaType);
+
+        using var failureHtmlRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/integration/failure");
+        failureHtmlRequest.Headers.Accept.ParseAdd("text/html");
+        failureHtmlRequest.Headers.AcceptLanguage.ParseAdd("ru");
+        using var failureHtml = await client.SendAsync(
+            failureHtmlRequest);
+        Assert.Equal(
+            HttpStatusCode.InternalServerError,
+            failureHtml.StatusCode);
+        Assert.Equal(
+            "text/html",
+            failureHtml.Content.Headers.ContentType?.MediaType);
+        var failureHtmlBody = WebUtility.HtmlDecode(
+            await failureHtml.Content.ReadAsStringAsync());
+        Assert.Contains(
+            "Что-то пошло не так",
+            failureHtmlBody,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Sensitive integration failure details",
+            failureHtmlBody,
+            StringComparison.Ordinal);
+
+        using var failureJsonRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/integration/failure");
+        failureJsonRequest.Headers.Accept.ParseAdd("application/json");
+        using var failureJson = await client.SendAsync(
+            failureJsonRequest);
+        Assert.Equal(
+            HttpStatusCode.InternalServerError,
+            failureJson.StatusCode);
+        Assert.Equal(
+            "application/problem+json",
+            failureJson.Content.Headers.ContentType?.MediaType);
+
         using var apiRegistrationWithoutConsent =
             await client.PostAsJsonAsync(
                 "/auth/register",
@@ -4592,12 +4673,18 @@ public sealed class AuthenticationFlowTests
                 HelloUiDefaults.AuthenticationScheme);
 
             var application = builder.Build();
-            application.UseExceptionHandler();
-            application.UseStatusCodePages();
+            application.UseSkopkaHelloUiErrorPages();
             application.Use(
                 static (context, next) =>
                 {
                     context.Request.Scheme = "https";
+                    if (context.Request.Path == "/integration/failure")
+                    {
+                        return Task.FromException(
+                            new InvalidOperationException(
+                                "Sensitive integration failure details."));
+                    }
+
                     return next(context);
                 });
             application.UseAuthentication();
@@ -4625,7 +4712,6 @@ public sealed class AuthenticationFlowTests
                     "/integration/ui-administrator",
                     static () => Results.Ok())
                 .RequireAuthorization(UiAdministratorPolicy);
-
             await using (var scope =
                 application.Services.CreateAsyncScope())
             {

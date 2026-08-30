@@ -18,6 +18,7 @@ public static class SkopkaHelloUiServiceCollectionExtensions
         configure?.Invoke(options);
         options.Validate();
         services.AddSingleton(options);
+        services.AddProblemDetails();
         AddRegistrationConsentRequirement(services, options);
         AddLocalizationServices(services);
 
@@ -38,6 +39,7 @@ public static class SkopkaHelloUiServiceCollectionExtensions
         configure?.Invoke(options);
         options.Validate();
         services.AddSingleton(options);
+        services.AddProblemDetails();
         AddRegistrationConsentRequirement(services, options);
         AddLocalizationServices(services);
 

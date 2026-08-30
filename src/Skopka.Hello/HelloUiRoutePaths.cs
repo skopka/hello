@@ -30,6 +30,7 @@ public sealed class HelloUiRoutePaths
         CrossDeviceWaitingPath = Append("/cross-device");
         CrossDeviceApprovalPath = Append("/cross-device/approve");
         CulturePath = Append("/culture");
+        ErrorPath = Append("/error");
     }
 
     public string PathPrefix { get; }
@@ -71,6 +72,8 @@ public sealed class HelloUiRoutePaths
     public string CrossDeviceApprovalPath { get; }
 
     public string CulturePath { get; }
+
+    public string ErrorPath { get; }
 
     internal static void ValidatePathPrefix(string? pathPrefix)
         => _ = NormalizePathPrefix(pathPrefix);

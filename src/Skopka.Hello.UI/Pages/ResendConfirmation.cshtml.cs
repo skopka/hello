@@ -13,7 +13,8 @@ public sealed class ResendConfirmationModel(
     [BindProperty]
     public InputModel Input { get; set; } = new();
 
-    public bool Sent { get; private set; }
+    [BindProperty(SupportsGet = true)]
+    public bool Sent { get; set; }
 
     public void OnGet()
         => HelloUiSensitivePage.ApplyResponseHeaders(Response);
@@ -30,8 +31,9 @@ public sealed class ResendConfirmationModel(
         if (!uiOptions.ContactConfirmation
                 .IsEmailConfirmationRequired(Input.Email))
         {
-            Sent = true;
-            return Page();
+            return RedirectToPage(
+                "/SkopkaHello/ResendConfirmation",
+                new { sent = true });
         }
 
         var result = await application.RequestEmailConfirmationAsync(
@@ -47,8 +49,9 @@ public sealed class ResendConfirmationModel(
             return Page();
         }
 
-        Sent = true;
-        return Page();
+        return RedirectToPage(
+            "/SkopkaHello/ResendConfirmation",
+            new { sent = true });
     }
 
     public sealed class InputModel

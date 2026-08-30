@@ -12,7 +12,8 @@ public sealed class ForgotPasswordModel(
     [BindProperty]
     public InputModel Input { get; set; } = new();
 
-    public bool Sent { get; private set; }
+    [BindProperty(SupportsGet = true)]
+    public bool Sent { get; set; }
 
     public void OnGet()
         => HelloUiSensitivePage.ApplyResponseHeaders(Response);
@@ -39,8 +40,9 @@ public sealed class ForgotPasswordModel(
             return Page();
         }
 
-        Sent = true;
-        return Page();
+        return RedirectToPage(
+            "/SkopkaHello/ForgotPassword",
+            new { sent = true });
     }
 
     public sealed class InputModel

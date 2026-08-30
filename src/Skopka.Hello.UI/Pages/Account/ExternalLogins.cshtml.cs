@@ -45,6 +45,11 @@ public sealed class ExternalLoginsModel(
         bool externalError,
         bool challengeRestarted,
         string? changed,
+        string? pendingOperation,
+        string? providerId,
+        bool codeRequested,
+        HelloDeliveryChannel? deliveryChannel,
+        DateTimeOffset? codeExpiresAt,
         CancellationToken cancellationToken)
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
@@ -53,10 +58,37 @@ public sealed class ExternalLoginsModel(
             : null;
         ExternalError = externalError;
         ChallengeRestarted = challengeRestarted;
+        PendingOperation = pendingOperation is "link" or "unlink"
+            ? pendingOperation
+            : null;
+        CodeRequested = codeRequested;
+        if (deliveryChannel is not null
+            && Enum.IsDefined(deliveryChannel.Value))
+        {
+            Input.DeliveryChannel = deliveryChannel.Value;
+            VerificationChannel = deliveryChannel;
+            CodeExpiresAt = codeExpiresAt;
+        }
+
         await LoadAsync(cancellationToken);
         if (pending)
         {
             await LoadPendingLinkAsync(cancellationToken);
+        }
+        else if (PendingOperation == "unlink"
+            && !string.IsNullOrWhiteSpace(providerId))
+        {
+            var linked = LinkedProviders.FirstOrDefault(provider =>
+                string.Equals(
+                    provider.ProviderId,
+                    providerId,
+                    StringComparison.OrdinalIgnoreCase));
+            if (linked is not null)
+            {
+                PendingProvider = new HelloOidcProvider(
+                    linked.ProviderId,
+                    linked.DisplayName);
+            }
         }
 
         return Page();
@@ -118,13 +150,16 @@ public sealed class ExternalLoginsModel(
             return Page();
         }
 
-        CodeRequested = true;
-        Input.DeliveryChannel = result.Value.DeliveryChannel;
-        VerificationChannel = result.Value.DeliveryChannel;
-        CodeExpiresAt = result.Value.ExpiresAt;
-        await LoadAsync(cancellationToken);
-        await LoadPendingLinkAsync(cancellationToken);
-        return Page();
+        return RedirectToPage(
+            "/SkopkaHello/Account/ExternalLogins",
+            new
+            {
+                pending = true,
+                pendingOperation = "link",
+                codeRequested = true,
+                deliveryChannel = result.Value.DeliveryChannel,
+                codeExpiresAt = result.Value.ExpiresAt,
+            });
     }
 
     public async Task<IActionResult> OnPostCompleteLinkAsync(
@@ -196,11 +231,16 @@ public sealed class ExternalLoginsModel(
             return Page();
         }
 
-        CodeRequested = true;
-        Input.DeliveryChannel = result.Value.DeliveryChannel;
-        VerificationChannel = result.Value.DeliveryChannel;
-        CodeExpiresAt = result.Value.ExpiresAt;
-        return Page();
+        return RedirectToPage(
+            "/SkopkaHello/Account/ExternalLogins",
+            new
+            {
+                pendingOperation = "unlink",
+                providerId,
+                codeRequested = true,
+                deliveryChannel = result.Value.DeliveryChannel,
+                codeExpiresAt = result.Value.ExpiresAt,
+            });
     }
 
     public async Task<IActionResult> OnPostCompleteUnlinkAsync(

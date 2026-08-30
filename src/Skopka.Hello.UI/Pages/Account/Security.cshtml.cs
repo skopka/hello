@@ -10,6 +10,7 @@ namespace Skopka.Hello.UI.Pages;
 public sealed class AccountSecurityModel(
     IHelloUiApplication application,
     IHelloSessionCookieManager sessionCookies,
+    HelloUiPrgStateStore prgState,
     IHelloUiLocalizer text)
     : PageModel
 {
@@ -25,11 +26,48 @@ public sealed class AccountSecurityModel(
 
     public PendingChallenge? Pending { get; private set; }
 
+    [BindProperty(SupportsGet = true)]
+    public string? PendingAction { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public Guid PendingChallengeId { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public DateTimeOffset? PendingExpiresAt { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public HelloDeliveryChannel? PendingDeliveryChannel { get; set; }
+
+    [TempData]
+    public string? EnrollmentStateToken { get; set; }
+
+    [TempData]
+    public string? RecoveryCodesStateToken { get; set; }
+
     public async Task<IActionResult> OnGetAsync(
         CancellationToken cancellationToken)
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
-        return await LoadAsync(cancellationToken);
+        var loaded = await LoadAsync(cancellationToken);
+        if (loaded is not PageResult)
+        {
+            return loaded;
+        }
+
+        RestorePrgState();
+        if (PendingAction is "set" or "remove" or "delete" or "totp-disable"
+            && PendingChallengeId != Guid.Empty
+            && PendingDeliveryChannel is not null
+            && Enum.IsDefined(PendingDeliveryChannel.Value))
+        {
+            Pending = new PendingChallenge(
+                PendingAction,
+                PendingChallengeId,
+                PendingExpiresAt,
+                PendingDeliveryChannel.Value);
+        }
+
+        return Page();
     }
 
     public Task<IActionResult> OnPostBeginSetAsync(
@@ -68,13 +106,12 @@ public sealed class AccountSecurityModel(
             cancellationToken);
         if (result.IsSuccess)
         {
-            Enrollment = result.Value;
-            PendingEnrollmentId = result.Value.EnrollmentId;
+            EnrollmentStateToken = prgState.Store(result.Value);
+            return RedirectToPage(
+                "/SkopkaHello/Account/Security");
         }
-        else
-        {
-            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
-        }
+
+        HelloUiModelState.AddErrors(ModelState, result.Errors, text);
 
         var loaded = await LoadStateAsync(cancellationToken);
         return loaded ? Page() : Challenge();
@@ -100,18 +137,19 @@ public sealed class AccountSecurityModel(
             cancellationToken);
         if (result.IsSuccess)
         {
-            Totp = result.Value.State;
-            RecoveryCodes = result.Value.RecoveryCodes;
-            PendingEnrollmentId = null;
+            prgState.Remove(EnrollmentStateToken);
+            EnrollmentStateToken = null;
+            RecoveryCodesStateToken = prgState.Store(
+                result.Value.RecoveryCodes.ToArray());
+            return RedirectToPage(
+                "/SkopkaHello/Account/Security");
         }
-        else
-        {
-            HelloUiModelState.AddErrors(
-                ModelState,
-                result.Errors,
-                text,
-                _ => "TotpInput.Code");
-        }
+
+        HelloUiModelState.AddErrors(
+            ModelState,
+            result.Errors,
+            text,
+            _ => "TotpInput.Code");
 
         var loaded = await LoadStateAsync(cancellationToken);
         return loaded ? Page() : Challenge();
@@ -261,19 +299,21 @@ public sealed class AccountSecurityModel(
         var result = await pending;
         if (result.IsSuccess)
         {
-            Pending = new PendingChallenge(
-                action,
-                result.Value.ChallengeId,
-                result.Value.ExpiresAt,
-                result.Value.DeliveryChannel);
+            return RedirectToPage(
+                "/SkopkaHello/Account/Security",
+                new
+                {
+                    pendingAction = action,
+                    pendingChallengeId = result.Value.ChallengeId,
+                    pendingExpiresAt = result.Value.ExpiresAt,
+                    pendingDeliveryChannel = result.Value.DeliveryChannel,
+                });
         }
-        else
-        {
-            HelloUiModelState.AddErrors(
-                ModelState,
-                result.Errors,
-                text);
-        }
+
+        HelloUiModelState.AddErrors(
+            ModelState,
+            result.Errors,
+            text);
 
         var loaded = await LoadStateAsync(cancellationToken);
         return loaded ? Page() : Challenge();
@@ -424,6 +464,27 @@ public sealed class AccountSecurityModel(
         [StringLength(256, ErrorMessage = "Validation.StringLength")]
         [Display(Name = "Field.VerificationCode")]
         public string VerificationCode { get; set; } = string.Empty;
+    }
+
+    private void RestorePrgState()
+    {
+        if (prgState.TryGet<HelloTotpEnrollment>(
+                EnrollmentStateToken,
+                out var enrollment)
+            && enrollment is not null)
+        {
+            Enrollment = enrollment;
+            PendingEnrollmentId = enrollment.EnrollmentId;
+            TempData.Keep(nameof(EnrollmentStateToken));
+        }
+
+        if (prgState.TryTake<string[]>(
+                RecoveryCodesStateToken,
+                out var recoveryCodes)
+            && recoveryCodes is not null)
+        {
+            RecoveryCodes = recoveryCodes;
+        }
     }
 
     public sealed class TotpEnrollmentInput

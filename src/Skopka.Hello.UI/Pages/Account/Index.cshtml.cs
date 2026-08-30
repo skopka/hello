@@ -29,9 +29,11 @@ public sealed class AccountModel(
 
     public bool PhoneConfirmed { get; private set; }
 
-    public bool EmailConfirmationRequested { get; private set; }
+    [BindProperty(SupportsGet = true)]
+    public bool EmailConfirmationRequested { get; set; }
 
-    public bool PhoneConfirmationRequested { get; private set; }
+    [BindProperty(SupportsGet = true)]
+    public bool PhoneConfirmationRequested { get; set; }
 
     public bool EmailConfirmationRequired { get; private set; }
 
@@ -223,8 +225,9 @@ public sealed class AccountModel(
             return Page();
         }
 
-        EmailConfirmationRequested = true;
-        return Page();
+        return RedirectToPage(
+            "/SkopkaHello/Account/Index",
+            new { emailConfirmationRequested = true });
     }
 
     public async Task<IActionResult>
@@ -278,8 +281,9 @@ public sealed class AccountModel(
             return Page();
         }
 
-        PhoneConfirmationRequested = true;
-        return Page();
+        return RedirectToPage(
+            "/SkopkaHello/Account/Index",
+            new { phoneConfirmationRequested = true });
     }
 
     private async Task<IActionResult> LoadAccountAsync(

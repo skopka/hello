@@ -83,7 +83,7 @@ public static class SkopkaHelloUiServiceCollectionExtensions
                     == typeof(Skopka.Hello.HelloCrossDeviceSignInOptions))
             ?.ImplementationInstance is
                 Skopka.Hello.HelloCrossDeviceSignInOptions
-                { Enabled: true };
+        { Enabled: true };
         if (crossDeviceEnabled)
         {
             services.TryAddScoped<
@@ -160,6 +160,9 @@ public static class SkopkaHelloUiServiceCollectionExtensions
         IServiceCollection services)
     {
         services.AddAntiforgery();
+        services.AddMemoryCache();
+        services.TryAddSingleton<
+            Skopka.Hello.UI.HelloUiPrgStateStore>();
         services.AddSingleton(
             new Skopka.Hello.UI.HelloUiDictionarySource(
                 typeof(Skopka.Hello.UI.HelloUiModule).Assembly,

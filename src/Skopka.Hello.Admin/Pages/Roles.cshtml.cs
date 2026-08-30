@@ -15,6 +15,7 @@ public sealed class RolesModel(
     IHelloAdminRoleApplication application,
     IHelloRequestContext requestContext,
     IAuthorizationService authorization,
+    HelloUiPrgStateStore prgState,
     SkopkaHelloAdminOptions options,
     IHelloUiLocalizer text)
     : PageModel
@@ -38,6 +39,9 @@ public sealed class RolesModel(
 
     [TempData]
     public string? StatusMessage { get; set; }
+
+    [TempData]
+    public string? PendingActionStateToken { get; set; }
 
     public async Task<IActionResult> OnGetAsync(
         CancellationToken cancellationToken)
@@ -64,6 +68,7 @@ public sealed class RolesModel(
         }
 
         await LoadRolesAsync(accessToken, cancellationToken);
+        RestorePendingAction();
         return Page();
     }
 
@@ -116,19 +121,21 @@ public sealed class RolesModel(
             cancellationToken);
         if (result.IsSuccess)
         {
-            PendingAction = new PendingAdminRoleAction(
+            PendingActionStateToken = prgState.Store(
+                new PendingAdminRoleAction(
                 parsedAction,
                 roleId,
                 targetUserId,
                 parameters,
                 result.Value.ChallengeId,
                 result.Value.ExpiresAt,
-                result.Value.DeliveryChannel);
+                result.Value.DeliveryChannel));
+            return RedirectToPage(
+                "/SkopkaHelloAdmin/Roles",
+                new { Search });
         }
-        else
-        {
-            AddErrors(result.Errors);
-        }
+
+        AddErrors(result.Errors);
 
         await LoadRolesAsync(accessToken, cancellationToken);
         return Page();
@@ -342,6 +349,20 @@ public sealed class RolesModel(
         Response.Headers.CacheControl = "no-store";
         Response.Headers.Pragma = "no-cache";
         Response.Headers["Referrer-Policy"] = "no-referrer";
+    }
+
+    private void RestorePendingAction()
+    {
+        if (!prgState.TryGet<PendingAdminRoleAction>(
+                PendingActionStateToken,
+                out var pendingAction)
+            || pendingAction is null)
+        {
+            return;
+        }
+
+        PendingAction = pendingAction;
+        TempData.Keep(nameof(PendingActionStateToken));
     }
 }
 

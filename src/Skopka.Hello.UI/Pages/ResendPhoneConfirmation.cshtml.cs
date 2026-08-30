@@ -13,7 +13,8 @@ public sealed class ResendPhoneConfirmationModel(
     [BindProperty]
     public InputModel Input { get; set; } = new();
 
-    public bool Sent { get; private set; }
+    [BindProperty(SupportsGet = true)]
+    public bool Sent { get; set; }
 
     public void OnGet()
         => HelloUiSensitivePage.ApplyResponseHeaders(Response);
@@ -40,8 +41,9 @@ public sealed class ResendPhoneConfirmationModel(
             return Page();
         }
 
-        Sent = true;
-        return Page();
+        return RedirectToPage(
+            "/SkopkaHello/ResendPhoneConfirmation",
+            new { sent = true });
     }
 
     public sealed class InputModel

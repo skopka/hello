@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Hello.UI;
@@ -41,14 +42,25 @@ public sealed class ConfirmEmailPageTests
         var result = await model.OnPostAsync(
             CancellationToken.None);
 
-        Assert.IsType<PageResult>(result);
+        var redirect = Assert.IsType<RedirectToPageResult>(result);
+        Assert.Equal("/SkopkaHello/ConfirmEmail", redirect.PageName);
+        Assert.Equal(true, redirect.RouteValues?["confirmed"]);
         Assert.True(model.LinkValid);
-        Assert.True(model.Confirmed);
         Assert.False(model.AutoSubmit);
         Assert.Equal(1, application.ConfirmEmailCallCount);
         Assert.Equal(model.UserId, application.LastCommand?.UserId);
         Assert.Equal(model.Email, application.LastCommand?.Email);
         Assert.Equal(model.Token, application.LastCommand?.Token);
+
+        var completed = CreateModel(
+            application,
+            new DefaultHttpContext());
+        completed.Confirmed = true;
+        completed.OnGet();
+
+        Assert.True(completed.Confirmed);
+        Assert.False(completed.AutoSubmit);
+        Assert.Equal(1, application.ConfirmEmailCallCount);
     }
 
     [Fact]

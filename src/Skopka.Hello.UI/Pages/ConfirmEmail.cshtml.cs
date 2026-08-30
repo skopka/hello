@@ -20,13 +20,19 @@ public sealed class ConfirmEmailModel(
 
     public bool LinkValid { get; private set; }
 
-    public bool Confirmed { get; private set; }
+    [BindProperty(SupportsGet = true)]
+    public bool Confirmed { get; set; }
 
     public bool AutoSubmit { get; private set; }
 
     public void OnGet()
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (Confirmed)
+        {
+            return;
+        }
+
         LinkValid = IsLinkValid();
         AutoSubmit = LinkValid;
     }
@@ -64,8 +70,9 @@ public sealed class ConfirmEmailModel(
             return Page();
         }
 
-        Confirmed = true;
-        return Page();
+        return RedirectToPage(
+            "/SkopkaHello/ConfirmEmail",
+            new { confirmed = true });
     }
 
     private bool IsLinkValid()

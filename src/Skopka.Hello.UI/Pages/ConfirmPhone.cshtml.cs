@@ -21,11 +21,17 @@ public sealed class ConfirmPhoneModel(
 
     public bool LinkValid { get; private set; }
 
-    public bool Confirmed { get; private set; }
+    [BindProperty(SupportsGet = true)]
+    public bool Confirmed { get; set; }
 
     public void OnGet()
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (Confirmed)
+        {
+            return;
+        }
+
         LinkValid = IsLinkValid();
     }
 
@@ -61,8 +67,9 @@ public sealed class ConfirmPhoneModel(
             return Page();
         }
 
-        Confirmed = true;
-        return Page();
+        return RedirectToPage(
+            "/SkopkaHello/ConfirmPhone",
+            new { confirmed = true });
     }
 
     private bool IsLinkValid()

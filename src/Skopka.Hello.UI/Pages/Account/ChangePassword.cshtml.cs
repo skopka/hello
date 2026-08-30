@@ -16,6 +16,15 @@ public sealed class ChangePasswordModel(
     [BindProperty]
     public InputModel Input { get; set; } = new();
 
+    [BindProperty(SupportsGet = true)]
+    public Guid ChallengeId { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public HelloDeliveryChannel? DeliveryChannel { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public DateTimeOffset? ExpiresAt { get; set; }
+
     public bool CodeRequested =>
         Input.ChallengeId != Guid.Empty;
 
@@ -26,7 +35,20 @@ public sealed class ChangePasswordModel(
     public HelloDeliveryChannel? VerificationChannel { get; private set; }
 
     public void OnGet()
-        => HelloUiSensitivePage.ApplyResponseHeaders(Response);
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (ChallengeId == Guid.Empty
+            || DeliveryChannel is null
+            || !Enum.IsDefined(DeliveryChannel.Value))
+        {
+            return;
+        }
+
+        Input.ChallengeId = ChallengeId;
+        Input.DeliveryChannel = DeliveryChannel.Value;
+        VerificationChannel = DeliveryChannel;
+        CodeExpiresAt = ExpiresAt;
+    }
 
     public async Task<IActionResult> OnPostRequestCodeAsync(
         CancellationToken cancellationToken)
@@ -46,11 +68,14 @@ public sealed class ChangePasswordModel(
             return Page();
         }
 
-        Input.ChallengeId = result.Value.ChallengeId;
-        Input.DeliveryChannel = result.Value.DeliveryChannel;
-        VerificationChannel = result.Value.DeliveryChannel;
-        CodeExpiresAt = result.Value.ExpiresAt;
-        return Page();
+        return RedirectToPage(
+            "/SkopkaHello/Account/ChangePassword",
+            new
+            {
+                challengeId = result.Value.ChallengeId,
+                deliveryChannel = result.Value.DeliveryChannel,
+                expiresAt = result.Value.ExpiresAt,
+            });
     }
 
     public async Task<IActionResult> OnPostChangeAsync(

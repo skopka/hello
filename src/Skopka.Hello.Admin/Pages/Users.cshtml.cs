@@ -19,6 +19,7 @@ public sealed class UsersModel(
     IAuthorizationService authorization,
     IHelloUiUserAccessor userAccessor,
     IHelloSessionCookieManager sessionCookies,
+    HelloUiPrgStateStore prgState,
     SkopkaHelloAdminOptions options,
     IHelloUiLocalizer text)
     : PageModel
@@ -76,6 +77,12 @@ public sealed class UsersModel(
     [TempData]
     public string? StatusMessage { get; set; }
 
+    [TempData]
+    public string? PendingActionStateToken { get; set; }
+
+    [TempData]
+    public string? PendingRoleActionStateToken { get; set; }
+
     public async Task<IActionResult> OnGetAsync(
         CancellationToken cancellationToken)
     {
@@ -102,6 +109,7 @@ public sealed class UsersModel(
         }
 
         await LoadUsersAsync(accessToken, cancellationToken);
+        RestorePendingActions();
         return Page();
     }
 
@@ -150,18 +158,20 @@ public sealed class UsersModel(
             cancellationToken);
         if (result.IsSuccess)
         {
-            PendingAction = new PendingAdminAction(
+            PendingActionStateToken = prgState.Store(
+                new PendingAdminAction(
                 userId,
                 parsedAction,
                 parameters,
                 result.Value.ChallengeId,
                 result.Value.ExpiresAt,
-                result.Value.DeliveryChannel);
+                result.Value.DeliveryChannel));
+            return RedirectToPage(
+                "/SkopkaHelloAdmin/Users",
+                new { Search, Status });
         }
-        else
-        {
-            AddErrors(result.Errors);
-        }
+
+        AddErrors(result.Errors);
 
         await LoadUsersAsync(accessToken, cancellationToken);
         return Page();
@@ -298,19 +308,21 @@ public sealed class UsersModel(
             cancellationToken);
         if (result.IsSuccess)
         {
-            PendingRoleAction = new PendingAdminRoleAction(
+            PendingRoleActionStateToken = prgState.Store(
+                new PendingAdminRoleAction(
                 parsedAction,
                 roleId,
                 userId,
                 parameters,
                 result.Value.ChallengeId,
                 result.Value.ExpiresAt,
-                result.Value.DeliveryChannel);
+                result.Value.DeliveryChannel));
+            return RedirectToPage(
+                "/SkopkaHelloAdmin/Users",
+                new { Search, Status });
         }
-        else
-        {
-            AddErrors(result.Errors);
-        }
+
+        AddErrors(result.Errors);
 
         await LoadUsersAsync(accessToken, cancellationToken);
         return Page();
@@ -704,6 +716,27 @@ public sealed class UsersModel(
         Response.Headers.CacheControl = "no-store";
         Response.Headers.Pragma = "no-cache";
         Response.Headers["Referrer-Policy"] = "no-referrer";
+    }
+
+    private void RestorePendingActions()
+    {
+        if (prgState.TryGet<PendingAdminAction>(
+                PendingActionStateToken,
+                out var pendingAction)
+            && pendingAction is not null)
+        {
+            PendingAction = pendingAction;
+            TempData.Keep(nameof(PendingActionStateToken));
+        }
+
+        if (prgState.TryGet<PendingAdminRoleAction>(
+                PendingRoleActionStateToken,
+                out var pendingRoleAction)
+            && pendingRoleAction is not null)
+        {
+            PendingRoleAction = pendingRoleAction;
+            TempData.Keep(nameof(PendingRoleActionStateToken));
+        }
     }
 }
 

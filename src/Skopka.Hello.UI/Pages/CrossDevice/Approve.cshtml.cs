@@ -17,17 +17,36 @@ public sealed class CrossDeviceApproveModel(
     [BindProperty]
     public InputModel Input { get; set; } = new();
 
+    [BindProperty(SupportsGet = true)]
+    public Guid ChallengeId { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public DateTimeOffset? ChallengeExpiresAt { get; set; }
+
     public HelloCrossDeviceApprovalDetails? Details { get; private set; }
 
-    public bool Approved { get; private set; }
+    [BindProperty(SupportsGet = true)]
+    public bool Approved { get; set; }
 
-    public bool Denied { get; private set; }
+    [BindProperty(SupportsGet = true)]
+    public bool Denied { get; set; }
 
     public async Task<IActionResult> OnGetAsync(
         CancellationToken cancellationToken)
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (Approved || Denied)
+        {
+            return Page();
+        }
+
         await LoadDetailsAsync(cancellationToken);
+        if (ChallengeId != Guid.Empty)
+        {
+            Input.ChallengeId = ChallengeId;
+            Input.ExpiresAt = ChallengeExpiresAt;
+        }
+
         return Page();
     }
 
@@ -51,9 +70,14 @@ public sealed class CrossDeviceApproveModel(
             return Page();
         }
 
-        Input.ChallengeId = challenge.Value.ChallengeId;
-        Input.ExpiresAt = challenge.Value.ExpiresAt;
-        return Page();
+        return RedirectToPage(
+            "/SkopkaHello/CrossDevice/Approve",
+            new
+            {
+                deviceCode = DeviceCode,
+                challengeId = challenge.Value.ChallengeId,
+                challengeExpiresAt = challenge.Value.ExpiresAt,
+            });
     }
 
     public async Task<IActionResult> OnPostApproveAsync(
@@ -89,9 +113,9 @@ public sealed class CrossDeviceApproveModel(
             return Page();
         }
 
-        Approved = true;
-        Input = new InputModel();
-        return Page();
+        return RedirectToPage(
+            "/SkopkaHello/CrossDevice/Approve",
+            new { deviceCode = DeviceCode, approved = true });
     }
 
     public async Task<IActionResult> OnPostDenyAsync(
@@ -114,8 +138,9 @@ public sealed class CrossDeviceApproveModel(
             return Page();
         }
 
-        Denied = true;
-        return Page();
+        return RedirectToPage(
+            "/SkopkaHello/CrossDevice/Approve",
+            new { deviceCode = DeviceCode, denied = true });
     }
 
     private async Task<bool> LoadDetailsAsync(

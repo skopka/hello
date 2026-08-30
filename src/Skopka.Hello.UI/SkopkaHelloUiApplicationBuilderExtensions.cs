@@ -111,7 +111,13 @@ public static class SkopkaHelloUiApplicationBuilderExtensions
         statusCode = statusCode is >= 400 and <= 599
             ? statusCode
             : StatusCodes.Status500InternalServerError;
-        var russian = PrefersRussian(context);
+        var selectedCulture = await context.RequestServices
+            .GetRequiredService<
+                Skopka.Hello.UI.HelloUiRequestCultureFilter>()
+            .ResolveCultureAsync(context);
+        var russian = selectedCulture.Name.StartsWith(
+            "ru",
+            StringComparison.OrdinalIgnoreCase);
         var (title, detail) = GetLocalizedContent(statusCode, russian);
         var eyebrow = russian ? "Ошибка запроса" : "Request error";
         var returnText = russian
@@ -187,18 +193,6 @@ public static class SkopkaHelloUiApplicationBuilderExtensions
                     .AntiforgeryValidationException
             ? StatusCodes.Status400BadRequest
             : StatusCodes.Status500InternalServerError;
-
-    private static bool PrefersRussian(HttpContext context)
-    {
-        var acceptLanguage = context.Request.Headers.AcceptLanguage
-            .ToString();
-        return acceptLanguage.StartsWith(
-                "ru",
-                StringComparison.OrdinalIgnoreCase)
-            || acceptLanguage.Contains(
-                ",ru",
-                StringComparison.OrdinalIgnoreCase);
-    }
 
     private static (string Title, string Detail) GetLocalizedContent(
         int statusCode,

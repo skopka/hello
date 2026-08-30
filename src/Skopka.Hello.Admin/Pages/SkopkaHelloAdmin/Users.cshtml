@@ -519,6 +519,38 @@ else
                                         {
                                             @if (Model.CanManageUsers)
                                             {
+                                            @if (Model.CanManuallyConfirmEmail
+                                                && !user.EmailConfirmed
+                                                && !string.IsNullOrWhiteSpace(user.Email))
+                                            {
+                                            <div class="admin-action-block">
+                                                <form method="post"
+                                                      asp-page-handler="BeginAction">
+                                                    <input type="hidden"
+                                                           name="userId"
+                                                           value="@user.Id" />
+                                                    <input type="hidden"
+                                                           name="action"
+                                                           value="confirm-email" />
+                                                    <input type="hidden"
+                                                           name="expectedVersion"
+                                                           value="@user.Version" />
+                                                    <input type="hidden"
+                                                           name="Search"
+                                                           value="@Model.Search" />
+                                                    <input type="hidden"
+                                                           name="Status"
+                                                           value="@Model.Status" />
+                                                    <button class="btn btn-outline-success btn-sm"
+                                                            type="submit">
+                                                        @Text["Admin.Users.ConfirmEmail"]
+                                                    </button>
+                                                </form>
+                                                <p class="small text-body-secondary mt-2 mb-0">
+                                                    @Text["Admin.Users.ConfirmEmailWarning"]
+                                                </p>
+                                            </div>
+                                            }
                                             <div class="admin-action-block">
                                                 @if (isBlocked)
                                                 {

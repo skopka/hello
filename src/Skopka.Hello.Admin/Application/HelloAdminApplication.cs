@@ -5,6 +5,7 @@ using Skopka.Identity.Sessions;
 using Skopka.Identity.StepUp;
 using Skopka.Identity.StepUp.Commands;
 using Skopka.Identity.Totp;
+using Skopka.Identity.Tokens;
 using Skopka.Identity.Users;
 using Skopka.Identity.Users.Commands;
 using Skopka.Identity.Users.Queries;
@@ -18,9 +19,11 @@ internal sealed class HelloAdminApplication<TProfile>(
     IIdentitySessionService<TProfile> sessions,
     IIdentityStepUpService<TProfile> stepUp,
     IIdentityVerificationService<TProfile> verification,
+    IIdentityActionTokenIssuer<TProfile> actionTokens,
     IHelloAdminProfileProjector<TProfile> profiles,
     IHelloAccountMessageSender messageSender,
     HelloDeliveryOptions deliveryOptions,
+    SkopkaHelloAdminOptions options,
     HelloStepUpMethodResolver<TProfile>? stepUpMethodResolver = null,
     IIdentityTotpService<TProfile>? totp = null)
     : IHelloAdminApplication
@@ -99,6 +102,13 @@ internal sealed class HelloAdminApplication<TProfile>(
             return OperationResultFactory.Fail<HelloStepUpChallenge>(error);
         }
 
+        if (command.Action == HelloAdminUserAction.ConfirmEmail
+            && !options.ManualEmailConfirmationEnabled)
+        {
+            return OperationResultFactory.Fail<HelloStepUpChallenge>(
+                HelloAdminSecurity.ManualEmailConfirmationDisabled());
+        }
+
         var actor = await ValidateActorAsync(
             command.AccessToken,
             cancellationToken);
@@ -175,6 +185,13 @@ internal sealed class HelloAdminApplication<TProfile>(
         {
             return OperationResultFactory.Fail<HelloAdminUserActionResult>(
                 error);
+        }
+
+        if (command.Action == HelloAdminUserAction.ConfirmEmail
+            && !options.ManualEmailConfirmationEnabled)
+        {
+            return OperationResultFactory.Fail<HelloAdminUserActionResult>(
+                HelloAdminSecurity.ManualEmailConfirmationDisabled());
         }
 
         var actor = await ValidateActorAsync(
@@ -378,9 +395,85 @@ internal sealed class HelloAdminApplication<TProfile>(
                         : SessionCleanupRequired(revoked.Errors);
                 }
 
+            case HelloAdminUserAction.ConfirmEmail:
+                return await ConfirmEmailAsync(
+                    actorUserId,
+                    targetUserId,
+                    parameters.ExpectedVersion!.Value,
+                    cancellationToken);
+
             default:
                 throw new ArgumentOutOfRangeException(nameof(action));
         }
+    }
+
+    private async Task<OperationResult<HelloAdminUserActionResult>>
+        ConfirmEmailAsync(
+            Guid actorUserId,
+            Guid targetUserId,
+            long expectedVersion,
+            CancellationToken cancellationToken)
+    {
+        var queried = await userQueries.QueryAsync(
+            new IdentityUserQuery(
+                Search: targetUserId.ToString("D"),
+                PageSize: 1),
+            cancellationToken);
+        if (!queried.IsSuccess)
+        {
+            return OperationResultFactory.Fail<HelloAdminUserActionResult>(
+                queried.Errors);
+        }
+
+        var target = queried.Value.Items.SingleOrDefault(user =>
+            user.Id == targetUserId && user.DeletedAt is null);
+        if (target is null)
+        {
+            return OperationResultFactory.Fail<HelloAdminUserActionResult>(
+                HelloAdminSecurity.UserNotFound());
+        }
+
+        if (target.Version != expectedVersion)
+        {
+            return OperationResultFactory.Fail<HelloAdminUserActionResult>(
+                HelloAdminSecurity.ConcurrencyConflict());
+        }
+
+        if (string.IsNullOrWhiteSpace(target.Email))
+        {
+            return OperationResultFactory.Fail<HelloAdminUserActionResult>(
+                HelloAdminSecurity.EmailMissing());
+        }
+
+        if (target.EmailConfirmed)
+        {
+            return await FinishUserMutationAsync(
+                actorUserId,
+                OperationResultFactory.Success(target),
+                revokeSessions: false,
+                cancellationToken);
+        }
+
+        var issued = await actionTokens.IssueEmailConfirmationAsync(
+            target.Id,
+            cancellationToken);
+        if (!issued.IsSuccess)
+        {
+            return OperationResultFactory.Fail<HelloAdminUserActionResult>(
+                issued.Errors);
+        }
+
+        var confirmed = await users.ConfirmEmailAsync(
+            new ConfirmEmailCommand(
+                target.Id,
+                target.Email,
+                issued.Value.Token),
+            cancellationToken);
+        return await FinishUserMutationAsync(
+            actorUserId,
+            confirmed,
+            revokeSessions: false,
+            cancellationToken);
     }
 
     private async Task<OperationResult> DeliverStepUpAsync(

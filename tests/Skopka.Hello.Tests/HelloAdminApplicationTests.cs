@@ -4,6 +4,7 @@ using Skopka.Identity;
 using Skopka.Identity.Sessions;
 using Skopka.Identity.StepUp;
 using Skopka.Identity.StepUp.Commands;
+using Skopka.Identity.Tokens;
 using Skopka.Identity.Users;
 using Skopka.Identity.Users.Commands;
 using Skopka.Identity.Users.Queries;
@@ -25,9 +26,11 @@ public sealed class HelloAdminApplicationTests
             new FakeSessionService(actor),
             null!,
             null!,
+            null!,
             projector,
             null!,
-            new HelloDeliveryOptions());
+            new HelloDeliveryOptions(),
+            new SkopkaHelloAdminOptions());
 
         var result = await application.QueryUsersAsync(
             new HelloAdminQueryUsersCommand("access-token"),
@@ -57,7 +60,9 @@ public sealed class HelloAdminApplicationTests
             null!,
             null!,
             null!,
-            new HelloDeliveryOptions());
+            null!,
+            new HelloDeliveryOptions(),
+            new SkopkaHelloAdminOptions());
 
         var result = await application.BeginUserActionAsync(
             new HelloAdminBeginUserActionCommand(
@@ -98,12 +103,14 @@ public sealed class HelloAdminApplicationTests
             sessions,
             stepUp,
             verification,
+            null!,
             new FakeProfileProjector(),
             sender,
             new HelloDeliveryOptions
             {
                 VerificationChannel = HelloDeliveryChannel.Email,
-            });
+            },
+            new SkopkaHelloAdminOptions());
         var parameters = new HelloAdminUserActionParameters(
             ExpectedVersion: 7,
             BlockedUntil: DateTimeOffset.UtcNow.AddHours(1),
@@ -169,9 +176,11 @@ public sealed class HelloAdminApplicationTests
             sessions,
             new FakeStepUpService(challengeId),
             new FakeVerificationService(challengeId),
+            null!,
             new FakeProfileProjector(),
             new FakeMessageSender(),
-            new HelloDeliveryOptions());
+            new HelloDeliveryOptions(),
+            new SkopkaHelloAdminOptions());
 
         var result = await application.CompleteUserActionAsync(
             new HelloAdminCompleteUserActionCommand(
@@ -191,6 +200,109 @@ public sealed class HelloAdminApplicationTests
         Assert.DoesNotContain(
             result.Errors,
             error => error.Code == HelloAdminErrorCodes.RestartRequired);
+    }
+
+    [Fact]
+    public async Task ManualEmailConfirmationIsDisabledByDefault()
+    {
+        var actor = CreateUser(Guid.NewGuid(), "Admin", version: 3);
+        var target = CreateUser(Guid.NewGuid(), "Target", version: 7) with
+        {
+            Email = "target@example.test",
+        };
+        var stepUp = new FakeStepUpService();
+        var application = new HelloAdminApplication<TestProfile>(
+            new FakeUserQueryService(target),
+            null!,
+            new FakeSessionService(actor),
+            stepUp,
+            null!,
+            null!,
+            null!,
+            null!,
+            new HelloDeliveryOptions(),
+            new SkopkaHelloAdminOptions());
+
+        var result = await application.BeginUserActionAsync(
+            new HelloAdminBeginUserActionCommand(
+                "access-token",
+                target.Id,
+                HelloAdminUserAction.ConfirmEmail,
+                new HelloAdminUserActionParameters(ExpectedVersion: 7),
+                ClientKey: "client"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains(
+            result.Errors,
+            error => error.Code
+                == HelloAdminErrorCodes.ManualEmailConfirmationDisabled);
+        Assert.Null(stepUp.BeginCommand);
+    }
+
+    [Fact]
+    public async Task ManualEmailConfirmationUsesBoundStepUpAndCurrentEmail()
+    {
+        var actor = CreateUser(Guid.NewGuid(), "Admin", version: 3);
+        var target = CreateUser(Guid.NewGuid(), "Target", version: 7) with
+        {
+            Email = "target@example.test",
+        };
+        var confirmed = target with
+        {
+            EmailConfirmed = true,
+            Version = 8,
+        };
+        var challengeId = Guid.NewGuid();
+        var stepUp = new FakeStepUpService(challengeId);
+        var users = new FakeUserService(confirmed);
+        var actionTokens = new FakeActionTokenIssuer();
+        var application = new HelloAdminApplication<TestProfile>(
+            new FakeUserQueryService(target),
+            users,
+            new FakeSessionService(actor),
+            stepUp,
+            new FakeVerificationService(challengeId),
+            actionTokens,
+            new FakeProfileProjector(),
+            new FakeMessageSender(),
+            new HelloDeliveryOptions(),
+            new SkopkaHelloAdminOptions
+            {
+                ManualEmailConfirmationEnabled = true,
+            });
+        var parameters = new HelloAdminUserActionParameters(
+            ExpectedVersion: target.Version);
+
+        var began = await application.BeginUserActionAsync(
+            new HelloAdminBeginUserActionCommand(
+                "access-token",
+                target.Id,
+                HelloAdminUserAction.ConfirmEmail,
+                parameters,
+                ClientKey: "client"),
+            CancellationToken.None);
+        var completed = await application.CompleteUserActionAsync(
+            new HelloAdminCompleteUserActionCommand(
+                "access-token",
+                target.Id,
+                HelloAdminUserAction.ConfirmEmail,
+                parameters,
+                challengeId,
+                "123456"),
+            CancellationToken.None);
+
+        Assert.True(began.IsSuccess);
+        Assert.True(completed.IsSuccess);
+        Assert.Equal(
+            HelloAdminSecurity.ConfirmEmailAction,
+            stepUp.AuthorizeCommand?.Action);
+        Assert.Equal(target.Id, actionTokens.UserId);
+        Assert.Equal(target.Id, users.ConfirmEmailCommand?.UserId);
+        Assert.Equal(target.Email, users.ConfirmEmailCommand?.Email);
+        Assert.Equal("email-token", users.ConfirmEmailCommand?.Token);
+        Assert.True(completed.Value.User?.EmailConfirmed);
+        Assert.False(completed.Value.SessionsRevoked);
     }
 
     private static IdentityUser<TestProfile> CreateUser(
@@ -252,6 +364,8 @@ public sealed class HelloAdminApplicationTests
     {
         public BlockUserCommand? BlockCommand { get; private set; }
 
+        public ConfirmEmailCommand? ConfirmEmailCommand { get; private set; }
+
         public Task<OperationResult<IdentityUser<TestProfile>>> BlockAsync(
             BlockUserCommand cmd,
             CancellationToken ct)
@@ -265,7 +379,11 @@ public sealed class HelloAdminApplicationTests
             CancellationToken ct) => throw new NotSupportedException();
         public Task<OperationResult<IdentityUser<TestProfile>>> ConfirmEmailAsync(
             ConfirmEmailCommand cmd,
-            CancellationToken ct) => throw new NotSupportedException();
+            CancellationToken ct)
+        {
+            ConfirmEmailCommand = cmd;
+            return Task.FromResult(OperationResultFactory.Success(blocked));
+        }
         public Task<OperationResult<IdentityUser<TestProfile>>> ConfirmPhoneAsync(
             ConfirmPhoneCommand cmd,
             CancellationToken ct) => throw new NotSupportedException();
@@ -290,6 +408,31 @@ public sealed class HelloAdminApplicationTests
         public Task<OperationResult<IdentityUser<TestProfile>>> RestoreAsync(
             RestoreUserCommand cmd,
             CancellationToken ct) => throw new NotSupportedException();
+    }
+
+    private sealed class FakeActionTokenIssuer
+        : IIdentityActionTokenIssuer<TestProfile>
+    {
+        public Guid? UserId { get; private set; }
+
+        public Task<OperationResult<IssuedIdentityActionToken>>
+            IssueEmailConfirmationAsync(Guid userId, CancellationToken ct)
+        {
+            UserId = userId;
+            return Task.FromResult(
+                OperationResultFactory.Success(
+                    new IssuedIdentityActionToken(
+                        "email-token",
+                        DateTimeOffset.UtcNow.AddMinutes(5))));
+        }
+
+        public Task<OperationResult<IssuedIdentityActionToken>>
+            IssuePhoneConfirmationAsync(Guid userId, CancellationToken ct)
+            => throw new NotSupportedException();
+
+        public Task<OperationResult<IssuedIdentityActionToken>>
+            IssuePasswordResetAsync(Guid userId, CancellationToken ct)
+            => throw new NotSupportedException();
     }
 
     private sealed class FakeSessionService(

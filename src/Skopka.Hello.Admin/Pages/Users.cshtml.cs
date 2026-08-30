@@ -51,6 +51,8 @@ public sealed class UsersModel(
 
     public bool CanAssignRoles { get; private set; }
 
+    public bool CanManuallyConfirmEmail { get; private set; }
+
     private HashSet<Guid> ManageableRoleIds { get; set; } = [];
 
     private Guid? ActorUserId { get; set; }
@@ -455,6 +457,7 @@ public sealed class UsersModel(
             HelloAdminUserAction.RevokeSessions => "Revoke sessions",
             HelloAdminUserAction.ResetAuthenticator =>
                 "Reset authenticator",
+            HelloAdminUserAction.ConfirmEmail => "Confirm email",
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
 
@@ -477,6 +480,8 @@ public sealed class UsersModel(
                 "Admin.Users.RevokeSessions",
             HelloAdminUserAction.ResetAuthenticator =>
                 "Admin.Users.ResetAuthenticator",
+            HelloAdminUserAction.ConfirmEmail =>
+                "Admin.Users.ConfirmEmail",
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
 
@@ -646,6 +651,8 @@ public sealed class UsersModel(
         CanReadRoles = CanReadUsers;
         CanManageUsers = await IsAuthorizedAsync(
             options.ManagePolicyName);
+        CanManuallyConfirmEmail = CanManageUsers
+            && options.ManualEmailConfirmationEnabled;
         CanDeleteUsers = await IsAuthorizedAsync(
             options.DeletePolicyName);
         CanAssignRoles = await IsAuthorizedAsync(

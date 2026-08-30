@@ -31,6 +31,12 @@ public static class HelloAdminErrorCodes
 
     public const string RoleAssignmentForbidden =
         "hello.admin.role_assignment_forbidden";
+
+    public const string ManualEmailConfirmationDisabled =
+        "hello.admin.manual_email_confirmation_disabled";
+
+    public const string EmailMissing =
+        "hello.admin.email_missing";
 }
 
 public static class HelloAdminSecurityEventTypes
@@ -50,6 +56,7 @@ public enum HelloAdminUserAction
     Restore = 3,
     RevokeSessions = 4,
     ResetAuthenticator = 5,
+    ConfirmEmail = 6,
 }
 
 public sealed record HelloAdminProfileProjectionContext(

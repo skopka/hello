@@ -21,6 +21,8 @@ internal static class HelloAdminSecurity
         "admin.user.sessions.revoke";
     public const string ResetAuthenticatorAction =
         "admin.user.authenticator.reset";
+    public const string ConfirmEmailAction =
+        "admin.user.email.confirm";
 
     public const string CreateRoleAction = "admin.role.create";
     public const string UpdateRoleAction = "admin.role.update";
@@ -39,6 +41,7 @@ internal static class HelloAdminSecurity
                 RevokeSessionsAction,
             HelloAdminUserAction.ResetAuthenticator =>
                 ResetAuthenticatorAction,
+            HelloAdminUserAction.ConfirmEmail => ConfirmEmailAction,
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
 
@@ -73,6 +76,7 @@ internal static class HelloAdminSecurity
                 HelloAdminUserAction.RevokeSessions,
             "reset-authenticator" =>
                 HelloAdminUserAction.ResetAuthenticator,
+            "confirm-email" => HelloAdminUserAction.ConfirmEmail,
             _ => (HelloAdminUserAction)(-1),
         };
         return Enum.IsDefined(action);
@@ -88,6 +92,7 @@ internal static class HelloAdminSecurity
             HelloAdminUserAction.RevokeSessions => "revoke-sessions",
             HelloAdminUserAction.ResetAuthenticator =>
                 "reset-authenticator",
+            HelloAdminUserAction.ConfirmEmail => "confirm-email",
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
 
@@ -234,6 +239,7 @@ internal static class HelloAdminSecurity
             or HelloAdminUserAction.Restore
             or HelloAdminUserAction.RevokeSessions
             or HelloAdminUserAction.ResetAuthenticator
+            or HelloAdminUserAction.ConfirmEmail
             && !string.IsNullOrEmpty(parameters.Reason))
         {
             return Validation(
@@ -441,6 +447,30 @@ internal static class HelloAdminSecurity
             "The current administrator is not allowed to assign or remove this role.",
             ErrorType.Forbidden);
 
+    public static Error ManualEmailConfirmationDisabled()
+        => new(
+            HelloAdminErrorCodes.ManualEmailConfirmationDisabled,
+            "Manual email confirmation is disabled by the host.",
+            ErrorType.Forbidden);
+
+    public static Error EmailMissing()
+        => new(
+            HelloAdminErrorCodes.EmailMissing,
+            "The user does not have an email address.",
+            ErrorType.Validation);
+
+    public static Error UserNotFound()
+        => new(
+            IdentityErrorCodes.UserNotFound,
+            "User not found.",
+            ErrorType.NotFound);
+
+    public static Error ConcurrencyConflict()
+        => new(
+            IdentityErrorCodes.ConcurrencyConflict,
+            "The user changed after the action was started.",
+            ErrorType.Conflict);
+
     private static string Hash(string value)
         => Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(value)));
@@ -472,6 +502,8 @@ internal sealed class HelloAdminStepUpRequirementProvider<TProfile>
                 Create("sessions.revoke"),
             [HelloAdminSecurity.ResetAuthenticatorAction] =
                 Create("authenticator.reset"),
+            [HelloAdminSecurity.ConfirmEmailAction] =
+                Create("email.confirm"),
             [HelloAdminSecurity.CreateRoleAction] =
                 CreatePurpose("hello:admin.role.create"),
             [HelloAdminSecurity.UpdateRoleAction] =

@@ -36,6 +36,7 @@ services.AddSkopkaHelloAdmin<MyProfile, MyAdminProfileProjector>(options =>
     options.RoleAssignment.RoleName = "iq-manager";
     options.RoleAssignment.Assignable = ["iq-author", "iq-teacher"];
     options.RoleManagementEnabled = false;
+    options.ManualEmailConfirmationEnabled = false;
     options.RevokeSessionsOnRoleGrant = false;
     options.RevokeSessionsOnRoleRemoval =
         HelloSessionRevocationScope.ProtectedOnly;
@@ -120,6 +121,7 @@ The ready Server uses these independent policies and role settings:
         "NotAssignable": []
       },
       "RoleManagementEnabled": true,
+      "ManualEmailConfirmationEnabled": false,
       "RevokeSessionsOnRoleGrant": true,
       "RevokeSessionsOnRoleRemoval": "Always"
     }
@@ -258,6 +260,13 @@ API and Razor handlers, their Razor forms are hidden, and the role page explains
 that the application owns the catalog. Role queries and user membership
 assignment/removal remain available; `RoleManagementEnabled` defaults to
 `true`.
+
+`ManualEmailConfirmationEnabled` defaults to `false`. Enabling it adds a
+per-user action for unconfirmed email addresses to the Users page and the admin
+API. The action issues and consumes an Identity email-confirmation token for the
+user's current address, checks the optimistic user version and requires the
+administrator's normal step-up challenge. Enable it only as an operator recovery
+mechanism and verify address ownership through a trusted channel before use.
 
 Removing another administrator's last membership is an explicit
 high-privilege operation; if operators lock out every administrator, recover

@@ -79,6 +79,8 @@
     "Admin.Users.RestoreUser": "Restore user",
     "Admin.Users.RevokeSessions": "Revoke sessions",
     "Admin.Users.ResetAuthenticator": "Reset authenticator",
+    "Admin.Users.ConfirmEmail": "Confirm email manually",
+    "Admin.Users.ConfirmEmailWarning": "Use only after verifying the address through a trusted channel.",
 
     "Admin.Errors.IncompleteCursor": "The paging cursor is incomplete.",
     "Admin.Errors.InvalidRoleAction": "The role action is invalid.",
@@ -92,6 +94,8 @@
     "Errors.hello.admin.protected_role_mutation_forbidden": "The protected role cannot be changed.",
     "Errors.hello.admin.role_management_disabled": "Role creation, update and deletion are disabled by the host.",
     "Errors.hello.admin.self_role_removal_forbidden": "You cannot remove your own protected role.",
-    "Errors.hello.admin.role_assignment_forbidden": "You are not allowed to assign or remove this role."
+    "Errors.hello.admin.role_assignment_forbidden": "You are not allowed to assign or remove this role.",
+    "Errors.hello.admin.manual_email_confirmation_disabled": "Manual email confirmation is disabled by the host.",
+    "Errors.hello.admin.email_missing": "The user does not have an email address."
   }
 }

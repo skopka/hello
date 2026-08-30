@@ -47,6 +47,8 @@ public sealed class SkopkaHelloAdminOptions
 
     public bool RoleManagementEnabled { get; set; } = true;
 
+    public bool ManualEmailConfirmationEnabled { get; set; }
+
     public bool RevokeSessionsOnRoleGrant { get; set; } = true;
 
     public HelloSessionRevocationScope RevokeSessionsOnRoleRemoval

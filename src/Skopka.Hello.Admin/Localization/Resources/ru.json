@@ -79,6 +79,8 @@
     "Admin.Users.RestoreUser": "Восстановить пользователя",
     "Admin.Users.RevokeSessions": "Отозвать сессии",
     "Admin.Users.ResetAuthenticator": "Сбросить аутентификатор",
+    "Admin.Users.ConfirmEmail": "Подтвердить email вручную",
+    "Admin.Users.ConfirmEmailWarning": "Используйте только после проверки адреса через доверенный канал.",
 
     "Admin.Errors.IncompleteCursor": "Курсор пагинации неполон.",
     "Admin.Errors.InvalidRoleAction": "Недействительное действие с ролью.",
@@ -92,6 +94,8 @@
     "Errors.hello.admin.protected_role_mutation_forbidden": "Защищённую роль нельзя изменить.",
     "Errors.hello.admin.role_management_disabled": "Создание, изменение и удаление ролей отключены хостом.",
     "Errors.hello.admin.self_role_removal_forbidden": "Нельзя снять с себя собственную защищённую роль.",
-    "Errors.hello.admin.role_assignment_forbidden": "Вам не разрешено назначать или снимать эту роль."
+    "Errors.hello.admin.role_assignment_forbidden": "Вам не разрешено назначать или снимать эту роль.",
+    "Errors.hello.admin.manual_email_confirmation_disabled": "Ручное подтверждение email отключено хостом.",
+    "Errors.hello.admin.email_missing": "У пользователя не указан email."
   }
 }

@@ -54,12 +54,33 @@ jobs:
           --verify-no-changes
 
       - name: Test
+        id: test
         run: >
           dotnet test Skopka.Hello.slnx
           --configuration Release
           --no-build
           --logger trx
           --results-directory artifacts/test-results
+
+      - name: Report failed tests
+        if: ${{ failure() && steps.test.outcome == 'failure' }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          namespace = {"trx": "http://microsoft.com/schemas/VisualStudio/TeamTest/2010"}
+          for path in pathlib.Path("artifacts/test-results").glob("*.trx"):
+              root = ET.parse(path).getroot()
+              for result in root.findall(".//trx:UnitTestResult[@outcome='Failed']", namespace):
+                  name = result.get("testName", "Unknown test")
+                  message = result.findtext("trx:Output/trx:ErrorInfo/trx:Message", "", namespace)
+                  stack = result.findtext("trx:Output/trx:ErrorInfo/trx:StackTrace", "", namespace)
+                  details = " | ".join(part.strip() for part in (message, stack) if part.strip())
+                  escaped = details.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+                  print(f"::error title=Failed test: {name}::{escaped}")
+          PY
 
       - name: Audit NuGet dependencies
         run: >

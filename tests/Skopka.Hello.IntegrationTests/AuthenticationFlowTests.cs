@@ -2424,10 +2424,13 @@ public sealed class AuthenticationFlowTests
                 ["Status"] = IdentityUserStatus.Any.ToString(),
                 ["__RequestVerificationToken"] = adminRoleToken,
             });
-        Assert.Equal(HttpStatusCode.OK, beginRoleAssignment.StatusCode);
-        MergeCookies(cookies, beginRoleAssignment);
+        using var beginRoleAssignmentPage = await FollowRedirectAsync(
+            client,
+            beginRoleAssignment,
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, beginRoleAssignmentPage.StatusCode);
         var beginRoleAssignmentHtml =
-            await beginRoleAssignment.Content.ReadAsStringAsync();
+            await beginRoleAssignmentPage.Content.ReadAsStringAsync();
         Assert.Equal(
             teacherRole.Id,
             Guid.Parse(ReadInputValue(
@@ -2501,10 +2504,13 @@ public sealed class AuthenticationFlowTests
                 ["Status"] = IdentityUserStatus.Any.ToString(),
                 ["__RequestVerificationToken"] = selfGrantToken,
             });
-        Assert.Equal(HttpStatusCode.OK, beginSelfGrant.StatusCode);
-        MergeCookies(cookies, beginSelfGrant);
+        using var beginSelfGrantPage = await FollowRedirectAsync(
+            client,
+            beginSelfGrant,
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, beginSelfGrantPage.StatusCode);
         var beginSelfGrantHtml =
-            await beginSelfGrant.Content.ReadAsStringAsync();
+            await beginSelfGrantPage.Content.ReadAsStringAsync();
         var selfGrantChallengeId = Guid.Parse(ReadInputValue(
             beginSelfGrantHtml,
             "challengeId"));
@@ -2574,10 +2580,13 @@ public sealed class AuthenticationFlowTests
                 ["Status"] = IdentityUserStatus.Any.ToString(),
                 ["__RequestVerificationToken"] = selfRemoveToken,
             });
-        Assert.Equal(HttpStatusCode.OK, beginSelfRemove.StatusCode);
-        MergeCookies(cookies, beginSelfRemove);
+        using var beginSelfRemovePage = await FollowRedirectAsync(
+            client,
+            beginSelfRemove,
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, beginSelfRemovePage.StatusCode);
         var beginSelfRemoveHtml =
-            await beginSelfRemove.Content.ReadAsStringAsync();
+            await beginSelfRemovePage.Content.ReadAsStringAsync();
         var selfRemoveChallengeId = Guid.Parse(ReadInputValue(
             beginSelfRemoveHtml,
             "challengeId"));
@@ -2697,9 +2706,13 @@ public sealed class AuthenticationFlowTests
                 ["Status"] = IdentityUserStatus.Any.ToString(),
                 ["__RequestVerificationToken"] = manualRoleToken,
             });
-        Assert.Equal(HttpStatusCode.OK, manualRoleAssignment.StatusCode);
+        using var manualRoleAssignmentPage = await FollowRedirectAsync(
+            client,
+            manualRoleAssignment,
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, manualRoleAssignmentPage.StatusCode);
         var manualRoleAssignmentHtml =
-            await manualRoleAssignment.Content.ReadAsStringAsync();
+            await manualRoleAssignmentPage.Content.ReadAsStringAsync();
         Assert.Equal(
             administratorRole.Id,
             Guid.Parse(ReadInputValue(
@@ -2930,10 +2943,13 @@ public sealed class AuthenticationFlowTests
                 ["__RequestVerificationToken"] =
                     requestCodeToken,
             });
-        Assert.Equal(HttpStatusCode.OK, requestCode.StatusCode);
-        MergeCookies(cookies, requestCode);
+        using var requestCodePage = await FollowRedirectAsync(
+            client,
+            requestCode,
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, requestCodePage.StatusCode);
         var changeHtml =
-            await requestCode.Content.ReadAsStringAsync();
+            await requestCodePage.Content.ReadAsStringAsync();
         var challengeId = ReadInputValue(
             changeHtml,
             "Input.ChallengeId");
@@ -3930,6 +3946,23 @@ public sealed class AuthenticationFlowTests
             "Bearer",
             accessToken);
         return await client.SendAsync(request);
+    }
+
+    private static async Task<HttpResponseMessage> FollowRedirectAsync(
+        HttpClient client,
+        HttpResponseMessage response,
+        Dictionary<string, string> cookies)
+    {
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        MergeCookies(cookies, response);
+        var location = Assert.IsType<Uri>(response.Headers.Location);
+        var redirected = await SendAsync(
+            client,
+            HttpMethod.Get,
+            location.OriginalString,
+            cookies);
+        MergeCookies(cookies, redirected);
+        return redirected;
     }
 
     private static async Task<HttpResponseMessage> GetAuthorizedAsync(

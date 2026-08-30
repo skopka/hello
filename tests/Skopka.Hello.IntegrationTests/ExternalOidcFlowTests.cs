@@ -249,9 +249,13 @@ public sealed class ExternalOidcFlowTests
             {
                 ["__RequestVerificationToken"] = securityToken,
             });
-        Assert.Equal(HttpStatusCode.OK, beginPasswordSet.StatusCode);
+        using var passwordSetPage = await FollowHelloRedirectAsync(
+            helloClient,
+            beginPasswordSet,
+            repeatedCookies);
+        Assert.Equal(HttpStatusCode.OK, passwordSetPage.StatusCode);
         var passwordSetHtml =
-            await beginPasswordSet.Content.ReadAsStringAsync();
+            await passwordSetPage.Content.ReadAsStringAsync();
         var challengeId = ReadInputValue(
             passwordSetHtml,
             "SetInput.ChallengeId");
@@ -326,8 +330,13 @@ public sealed class ExternalOidcFlowTests
             {
                 ["__RequestVerificationToken"] = removalToken,
             });
-        Assert.Equal(HttpStatusCode.OK, beginRemoval.StatusCode);
-        var removalHtml = await beginRemoval.Content.ReadAsStringAsync();
+        using var removalChallengePage = await FollowHelloRedirectAsync(
+            helloClient,
+            beginRemoval,
+            removalCookies);
+        Assert.Equal(HttpStatusCode.OK, removalChallengePage.StatusCode);
+        var removalHtml =
+            await removalChallengePage.Content.ReadAsStringAsync();
         var removalChallengeId = ReadInputValue(
             removalHtml,
             "ActionInput.ChallengeId");
@@ -1076,6 +1085,20 @@ public sealed class ExternalOidcFlowTests
         var response = await client.SendAsync(request);
         MergeCookies(cookies, response);
         return response;
+    }
+
+    private static async Task<HttpResponseMessage> FollowHelloRedirectAsync(
+        HttpClient client,
+        HttpResponseMessage response,
+        Dictionary<string, string> cookies)
+    {
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var location = Assert.IsType<Uri>(response.Headers.Location);
+        return await SendHelloAsync(
+            client,
+            HttpMethod.Get,
+            location.OriginalString,
+            cookies);
     }
 
     private static async Task<HttpResponseMessage> SendHelloAsync(

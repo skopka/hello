@@ -72,7 +72,9 @@
                         ? "hello-account-nav"
                         : "hello-public-nav")"
              aria-label="@Text["Layout.AccountNavigation"]">
-            @if (UiOptions.ApplicationHomeUrl is not null)
+            @if (UiOptions.ApplicationHomeUrl is not null
+                && (!isLoginPage
+                    || UiOptions.ApplicationHomeLinkOnLoginEnabled))
             {
                 <a class="hello-nav-item"
                    href="@UiOptions.ApplicationHomeUrl">

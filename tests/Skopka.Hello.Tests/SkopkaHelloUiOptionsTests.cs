@@ -25,6 +25,7 @@ public sealed class SkopkaHelloUiOptionsTests
         Assert.Equal(5, options.AccountSwitching.MaximumSavedAccounts);
         Assert.Null(options.AuthenticatedRedirectPath);
         Assert.Null(options.ApplicationHomeUrl);
+        Assert.True(options.ApplicationHomeLinkOnLoginEnabled);
         Assert.Null(options.LayoutPath);
         Assert.Null(options.TermsOfServiceUrl);
         Assert.Null(options.PrivacyPolicyUrl);

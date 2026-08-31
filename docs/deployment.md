@@ -24,6 +24,10 @@ mapping are not enabled.
 The account UI is served under the startup-configured
 `SkopkaHello:Ui:PathPrefix`, `/hello` by default. The packaged stylesheet is an
 RCL static asset; the mounted custom stylesheet is linked after it.
+Optional `SkopkaHello:Ui:ApplicationHomeUrl` adds a link back to the host
+application. Set `SkopkaHello:Ui:ApplicationHomeLinkOnLoginEnabled` to `false`
+when that application requires authentication; the login page then omits the
+link, while authenticated and other Hello pages keep it.
 An application composing the NuGet packages can set
 `SkopkaHelloUiOptions.LayoutPath` to a compiled host Razor layout; this applies
 to both Hello and Admin pages. The ready Server keeps the packaged layouts.

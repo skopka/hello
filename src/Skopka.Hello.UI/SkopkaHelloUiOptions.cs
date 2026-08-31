@@ -31,6 +31,8 @@ public sealed class SkopkaHelloUiOptions
 
     public string? ApplicationHomeUrl { get; set; }
 
+    public bool ApplicationHomeLinkOnLoginEnabled { get; set; } = true;
+
     public string? NoticeText { get; set; }
 
     public string? TermsOfServiceUrl { get; set; }

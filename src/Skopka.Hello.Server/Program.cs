@@ -516,6 +516,11 @@ builder.Services.AddSkopkaHelloUi<
     HelloProfile,
     HelloProfileUiFactory>(options =>
 {
+    options.ApplicationHomeUrl =
+        configuration["SkopkaHello:Ui:ApplicationHomeUrl"];
+    options.ApplicationHomeLinkOnLoginEnabled = configuration.GetValue(
+        "SkopkaHello:Ui:ApplicationHomeLinkOnLoginEnabled",
+        true);
     options.TermsOfServiceUrl =
         configuration["SkopkaHello:Ui:TermsOfServiceUrl"];
     options.PrivacyPolicyUrl =

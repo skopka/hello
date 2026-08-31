@@ -228,6 +228,7 @@ route paths:
 services.AddSkopkaHelloUi<Profile, ProfileFactory>(options =>
 {
     options.ApplicationHomeUrl = "https://app.example.com/";
+    options.ApplicationHomeLinkOnLoginEnabled = false;
     options.LayoutPath = "/Pages/Shared/_Layout.cshtml";
     options.NoticeText =
         "Test environment: data may be removed without notice.";
@@ -246,7 +247,11 @@ services.AddSkopkaHelloUi<Profile, ProfileFactory>(options =>
 `ApplicationHomeUrl` adds a localized "Return to application" link to the
 packaged header. It accepts a safe local absolute path or an absolute HTTPS URL
 without credentials, query or fragment; leave it unset when the identity UI is
-the application itself.
+the application itself. Set `ApplicationHomeLinkOnLoginEnabled` to `false`
+when the application requires authentication, so the login page does not offer
+a return link that can only start the same login flow again. Other Hello pages
+keep the application link. The ready Server reads both values from
+`SkopkaHello:Ui`.
 
 `NoticeText` renders a host-owned message above the content of every packaged
 Hello page. Null, empty and whitespace-only values preserve the existing

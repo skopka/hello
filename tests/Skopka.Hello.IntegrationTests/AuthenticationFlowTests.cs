@@ -2227,6 +2227,7 @@ public sealed class AuthenticationFlowTests
             configureUi: options =>
             {
                 options.ApplicationHomeUrl = "/app";
+                options.ApplicationHomeLinkOnLoginEnabled = false;
                 options.NoticeText = UiNoticeText;
                 options.TermsOfServiceUrl = "/terms";
                 options.PrivacyPolicyUrl =
@@ -2259,6 +2260,10 @@ public sealed class AuthenticationFlowTests
             await loginNavigationPage.Content.ReadAsStringAsync();
         Assert.DoesNotContain(
             "href=\"/hello/login\"",
+            loginNavigationHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "href=\"/app\"",
             loginNavigationHtml,
             StringComparison.Ordinal);
 

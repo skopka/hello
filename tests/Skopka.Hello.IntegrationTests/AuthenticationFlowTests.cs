@@ -2096,6 +2096,14 @@ public sealed class AuthenticationFlowTests
             registerHtml,
             StringComparison.Ordinal);
         Assert.Contains(
+            "class=\"hello-public-nav\"",
+            registerHtml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "class=\"hello-account-nav\"",
+            registerHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "href=\"/app\"",
             registerHtml,
             StringComparison.Ordinal);
@@ -2948,6 +2956,22 @@ public sealed class AuthenticationFlowTests
             await updatedAccount.Content.ReadAsStringAsync();
         Assert.Contains(
             "Browser Alice Updated",
+            updatedAccountHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "class=\"hello-authenticated\"",
+            updatedAccountHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "class=\"hello-account-nav\"",
+            updatedAccountHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "class=\"hello-nav-icon\"",
+            updatedAccountHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "hello-nav-label-mobile",
             updatedAccountHtml,
             StringComparison.Ordinal);
         MergeCookies(cookies, updatedAccount);

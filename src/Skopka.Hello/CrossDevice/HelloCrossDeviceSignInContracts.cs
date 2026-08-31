@@ -78,6 +78,13 @@ public interface IHelloCrossDeviceSignInApplication<TProfile>
             string? clientKey,
             CancellationToken cancellationToken);
 
+    Task<OperationResult<HelloCrossDeviceApprovalDetails>>
+        GetApprovalDetailsByUserCodeAsync(
+            string accessToken,
+            string userCode,
+            string? clientKey,
+            CancellationToken cancellationToken);
+
     Task<OperationResult<HelloStepUpChallenge>> BeginApprovalAsync(
         HelloBeginCrossDeviceApprovalCommand command,
         CancellationToken cancellationToken);

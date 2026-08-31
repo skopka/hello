@@ -9,6 +9,25 @@
         currentPage,
         "/SkopkaHello/Login",
         StringComparison.OrdinalIgnoreCase);
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+    var isAccountPage = String.Equals(
+        currentPage,
+        "/SkopkaHello/Account/Index",
+        StringComparison.OrdinalIgnoreCase);
+    var isSessionsPage = String.Equals(
+        currentPage,
+        "/SkopkaHello/Account/Sessions",
+        StringComparison.OrdinalIgnoreCase);
+    var isSignInRequestsPage = String.Equals(
+        currentPage,
+        "/SkopkaHello/CrossDevice/Requests",
+        StringComparison.OrdinalIgnoreCase);
+    var isSignInMethodsPage = String.Equals(
+        currentPage,
+        "/SkopkaHello/Account/ExternalLogins",
+        StringComparison.OrdinalIgnoreCase);
+    var crossDeviceEnabled = Context.RequestServices.GetService(
+        typeof(IHelloUiCrossDeviceApplication)) is not null;
 }
 <!doctype html>
 <html lang="@System.Globalization.CultureInfo.CurrentUICulture.Name">
@@ -27,7 +46,7 @@
               href="@UiOptions.CustomCssRequestPath" />
     }
 </head>
-<body>
+<body class="@(isAuthenticated ? "hello-authenticated" : null)">
     <header class="hello-header">
         @if ((UiOptions.EnabledPages & HelloUiPages.Account) != 0)
         {
@@ -45,32 +64,117 @@
         {
             <span class="hello-brand">Skopka.Hello</span>
         }
-        <nav aria-label="@Text["Layout.AccountNavigation"]">
+        <nav class="@(isAuthenticated
+                        ? "hello-account-nav"
+                        : "hello-public-nav")"
+             aria-label="@Text["Layout.AccountNavigation"]">
             @if (UiOptions.ApplicationHomeUrl is not null)
             {
-                <a href="@UiOptions.ApplicationHomeUrl">
-                    @Text["Layout.ReturnToApplication"]
+                <a class="hello-nav-item"
+                   href="@UiOptions.ApplicationHomeUrl">
+                    <svg class="hello-nav-icon"
+                         viewBox="0 0 24 24"
+                         aria-hidden="true">
+                        <path d="M3 11.5 12 4l9 7.5" />
+                        <path d="M5.5 10v10h13V10" />
+                        <path d="M9.5 20v-6h5v6" />
+                    </svg>
+                    <span class="hello-nav-label hello-nav-label-desktop">
+                        @Text["Layout.ReturnToApplication"]
+                    </span>
+                    <span class="hello-nav-label hello-nav-label-mobile"
+                          aria-hidden="true">
+                        @Text["Layout.ReturnToApplicationShort"]
+                    </span>
                 </a>
             }
-            @if (User.Identity?.IsAuthenticated == true)
+            @if (isAuthenticated)
             {
                 @if ((UiOptions.EnabledPages & HelloUiPages.Account) != 0)
                 {
-                    <a asp-page="/SkopkaHello/Account/Index">@Text["Layout.Account"]</a>
+                    <a class="hello-nav-item@(isAccountPage ? " active" : string.Empty)"
+                       aria-current="@(isAccountPage ? "page" : null)"
+                       asp-page="/SkopkaHello/Account/Index">
+                        <svg class="hello-nav-icon"
+                             viewBox="0 0 24 24"
+                             aria-hidden="true">
+                            <circle cx="12" cy="8" r="4" />
+                            <path d="M4.5 21a7.5 7.5 0 0 1 15 0" />
+                        </svg>
+                        <span class="hello-nav-label">@Text["Layout.Account"]</span>
+                    </a>
                     @if ((UiOptions.EnabledPages & HelloUiPages.Sessions) != 0)
                     {
-                        <a asp-page="/SkopkaHello/Account/Sessions">@Text["Layout.Sessions"]</a>
+                        <a class="hello-nav-item@(isSessionsPage ? " active" : string.Empty)"
+                           aria-current="@(isSessionsPage ? "page" : null)"
+                           asp-page="/SkopkaHello/Account/Sessions">
+                            <svg class="hello-nav-icon"
+                                 viewBox="0 0 24 24"
+                                 aria-hidden="true">
+                                <rect x="4" y="5" width="16" height="11" rx="2" />
+                                <path d="M9 20h6" />
+                                <path d="M12 16v4" />
+                            </svg>
+                            <span class="hello-nav-label">@Text["Layout.Sessions"]</span>
+                        </a>
+                    }
+                    @if (crossDeviceEnabled)
+                    {
+                        <a class="hello-nav-item@(isSignInRequestsPage ? " active" : string.Empty)"
+                           aria-current="@(isSignInRequestsPage ? "page" : null)"
+                           asp-page="/SkopkaHello/CrossDevice/Requests">
+                            <svg class="hello-nav-icon"
+                                 viewBox="0 0 24 24"
+                                 aria-hidden="true">
+                                <path d="M12 3a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z" />
+                                <path d="M12 13v8" />
+                                <path d="m9 18 3 3 3-3" />
+                            </svg>
+                            <span class="hello-nav-label hello-nav-label-desktop">
+                                @Text["Layout.SignInRequests"]
+                            </span>
+                            <span class="hello-nav-label hello-nav-label-mobile"
+                                  aria-hidden="true">
+                                @Text["Layout.SignInRequestsShort"]
+                            </span>
+                        </a>
                     }
                     @if ((UiOptions.EnabledPages & HelloUiPages.ExternalIdentity) != 0
                         && ExternalIdentity.IsConfigured)
                     {
-                        <a asp-page="/SkopkaHello/Account/ExternalLogins">@Text["Layout.SignInMethods"]</a>
+                        <a class="hello-nav-item@(isSignInMethodsPage ? " active" : string.Empty)"
+                           aria-current="@(isSignInMethodsPage ? "page" : null)"
+                           asp-page="/SkopkaHello/Account/ExternalLogins">
+                            <svg class="hello-nav-icon"
+                                 viewBox="0 0 24 24"
+                                 aria-hidden="true">
+                                <circle cx="8" cy="12" r="4" />
+                                <path d="M12 12h9" />
+                                <path d="M18 12v3" />
+                                <path d="M15 12v2" />
+                            </svg>
+                            <span class="hello-nav-label hello-nav-label-desktop">
+                                @Text["Layout.SignInMethods"]
+                            </span>
+                            <span class="hello-nav-label hello-nav-label-mobile"
+                                  aria-hidden="true">
+                                @Text["Layout.SignInMethodsShort"]
+                            </span>
+                        </a>
                     }
                     <form method="post"
                           asp-page="/SkopkaHello/Account/Index"
                           asp-page-handler="Logout">
-                        <button class="hello-link-button" type="submit">
-                            @Text["Layout.SignOut"]
+                        <button class="hello-link-button hello-nav-item"
+                                type="submit">
+                            <svg class="hello-nav-icon"
+                                 viewBox="0 0 24 24"
+                                 aria-hidden="true">
+                                <path d="M10 5H5v14h5" />
+                                <path d="M13 8l4 4-4 4" />
+                                <path d="M17 12H9" />
+                            </svg>
+                            <span class="hello-nav-label">@Text["Layout.SignOut"]</span>
                         </button>
                     </form>
                 }
@@ -80,12 +184,18 @@
                 @if (!isLoginPage
                     && (UiOptions.EnabledPages & HelloUiPages.Login) != 0)
                 {
-                    <a asp-page="/SkopkaHello/Login">@Text["Layout.SignIn"]</a>
+                    <a class="hello-nav-item"
+                       asp-page="/SkopkaHello/Login">
+                        <span class="hello-nav-label">@Text["Layout.SignIn"]</span>
+                    </a>
                 }
                 @if (HelloOptions.SelfRegistrationEnabled
                     && (UiOptions.EnabledPages & HelloUiPages.Registration) != 0)
                 {
-                    <a asp-page="/SkopkaHello/Register">@Text["Layout.Register"]</a>
+                    <a class="hello-nav-item"
+                       asp-page="/SkopkaHello/Register">
+                        <span class="hello-nav-label">@Text["Layout.Register"]</span>
+                    </a>
                 }
             }
         </nav>

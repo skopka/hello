@@ -1,0 +1,40 @@
+@page
+@model CrossDeviceRequestsModel
+@{
+    ViewData["Title"] = Text["CrossDevice.Requests.Title"];
+}
+
+<section class="hello-card hello-auth-card">
+    <p class="hello-eyebrow">@Text["CrossDevice.Eyebrow"]</p>
+    <h1>@Text["CrossDevice.Requests.Title"]</h1>
+    <p class="hello-muted">
+        @Text["CrossDevice.Requests.Instructions"]
+    </p>
+
+    <div asp-validation-summary="ModelOnly"
+         class="hello-validation"
+         role="alert"></div>
+
+    <form method="post" class="hello-form">
+        <label asp-for="Input.UserCode">
+            @Text["CrossDevice.Requests.UserCode"]
+        </label>
+        <input asp-for="Input.UserCode"
+               autocomplete="one-time-code"
+               autocapitalize="characters"
+               spellcheck="false"
+               maxlength="32"
+               placeholder="ABCD-EFGH" />
+        <span asp-validation-for="Input.UserCode"
+              class="hello-field-error"></span>
+        <button class="hello-button" type="submit">
+            @Text["CrossDevice.Requests.Action"]
+        </button>
+    </form>
+
+    <p class="hello-card-footer">
+        <a asp-page="/SkopkaHello/Account/Index">
+            @Text["Common.BackToAccount"]
+        </a>
+    </p>
+</section>

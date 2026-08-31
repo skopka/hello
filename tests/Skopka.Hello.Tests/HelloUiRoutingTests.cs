@@ -124,6 +124,7 @@ public sealed class HelloUiRoutingTests
         Assert.Contains("/identity/external/complete", routes);
         Assert.DoesNotContain("/auth/cross-device", routes);
         Assert.DoesNotContain("/identity/cross-device", routes);
+        Assert.DoesNotContain("/identity/cross-device/requests", routes);
         Assert.DoesNotContain("/identity/cross-device/approve", routes);
     }
 
@@ -157,6 +158,7 @@ public sealed class HelloUiRoutingTests
             "/account/cross-device/{deviceCode}/deny",
             routes);
         Assert.Contains("/identity/cross-device", routes);
+        Assert.Contains("/identity/cross-device/requests", routes);
         Assert.Contains("/identity/cross-device/approve", routes);
     }
 

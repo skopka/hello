@@ -116,6 +116,22 @@ internal sealed class HelloUiCrossDeviceApplication<TProfile>(
                 cancellationToken);
     }
 
+    public async Task<OperationResult<HelloCrossDeviceApprovalDetails>>
+        GetApprovalDetailsByUserCodeAsync(
+            string userCode,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        var accessToken = await ReadAccessTokenAsync(httpContext);
+        return accessToken is null
+            ? InvalidRequest<HelloCrossDeviceApprovalDetails>()
+            : await application.GetApprovalDetailsByUserCodeAsync(
+                accessToken,
+                userCode,
+                requestContext.CreateClientKey(httpContext),
+                cancellationToken);
+    }
+
     public async Task<OperationResult<HelloStepUpChallenge>>
         BeginApprovalAsync(
             string deviceCode,

@@ -9,8 +9,9 @@ OIDC sign-in.
 
 1. B creates a two-minute request and receives an HttpOnly browser-verifier
    cookie, QR approval URL and short visual code.
-2. A opens the QR URL, signs in if necessary, compares the same code and sees
-   the display-only IP, User-Agent/device description and creation time.
+2. A opens the QR URL or enters the short code on the authenticated
+   `Sign-in requests` page, signs in if necessary, compares the same code and
+   sees the display-only IP, User-Agent/device description and creation time.
 3. A starts a fresh TOTP step-up challenge and explicitly approves or denies.
 4. B polls only the request state. After approval it consumes the request once.
 5. Skopka.Identity creates a new session through the existing
@@ -88,10 +89,12 @@ The optional Minimal API surface is:
 | `POST` | `/account/cross-device/{deviceCode}/approve` | Bearer + current TOTP for A |
 | `POST` | `/account/cross-device/{deviceCode}/deny` | Bearer for A |
 
-The packaged UI adds a localized login action, B waiting/QR/timer page and A
-approval page at the configured `UiPathPrefix`. English and Russian strings
-are built in. QR SVG is generated locally with QRCoder and contains only the
-HTTPS approval URL plus the random public device code.
+The packaged UI adds a localized login action, B waiting/QR/timer page, A
+short-code request lookup page and approval page at the configured
+`UiPathPrefix`. English and Russian strings are built in. QR SVG is generated
+locally with QRCoder and contains only the HTTPS approval URL plus the random
+public device code. Short-code lookup returns a request only when exactly one
+unexpired pending row matches, so a rare collision fails closed.
 
 The begin and status responses never expose the browser verifier or user
 identity. The verifier is bound to B in the

@@ -3,6 +3,8 @@
 @inject IHelloUiExternalApplication ExternalIdentity
 @{
     ViewData["Title"] = Text["Layout.Account"];
+    var crossDeviceEnabled = ViewContext.HttpContext.RequestServices.GetService(
+        typeof(IHelloUiCrossDeviceApplication)) is not null;
 }
 
 <section class="hello-page-heading">
@@ -206,6 +208,13 @@
             <a class="hello-button hello-button-secondary"
                asp-page="/SkopkaHello/Account/Security">
                 @Text["Account.CredentialsAndDeletion"]
+            </a>
+        }
+        @if (crossDeviceEnabled)
+        {
+            <a class="hello-button hello-button-secondary"
+               asp-page="/SkopkaHello/CrossDevice/Requests">
+                @Text["Account.SignInRequests"]
             </a>
         }
         @if ((UiOptions.EnabledPages & HelloUiPages.ExternalIdentity) != 0

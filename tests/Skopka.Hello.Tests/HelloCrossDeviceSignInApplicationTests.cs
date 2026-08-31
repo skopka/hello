@@ -108,6 +108,23 @@ public sealed class HelloCrossDeviceSignInApplicationTests
     }
 
     [Fact]
+    public async Task ApprovalRequestCanBeResolvedByUserCode()
+    {
+        var fixture = CreateFixture();
+
+        var result = await fixture.Application
+            .GetApprovalDetailsByUserCodeAsync(
+                "actor-token",
+                "abcd efgh",
+                "client-key",
+                CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(DeviceCode, result.Value.DeviceCode);
+        Assert.True(fixture.DeviceAuthorization.UserCodeDetailsCalled);
+    }
+
+    [Fact]
     public async Task CompletionReturnsTheIndependentConsumedSession()
     {
         var fixture = CreateFixture();
@@ -222,6 +239,8 @@ public sealed class HelloCrossDeviceSignInApplicationTests
 
         public bool DetailsCalled { get; private set; }
 
+        public bool UserCodeDetailsCalled { get; private set; }
+
         public ApproveDeviceAuthorizationRequestCommand? ApproveCommand
         { get; private set; }
 
@@ -264,6 +283,26 @@ public sealed class HelloCrossDeviceSignInApplicationTests
                     new DeviceAuthorizationApprovalDetails(
                         Guid.NewGuid(),
                         command.DeviceCode,
+                        "ABCD-EFGH",
+                        DeviceAuthorizationState.Pending,
+                        now,
+                        now.AddMinutes(2),
+                        "127.0.0.1",
+                        "browser",
+                        "device")));
+        }
+
+        public Task<OperationResult<DeviceAuthorizationApprovalDetails>>
+            GetApprovalDetailsByUserCodeAsync(
+                GetDeviceAuthorizationApprovalDetailsByUserCodeCommand command,
+                CancellationToken ct)
+        {
+            UserCodeDetailsCalled = true;
+            return Task.FromResult(
+                OperationResultFactory.Success(
+                    new DeviceAuthorizationApprovalDetails(
+                        Guid.NewGuid(),
+                        DeviceCode,
                         "ABCD-EFGH",
                         DeviceAuthorizationState.Pending,
                         now,

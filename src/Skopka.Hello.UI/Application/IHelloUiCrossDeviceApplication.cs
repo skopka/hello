@@ -45,6 +45,12 @@ public interface IHelloUiCrossDeviceApplication
             HttpContext httpContext,
             CancellationToken cancellationToken);
 
+    Task<OperationResult<HelloCrossDeviceApprovalDetails>>
+        GetApprovalDetailsByUserCodeAsync(
+            string userCode,
+            HttpContext httpContext,
+            CancellationToken cancellationToken);
+
     Task<OperationResult<HelloStepUpChallenge>> BeginApprovalAsync(
         string deviceCode,
         HttpContext httpContext,

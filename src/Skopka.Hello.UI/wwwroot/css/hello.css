@@ -119,6 +119,23 @@ select {
   margin: 0;
 }
 
+.hello-nav-icon,
+.hello-nav-label-mobile {
+  display: none;
+}
+
+.hello-header nav .hello-nav-item.active {
+  color: var(--skopka-hello-color-primary);
+}
+
+.hello-nav-icon {
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 .hello-language-form label {
   color: var(--skopka-hello-color-muted);
 }
@@ -503,6 +520,10 @@ select {
 }
 
 @media (max-width: 42rem) {
+  .hello-authenticated {
+    padding-bottom: calc(4.75rem + env(safe-area-inset-bottom));
+  }
+
   .hello-session,
   .hello-danger-zone {
     align-items: stretch;
@@ -514,15 +535,92 @@ select {
     padding: 0.75rem 1rem;
   }
 
-  .hello-header nav {
+  .hello-header .hello-public-nav {
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: 0.4rem 0.75rem;
     text-align: right;
   }
 
-  .hello-header nav form {
+  .hello-header .hello-account-nav {
+    position: fixed;
+    z-index: 100;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    gap: 0.125rem;
+    padding:
+      0.45rem max(0.5rem, env(safe-area-inset-right))
+      calc(0.45rem + env(safe-area-inset-bottom))
+      max(0.5rem, env(safe-area-inset-left));
+    border-top: 1px solid var(--skopka-hello-color-border);
+    background: color-mix(
+      in srgb,
+      var(--skopka-hello-color-surface) 94%,
+      transparent
+    );
+    box-shadow: 0 -0.75rem 2rem rgb(0 0 0 / 28%);
+    backdrop-filter: blur(1rem);
+  }
+
+  .hello-header .hello-account-nav > .hello-nav-item,
+  .hello-header .hello-account-nav > form {
+    min-width: 0;
+    max-width: 7rem;
+    flex: 1 1 0;
+  }
+
+  .hello-header .hello-account-nav > form {
+    display: flex;
+    margin: 0;
+  }
+
+  .hello-header .hello-account-nav .hello-nav-item {
+    display: flex;
+    width: 100%;
+    min-height: 3.5rem;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.35rem 0.15rem;
+    border: 0;
+    border-radius: 0.75rem;
+    background: transparent;
+    color: var(--skopka-hello-color-muted);
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 1.1;
+    text-align: center;
+    text-decoration: none;
+  }
+
+  .hello-header .hello-account-nav .hello-nav-item:hover,
+  .hello-header .hello-account-nav .hello-nav-item.active {
+    background: color-mix(
+      in srgb,
+      var(--skopka-hello-color-primary) 12%,
+      transparent
+    );
+    color: var(--skopka-hello-color-primary);
+  }
+
+  .hello-account-nav .hello-nav-icon {
+    display: block;
+    width: 1.35rem;
+    height: 1.35rem;
     flex: 0 0 auto;
+  }
+
+  .hello-account-nav .hello-nav-label-desktop {
+    display: none;
+  }
+
+  .hello-account-nav .hello-nav-label-mobile {
+    display: block;
   }
 
   .hello-footer,

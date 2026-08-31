@@ -114,6 +114,11 @@ internal sealed class HelloUiPageRouteModelConvention(
                 && IsEnabled(enabledPages, HelloUiPages.Login)
                     ? routes.CrossDeviceWaitingPath
                     : null,
+            ["/Pages/SkopkaHello/CrossDevice/Requests.cshtml"] =
+                crossDeviceEnabled
+                && IsEnabled(enabledPages, HelloUiPages.Login)
+                    ? routes.CrossDeviceRequestsPath
+                    : null,
             ["/Pages/SkopkaHello/CrossDevice/Approve.cshtml"] =
                 crossDeviceEnabled
                 && IsEnabled(enabledPages, HelloUiPages.Login)

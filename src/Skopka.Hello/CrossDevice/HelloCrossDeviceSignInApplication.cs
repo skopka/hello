@@ -108,6 +108,35 @@ internal sealed class HelloCrossDeviceSignInApplication<TProfile>(
                 details.Errors);
     }
 
+    public async Task<OperationResult<HelloCrossDeviceApprovalDetails>>
+        GetApprovalDetailsByUserCodeAsync(
+            string accessToken,
+            string userCode,
+            string? clientKey,
+            CancellationToken cancellationToken)
+    {
+        var user = await ValidateTokenAsync(
+            accessToken,
+            cancellationToken);
+        if (!user.IsSuccess)
+        {
+            return OperationResultFactory.Fail<
+                HelloCrossDeviceApprovalDetails>(user.Errors);
+        }
+
+        var details = await deviceAuthorization
+            .GetApprovalDetailsByUserCodeAsync(
+                new GetDeviceAuthorizationApprovalDetailsByUserCodeCommand(
+                    userCode,
+                    clientKey),
+                cancellationToken);
+        return details.IsSuccess
+            ? OperationResultFactory.Success(
+                ToApprovalDetails(details.Value))
+            : OperationResultFactory.Fail<HelloCrossDeviceApprovalDetails>(
+                details.Errors);
+    }
+
     public async Task<OperationResult<HelloStepUpChallenge>>
         BeginApprovalAsync(
             HelloBeginCrossDeviceApprovalCommand command,

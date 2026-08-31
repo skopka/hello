@@ -66,6 +66,9 @@ public static class HelloUiDefaults
     public const string CrossDeviceWaitingPath =
         RootPath + "/cross-device";
 
+    public const string CrossDeviceRequestsPath =
+        RootPath + "/cross-device/requests";
+
     public const string CrossDeviceApprovalPath =
         RootPath + "/cross-device/approve";
 }

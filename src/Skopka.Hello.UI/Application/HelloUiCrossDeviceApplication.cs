@@ -60,7 +60,10 @@ internal sealed class HelloUiCrossDeviceApplication<TProfile>(
                 approvalUrl,
                 CreateQrCodeSvg(approvalUrl),
                 result.Value.CreatedAt,
-                result.Value.ExpiresAt));
+                result.Value.ExpiresAt)
+            {
+                QrCodeImageUrl = CreateQrCodeImageUrl(approvalUrl),
+            });
     }
 
     public async Task<OperationResult<HelloUiCrossDeviceWaiting>>
@@ -97,7 +100,10 @@ internal sealed class HelloUiCrossDeviceApplication<TProfile>(
                 approvalUrl,
                 CreateQrCodeSvg(approvalUrl),
                 status.Value.CreatedAt,
-                status.Value.ExpiresAt));
+                status.Value.ExpiresAt)
+            {
+                QrCodeImageUrl = CreateQrCodeImageUrl(approvalUrl),
+            });
     }
 
     public async Task<OperationResult<HelloCrossDeviceApprovalDetails>>
@@ -244,7 +250,25 @@ internal sealed class HelloUiCrossDeviceApplication<TProfile>(
         using var data = generator.CreateQrCode(
             value,
             QRCodeGenerator.ECCLevel.M);
-        return new SvgQRCode(data).GetGraphic(4);
+        return new SvgQRCode(data).GetGraphic(
+            8,
+            "#000000",
+            "#ffffff",
+            drawQuietZones: true,
+            SvgQRCode.SizingMode.ViewBoxAttribute);
+    }
+
+    private static string CreateQrCodeImageUrl(string value)
+    {
+        using var generator = new QRCodeGenerator();
+        using var data = generator.CreateQrCode(
+            value,
+            QRCodeGenerator.ECCLevel.M);
+        using var code = new PngByteQRCode(data);
+        var image = code.GetGraphic(
+            pixelsPerModule: 12,
+            drawQuietZones: true);
+        return "data:image/png;base64," + Convert.ToBase64String(image);
     }
 
     private static async Task<string?> ReadAccessTokenAsync(

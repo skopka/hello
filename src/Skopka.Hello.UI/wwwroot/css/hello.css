@@ -482,10 +482,12 @@ select {
   background: #fff;
 }
 
-.hello-qr-code svg {
+.hello-qr-code svg,
+.hello-qr-code img {
   display: block;
   width: 100%;
   height: auto;
+  image-rendering: pixelated;
 }
 
 .hello-recovery-codes {

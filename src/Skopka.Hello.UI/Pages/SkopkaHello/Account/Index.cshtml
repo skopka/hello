@@ -1,10 +1,14 @@
 @page
 @model AccountModel
 @inject IHelloUiExternalApplication ExternalIdentity
+@inject IHelloUiApplication HelloApplication
 @{
     ViewData["Title"] = Text["Layout.Account"];
-    var crossDeviceEnabled = ViewContext.HttpContext.RequestServices.GetService(
-        typeof(IHelloUiCrossDeviceApplication)) is not null;
+    var crossDeviceApprovalAvailable =
+        await HelloUiCrossDeviceApprovalAvailability.IsAvailableAsync(
+            ViewContext.HttpContext,
+            HelloApplication,
+            ViewContext.HttpContext.RequestAborted);
 }
 
 <section class="hello-page-heading">
@@ -217,7 +221,7 @@
                 @Text["Account.CredentialsAndDeletion"]
             </a>
         }
-        @if (crossDeviceEnabled)
+        @if (crossDeviceApprovalAvailable)
         {
             <a class="hello-button hello-button-secondary"
                asp-page="/SkopkaHello/CrossDevice/Requests">

@@ -179,7 +179,10 @@ public sealed class AuthenticationFlowTests
         var waitingHtml = WebUtility.HtmlDecode(
             await waitingResponse.Content.ReadAsStringAsync());
         Assert.Contains(begin.UserCode, waitingHtml, StringComparison.Ordinal);
-        Assert.Contains("<svg", waitingHtml, StringComparison.Ordinal);
+        Assert.Contains(
+            "data:image/png;base64,",
+            waitingHtml,
+            StringComparison.Ordinal);
         Assert.Contains(
             "Подтвердите этот вход",
             waitingHtml,
@@ -351,9 +354,29 @@ public sealed class AuthenticationFlowTests
         Assert.Equal(HttpStatusCode.OK, waitingPage.StatusCode);
         MergeCookies(deviceCookies, waitingPage);
         var waitingHtml = await waitingPage.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "data:image/png;base64,",
+            waitingHtml,
+            StringComparison.Ordinal);
         var completionToken = ReadInputValue(
             waitingHtml,
             "__RequestVerificationToken");
+
+        using var qrApprovalPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            new Uri(begin.ApprovalUrl).PathAndQuery,
+            actorCookies);
+        Assert.Equal(HttpStatusCode.OK, qrApprovalPage.StatusCode);
+        var qrApprovalHtml = await qrApprovalPage.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "data-cross-device-begin-approval",
+            qrApprovalHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "cross-device-approval.js",
+            qrApprovalHtml,
+            StringComparison.Ordinal);
 
         using var requestsPage = await SendAsync(
             client,
@@ -378,33 +401,10 @@ public sealed class AuthenticationFlowTests
         Assert.Equal(HttpStatusCode.Redirect, selected.StatusCode);
         Assert.NotNull(selected.Headers.Location);
 
-        using var approvalPage = await SendAsync(
-            client,
-            HttpMethod.Get,
-            selected.Headers.Location.OriginalString,
-            actorCookies);
-        Assert.Equal(HttpStatusCode.OK, approvalPage.StatusCode);
-        MergeCookies(actorCookies, approvalPage);
-        var approvalHtml = await approvalPage.Content.ReadAsStringAsync();
-        var approvalToken = ReadInputValue(
-            approvalHtml,
-            "__RequestVerificationToken");
-        using var challengeResponse = await SendFormAsync(
-            client,
-            "/hello/cross-device/approve?handler=RequestCode",
-            actorCookies,
-            new Dictionary<string, string>
-            {
-                ["DeviceCode"] = begin.DeviceCode,
-                ["__RequestVerificationToken"] = approvalToken,
-            });
-        Assert.Equal(HttpStatusCode.Redirect, challengeResponse.StatusCode);
-        Assert.NotNull(challengeResponse.Headers.Location);
-
         using var challengePage = await SendAsync(
             client,
             HttpMethod.Get,
-            challengeResponse.Headers.Location.OriginalString,
+            selected.Headers.Location.OriginalString,
             actorCookies);
         Assert.Equal(HttpStatusCode.OK, challengePage.StatusCode);
         MergeCookies(actorCookies, challengePage);
@@ -452,6 +452,76 @@ public sealed class AuthenticationFlowTests
         Assert.Equal(
             "/hello",
             completed.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
+    public async Task CrossDeviceApprovalUiIsUnavailableWithoutAuthenticator()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            configureUi: options =>
+                options.Localization.Enabled = true,
+            crossDeviceEnabled: true);
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        const string email = "cross-device-without-totp@example.test";
+
+        using var registration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "cross-device-without-totp",
+                email,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Cross-device without TOTP",
+                    locale = "ru",
+                },
+                password = "correct horse battery staple",
+            });
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+
+        Dictionary<string, string> actorCookies =
+            new(StringComparer.Ordinal);
+        await LoginUiAsync(client, actorCookies, email);
+
+        using var accountPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/account",
+            actorCookies);
+        Assert.Equal(HttpStatusCode.OK, accountPage.StatusCode);
+        var accountHtml = await accountPage.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(
+            "/hello/cross-device/requests",
+            accountHtml,
+            StringComparison.OrdinalIgnoreCase);
+
+        using var beginResponse = await client.PostAsJsonAsync(
+            "/auth/cross-device",
+            new { returnUrl = "/hello" });
+        Assert.Equal(HttpStatusCode.OK, beginResponse.StatusCode);
+        var begin = await beginResponse.Content.ReadFromJsonAsync<
+            BeginCrossDeviceSignInResponse>();
+        Assert.NotNull(begin);
+
+        using var requestsPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/cross-device/requests",
+            actorCookies);
+        Assert.Equal(HttpStatusCode.NotFound, requestsPage.StatusCode);
+
+        using var qrApprovalPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            new Uri(begin.ApprovalUrl).PathAndQuery,
+            actorCookies);
+        Assert.Equal(HttpStatusCode.NotFound, qrApprovalPage.StatusCode);
     }
 
     [Fact]

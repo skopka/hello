@@ -10,7 +10,10 @@ public sealed record HelloUiCrossDeviceRequest(
     string ApprovalUrl,
     string QrCodeSvg,
     DateTimeOffset CreatedAt,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt)
+{
+    public string QrCodeImageUrl { get; init; } = string.Empty;
+}
 
 public sealed record HelloUiCrossDeviceWaiting(
     DeviceAuthorizationState State,
@@ -19,7 +22,10 @@ public sealed record HelloUiCrossDeviceWaiting(
     string ApprovalUrl,
     string QrCodeSvg,
     DateTimeOffset CreatedAt,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt)
+{
+    public string QrCodeImageUrl { get; init; } = string.Empty;
+}
 
 public sealed record HelloUiCompletedCrossDeviceSignIn(
     HelloUiSignIn SignIn,

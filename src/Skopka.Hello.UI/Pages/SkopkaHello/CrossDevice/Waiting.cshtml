@@ -22,7 +22,15 @@
         {
             <p class="hello-muted">@Text["CrossDevice.Waiting.Instructions"]</p>
             <div class="hello-qr-code" aria-label="@Text["CrossDevice.QrCode"]">
-                @Html.Raw(request.QrCodeSvg)
+                @if (!String.IsNullOrWhiteSpace(request.QrCodeImageUrl))
+                {
+                    <img src="@request.QrCodeImageUrl"
+                         alt="@Text["CrossDevice.QrCode"]" />
+                }
+                else
+                {
+                    @Html.Raw(request.QrCodeSvg)
+                }
             </div>
             <p class="hello-verification-code">@request.UserCode</p>
             <p class="hello-muted">

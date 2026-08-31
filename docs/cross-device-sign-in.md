@@ -12,7 +12,9 @@ OIDC sign-in.
 2. A opens the QR URL or enters the short code on the authenticated
    `Sign-in requests` page, signs in if necessary, compares the same code and
    sees the display-only IP, User-Agent/device description and creation time.
-3. A starts a fresh TOTP step-up challenge and explicitly approves or denies.
+3. Hello starts a fresh TOTP step-up challenge as soon as A selects the
+   request. A explicitly approves or denies it with a current authenticator
+   code.
 4. B polls only the request state. After approval it consumes the request once.
 5. Skopka.Identity creates a new session through the existing
    `IIdentitySessionService<TProfile>.CreateAsync`; Hello writes it through the
@@ -91,10 +93,14 @@ The optional Minimal API surface is:
 
 The packaged UI adds a localized login action, B waiting/QR/timer page, A
 short-code request lookup page and approval page at the configured
-`UiPathPrefix`. English and Russian strings are built in. QR SVG is generated
-locally with QRCoder and contains only the HTTPS approval URL plus the random
-public device code. Short-code lookup returns a request only when exactly one
-unexpired pending row matches, so a rare collision fails closed.
+`UiPathPrefix`. English and Russian strings are built in. A high-contrast QR
+PNG with an explicit quiet zone is generated locally with QRCoder and contains
+only the HTTPS approval URL plus the random public device code. Selecting a
+short-code request goes straight to authenticator confirmation; opening the QR
+URL starts the same challenge through an antiforgery-protected automatic POST.
+The approval navigation and routes are unavailable to an account until its
+authenticator is enabled. Short-code lookup returns a request only when exactly
+one unexpired pending row matches, so a rare collision fails closed.
 
 The begin and status responses never expose the browser verifier or user
 identity. The verifier is bound to B in the

@@ -42,11 +42,16 @@
 
         @if (Model.Input.ChallengeId == Guid.Empty)
         {
+            <p class="hello-muted" role="status">
+                @Text["CrossDevice.Approve.Preparing"]
+            </p>
             <form method="post"
                   asp-page-handler="RequestCode"
-                  class="hello-form">
+                  class="hello-form"
+                  data-cross-device-begin-approval>
                 <input asp-for="DeviceCode" type="hidden" />
-                <button class="hello-button" type="submit">
+                <button class="hello-button hello-button-secondary"
+                        type="submit">
                     @Text["CrossDevice.Approve.RequestTotp"]
                 </button>
             </form>
@@ -83,3 +88,6 @@
         </form>
     }
 </section>
+
+<script src="/_content/Skopka.Hello.UI/js/cross-device-approval.js"
+        defer></script>

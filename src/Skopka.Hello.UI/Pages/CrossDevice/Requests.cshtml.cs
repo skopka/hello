@@ -8,22 +8,31 @@ namespace Skopka.Hello.UI.Pages;
 [Authorize(Policy = HelloUiDefaults.AuthorizationPolicy)]
 public sealed class CrossDeviceRequestsModel(
     IHelloUiCrossDeviceApplication application,
+    IHelloUiApplication helloApplication,
     IHelloUiLocalizer text)
     : PageModel
 {
     [BindProperty]
     public InputModel Input { get; set; } = new();
 
-    public IActionResult OnGet()
+    public async Task<IActionResult> OnGetAsync(
+        CancellationToken cancellationToken)
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
-        return Page();
+        return await IsApprovalAvailableAsync(cancellationToken)
+            ? Page()
+            : NotFound();
     }
 
     public async Task<IActionResult> OnPostAsync(
         CancellationToken cancellationToken)
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (!await IsApprovalAvailableAsync(cancellationToken))
+        {
+            return NotFound();
+        }
+
         if (!ModelState.IsValid)
         {
             return Page();
@@ -39,10 +48,35 @@ public sealed class CrossDeviceRequestsModel(
             return Page();
         }
 
+        var challenge = await application.BeginApprovalAsync(
+            result.Value.DeviceCode,
+            HttpContext,
+            cancellationToken);
+        if (!challenge.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(
+                ModelState,
+                challenge.Errors,
+                text);
+            return Page();
+        }
+
         return RedirectToPage(
             "/SkopkaHello/CrossDevice/Approve",
-            new { deviceCode = result.Value.DeviceCode });
+            new
+            {
+                deviceCode = result.Value.DeviceCode,
+                challengeId = challenge.Value.ChallengeId,
+                challengeExpiresAt = challenge.Value.ExpiresAt,
+            });
     }
+
+    private Task<bool> IsApprovalAvailableAsync(
+        CancellationToken cancellationToken)
+        => HelloUiCrossDeviceApprovalAvailability.IsAvailableAsync(
+            HttpContext,
+            helloApplication,
+            cancellationToken);
 
     public sealed class InputModel
     {

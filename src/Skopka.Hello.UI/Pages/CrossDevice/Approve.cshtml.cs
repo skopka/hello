@@ -8,6 +8,7 @@ namespace Skopka.Hello.UI.Pages;
 [Authorize(Policy = HelloUiDefaults.AuthorizationPolicy)]
 public sealed class CrossDeviceApproveModel(
     IHelloUiCrossDeviceApplication application,
+    IHelloUiApplication helloApplication,
     IHelloUiLocalizer text)
     : PageModel
 {
@@ -40,6 +41,11 @@ public sealed class CrossDeviceApproveModel(
             return Page();
         }
 
+        if (!await IsApprovalAvailableAsync(cancellationToken))
+        {
+            return NotFound();
+        }
+
         await LoadDetailsAsync(cancellationToken);
         if (ChallengeId != Guid.Empty)
         {
@@ -55,6 +61,11 @@ public sealed class CrossDeviceApproveModel(
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
         ModelState.Clear();
+        if (!await IsApprovalAvailableAsync(cancellationToken))
+        {
+            return NotFound();
+        }
+
         if (!await LoadDetailsAsync(cancellationToken))
         {
             return Page();
@@ -84,6 +95,11 @@ public sealed class CrossDeviceApproveModel(
         CancellationToken cancellationToken)
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (!await IsApprovalAvailableAsync(cancellationToken))
+        {
+            return NotFound();
+        }
+
         if (!await LoadDetailsAsync(cancellationToken))
         {
             return Page();
@@ -123,6 +139,11 @@ public sealed class CrossDeviceApproveModel(
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
         ModelState.Clear();
+        if (!await IsApprovalAvailableAsync(cancellationToken))
+        {
+            return NotFound();
+        }
+
         if (!await LoadDetailsAsync(cancellationToken))
         {
             return Page();
@@ -159,6 +180,13 @@ public sealed class CrossDeviceApproveModel(
         Details = result.Value;
         return true;
     }
+
+    private Task<bool> IsApprovalAvailableAsync(
+        CancellationToken cancellationToken)
+        => HelloUiCrossDeviceApprovalAvailability.IsAvailableAsync(
+            HttpContext,
+            helloApplication,
+            cancellationToken);
 
     public sealed class InputModel
     {

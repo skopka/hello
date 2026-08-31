@@ -274,6 +274,187 @@ public sealed class AuthenticationFlowTests
     }
 
     [Fact]
+    public async Task CrossDeviceApprovalRazorFormsCompleteWithoutBadRequest()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            configureUi: options =>
+                options.Localization.Enabled = true,
+            crossDeviceEnabled: true);
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        const string email = "cross-device-ui@example.test";
+        const string password = "correct horse battery staple";
+
+        using var registration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "cross-device-ui-alice",
+                email,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Cross-device UI Alice",
+                    locale = "ru",
+                },
+                password,
+            });
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+        var actor = await LoginAsync(client, email, password);
+
+        using var enrollmentRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/account/authenticator/enrollment");
+        enrollmentRequest.Headers.Authorization =
+            new AuthenticationHeaderValue("Bearer", actor.AccessToken);
+        using var enrollmentResponse = await client.SendAsync(
+            enrollmentRequest);
+        Assert.Equal(HttpStatusCode.OK, enrollmentResponse.StatusCode);
+        var enrollment = await enrollmentResponse.Content.ReadFromJsonAsync<
+            TotpEnrollmentResponse>();
+        Assert.NotNull(enrollment);
+        using var confirmedEnrollment = await SendAuthorizedJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/account/authenticator/enrollment/confirm",
+            actor.AccessToken,
+            new
+            {
+                enrollmentId = enrollment.EnrollmentId,
+                code = ComputeTotp(enrollment.Secret),
+            });
+        Assert.Equal(HttpStatusCode.OK, confirmedEnrollment.StatusCode);
+
+        Dictionary<string, string> actorCookies =
+            new(StringComparer.Ordinal);
+        await LoginUiAsync(client, actorCookies, email);
+
+        using var beginResponse = await client.PostAsJsonAsync(
+            "/auth/cross-device",
+            new { returnUrl = "/hello" });
+        Assert.Equal(HttpStatusCode.OK, beginResponse.StatusCode);
+        var begin = await beginResponse.Content.ReadFromJsonAsync<
+            BeginCrossDeviceSignInResponse>();
+        Assert.NotNull(begin);
+        Dictionary<string, string> deviceCookies =
+            new(StringComparer.Ordinal);
+        MergeCookies(deviceCookies, beginResponse);
+        using var waitingPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            $"/hello/cross-device?deviceCode={begin.DeviceCode}",
+            deviceCookies);
+        Assert.Equal(HttpStatusCode.OK, waitingPage.StatusCode);
+        MergeCookies(deviceCookies, waitingPage);
+        var waitingHtml = await waitingPage.Content.ReadAsStringAsync();
+        var completionToken = ReadInputValue(
+            waitingHtml,
+            "__RequestVerificationToken");
+
+        using var requestsPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/cross-device/requests",
+            actorCookies);
+        Assert.Equal(HttpStatusCode.OK, requestsPage.StatusCode);
+        MergeCookies(actorCookies, requestsPage);
+        var requestsHtml = await requestsPage.Content.ReadAsStringAsync();
+        var requestsToken = ReadInputValue(
+            requestsHtml,
+            "__RequestVerificationToken");
+        using var selected = await SendFormAsync(
+            client,
+            "/hello/cross-device/requests",
+            actorCookies,
+            new Dictionary<string, string>
+            {
+                ["Input.UserCode"] = begin.UserCode,
+                ["__RequestVerificationToken"] = requestsToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, selected.StatusCode);
+        Assert.NotNull(selected.Headers.Location);
+
+        using var approvalPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            selected.Headers.Location.OriginalString,
+            actorCookies);
+        Assert.Equal(HttpStatusCode.OK, approvalPage.StatusCode);
+        MergeCookies(actorCookies, approvalPage);
+        var approvalHtml = await approvalPage.Content.ReadAsStringAsync();
+        var approvalToken = ReadInputValue(
+            approvalHtml,
+            "__RequestVerificationToken");
+        using var challengeResponse = await SendFormAsync(
+            client,
+            "/hello/cross-device/approve?handler=RequestCode",
+            actorCookies,
+            new Dictionary<string, string>
+            {
+                ["DeviceCode"] = begin.DeviceCode,
+                ["__RequestVerificationToken"] = approvalToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, challengeResponse.StatusCode);
+        Assert.NotNull(challengeResponse.Headers.Location);
+
+        using var challengePage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            challengeResponse.Headers.Location.OriginalString,
+            actorCookies);
+        Assert.Equal(HttpStatusCode.OK, challengePage.StatusCode);
+        MergeCookies(actorCookies, challengePage);
+        var challengeHtml = await challengePage.Content.ReadAsStringAsync();
+        var challengeToken = ReadInputValue(
+            challengeHtml,
+            "__RequestVerificationToken");
+        var challengeId = ReadInputValue(
+            challengeHtml,
+            "Input.ChallengeId");
+        var challengeExpiresAt = ReadInputValue(
+            challengeHtml,
+            "Input.ExpiresAt");
+        using var approved = await SendFormAsync(
+            client,
+            "/hello/cross-device/approve?handler=Approve",
+            actorCookies,
+            new Dictionary<string, string>
+            {
+                ["DeviceCode"] = begin.DeviceCode,
+                ["Input.ChallengeId"] = challengeId,
+                ["Input.ExpiresAt"] = challengeExpiresAt,
+                ["Input.TotpCode"] = ComputeTotp(
+                    enrollment.Secret,
+                    counterOffset: 1),
+                ["__RequestVerificationToken"] = challengeToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, approved.StatusCode);
+        Assert.Contains(
+            "approved=True",
+            approved.Headers.Location?.OriginalString,
+            StringComparison.OrdinalIgnoreCase);
+
+        using var completed = await SendFormAsync(
+            client,
+            "/hello/cross-device?handler=Complete",
+            deviceCookies,
+            new Dictionary<string, string>
+            {
+                ["DeviceCode"] = begin.DeviceCode,
+                ["ReturnUrl"] = "/hello",
+                ["__RequestVerificationToken"] = completionToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, completed.StatusCode);
+        Assert.Equal(
+            "/hello",
+            completed.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
     public async Task ExplicitUserNameLoginRejectsEmailPasswordLogin()
     {
         await using var postgres = new PostgreSqlBuilder(

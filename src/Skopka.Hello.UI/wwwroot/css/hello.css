@@ -53,6 +53,7 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 1rem;
   padding: 1rem clamp(1rem, 5vw, 4rem);
   border-bottom: 1px solid var(--skopka-hello-color-border);
@@ -80,6 +81,11 @@ select {
   width: min(66rem, calc(100% - 2rem));
   margin: 0 auto;
   padding: clamp(2rem, 7vw, 5rem) 0;
+}
+
+.hello-header nav {
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .hello-notice {
@@ -334,7 +340,14 @@ select {
 }
 
 .hello-actions {
+  align-items: stretch;
+  flex-wrap: wrap;
   margin-top: 2rem;
+}
+
+.hello-actions > form {
+  display: flex;
+  margin: 0;
 }
 
 .hello-session-list {

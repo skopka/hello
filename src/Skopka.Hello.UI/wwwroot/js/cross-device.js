@@ -28,7 +28,12 @@
       const status = await response.json();
       if (status.state === "approved" && complete && !submitted) {
         submitted = true;
-        complete.hidden = false;
+        if (complete.hidden) {
+          // Render the approved state once more so the completion POST uses a
+          // fresh antiforgery token even after a long approval wait.
+          window.location.reload();
+          return;
+        }
         complete.requestSubmit();
       } else if (status.state === "denied" || status.state === "expired") {
         window.location.reload();

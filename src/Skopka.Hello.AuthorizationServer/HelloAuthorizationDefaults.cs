@@ -4,6 +4,7 @@ public static class HelloAuthorizationDefaults
 {
     public const string AuthorizationEndpointPath = "/connect/authorize";
     public const string TokenEndpointPath = "/connect/token";
+    public const string EndSessionEndpointPath = "/connect/logout";
     public const string RolesScope = "roles";
     public const string CompositeBearerAuthenticationScheme =
         "Skopka.Hello.Bearer";

@@ -27,6 +27,11 @@ public static class SkopkaHelloAuthorizationServerServiceCollectionExtensions
                 .IHelloAuthorizationApplication<TProfile>,
             Skopka.Hello.AuthorizationServer
                 .HelloAuthorizationApplication<TProfile>>();
+        services.TryAddScoped<
+            Skopka.Hello.AuthorizationServer
+                .IHelloAuthorizationSessionTerminator,
+            Skopka.Hello.AuthorizationServer
+                .HelloAuthorizationSessionTerminator<TProfile>>();
         services.TryAddEnumerable(
             ServiceDescriptor.Scoped<
                 Skopka.Hello.IHelloAccessTokenValidator<TProfile>,
@@ -60,6 +65,8 @@ public static class SkopkaHelloAuthorizationServerServiceCollectionExtensions
                     options.GetOpenIddictAuthorizationEndpointPath());
                 server.SetTokenEndpointUris(
                     options.GetOpenIddictTokenEndpointPath());
+                server.SetEndSessionEndpointUris(
+                    options.GetOpenIddictEndSessionEndpointPath());
                 server.AllowAuthorizationCodeFlow();
                 server.AllowRefreshTokenFlow();
                 server.RequireProofKeyForCodeExchange();
@@ -87,7 +94,8 @@ public static class SkopkaHelloAuthorizationServerServiceCollectionExtensions
 
                 var aspNetCore = server.UseAspNetCore()
                     .EnableAuthorizationEndpointPassthrough()
-                    .EnableTokenEndpointPassthrough();
+                    .EnableTokenEndpointPassthrough()
+                    .EnableEndSessionEndpointPassthrough();
                 if (options.DisableTransportSecurityRequirement)
                 {
                     aspNetCore.DisableTransportSecurityRequirement();

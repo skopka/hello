@@ -16,6 +16,7 @@ The server exposes OpenID Connect discovery and JWKS plus:
 | --- | --- | --- |
 | `GET` | `/connect/authorize` | Browser SSO and authorization-code issuance |
 | `POST` | `/connect/token` | Code redemption and refresh-token rotation |
+| `GET`, `POST` | `/connect/logout` | Browser SSO termination and client return |
 
 There is no UserInfo or introspection endpoint. External resource servers use a
 self-contained access token and validate its signature, issuer, audience,
@@ -116,6 +117,9 @@ normal portal plus Roundcube/Stalwart:
           "RedirectUris": [
             "https://home.example.net/signin-oidc"
           ],
+          "PostLogoutRedirectUris": [
+            "https://home.example.net/signout-callback-oidc"
+          ],
           "Scopes": [
             "openid",
             "offline_access",
@@ -175,6 +179,11 @@ reverse-domain custom schemes for public clients. Non-loopback HTTP, URI
 credentials and fragments are rejected at startup. `Issuer` must be the stable
 public HTTPS origin and must be identical on every replica.
 
+Clients that initiate OpenID Connect logout must register every exact return
+address in `PostLogoutRedirectUris`. The end-session endpoint revokes the
+current Hello browser session, clears its cookies and then returns only to a
+registered address supplied with a valid OpenID Connect logout request.
+
 The ready Server stores OpenIddict applications, authorizations and tokens in
 the dedicated `skopka_hello_oauth` PostgreSQL schema. Run `--migrate` after any
 client configuration change. That command applies the schema and makes the
@@ -195,7 +204,7 @@ session online. A mail token with `aud=stalwart` is not valid for a Hello API.
 This is a first-party server: configured clients receive implicit consent after
 the user has an active Hello browser session. There is no third-party consent
 screen, dynamic client registration, device authorization, password/client
-credentials grant, token exchange, UserInfo, logout or introspection endpoint.
+credentials grant, token exchange, UserInfo or introspection endpoint.
 Native clients use system-browser authorization and PKCE; they must not collect
 a Hello password or accept a provider token in JSON.
 

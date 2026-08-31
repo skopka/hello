@@ -18,6 +18,9 @@ public sealed class HelloAuthorizationServerOptions
     public string TokenEndpointPath { get; set; } =
         HelloAuthorizationDefaults.TokenEndpointPath;
 
+    public string EndSessionEndpointPath { get; set; } =
+        HelloAuthorizationDefaults.EndSessionEndpointPath;
+
     public string BrowserAuthenticationScheme { get; set; } =
         "Skopka.Hello.UI";
 
@@ -67,13 +70,18 @@ public sealed class HelloAuthorizationServerOptions
 
         ValidatePath(AuthorizationEndpointPath, nameof(AuthorizationEndpointPath));
         ValidatePath(TokenEndpointPath, nameof(TokenEndpointPath));
-        if (string.Equals(
-                AuthorizationEndpointPath,
-                TokenEndpointPath,
-                StringComparison.OrdinalIgnoreCase))
+        ValidatePath(EndSessionEndpointPath, nameof(EndSessionEndpointPath));
+        var endpointPaths = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase)
+        {
+            AuthorizationEndpointPath,
+            TokenEndpointPath,
+            EndSessionEndpointPath,
+        };
+        if (endpointPaths.Count != 3)
         {
             throw new InvalidOperationException(
-                "Authorization and token endpoint paths must be different.");
+                "Authorization, token and end-session endpoint paths must be different.");
         }
 
         ArgumentException.ThrowIfNullOrWhiteSpace(
@@ -148,6 +156,9 @@ public sealed class HelloAuthorizationServerOptions
 
     internal string GetOpenIddictTokenEndpointPath()
         => TokenEndpointPath.TrimStart('/');
+
+    internal string GetOpenIddictEndSessionEndpointPath()
+        => EndSessionEndpointPath.TrimStart('/');
 
     internal string GetResource(HelloAuthorizationClientOptions client)
         => string.IsNullOrWhiteSpace(client.Resource)
@@ -225,6 +236,18 @@ public sealed class HelloAuthorizationServerOptions
             ValidateRedirectUri(client, value);
         }
 
+        if (client.PostLogoutRedirectUris is null
+            || client.PostLogoutRedirectUris.Count > MaximumRedirectUris)
+        {
+            throw new InvalidOperationException(
+                $"Authorization client '{client.ClientId}' cannot have more than {MaximumRedirectUris} post-logout redirect URIs.");
+        }
+
+        foreach (var value in client.PostLogoutRedirectUris)
+        {
+            ValidateRedirectUri(client, value, "post-logout redirect URI");
+        }
+
         if (client.Scopes is null)
         {
             throw new InvalidOperationException(
@@ -246,14 +269,15 @@ public sealed class HelloAuthorizationServerOptions
 
     private void ValidateRedirectUri(
         HelloAuthorizationClientOptions client,
-        string value)
+        string value,
+        string kind = "redirect URI")
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
             || uri.UserInfo.Length > 0
             || uri.Fragment.Length > 0)
         {
             throw new InvalidOperationException(
-                $"Authorization client '{client.ClientId}' has an invalid redirect URI.");
+                $"Authorization client '{client.ClientId}' has an invalid {kind}.");
         }
 
         if (uri.Scheme == Uri.UriSchemeHttps)
@@ -275,7 +299,7 @@ public sealed class HelloAuthorizationServerOptions
         }
 
         throw new InvalidOperationException(
-            $"Authorization client '{client.ClientId}' has an unsafe redirect URI.");
+            $"Authorization client '{client.ClientId}' has an unsafe {kind}.");
     }
 
     private static void ValidatePath(string value, string name)

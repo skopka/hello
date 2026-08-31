@@ -1895,6 +1895,19 @@ public sealed class AuthenticationFlowTests
         Dictionary<string, string> cookies =
             new(StringComparer.Ordinal);
 
+        using var loginNavigationPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/login",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, loginNavigationPage.StatusCode);
+        var loginNavigationHtml =
+            await loginNavigationPage.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(
+            "href=\"/hello/login\"",
+            loginNavigationHtml,
+            StringComparison.Ordinal);
+
         using var directErrorRequest = new HttpRequestMessage(
             HttpMethod.Get,
             "/hello/error?statusCode=404");

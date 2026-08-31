@@ -4,6 +4,11 @@
         && UiOptions.Localization.SupportedCultures.Count > 1;
     var showLegalLinks = UiOptions.TermsOfServiceUrl is not null
         || UiOptions.PrivacyPolicyUrl is not null;
+    var currentPage = ViewContext.RouteData.Values["page"]?.ToString();
+    var isLoginPage = String.Equals(
+        currentPage,
+        "/SkopkaHello/Login",
+        StringComparison.OrdinalIgnoreCase);
 }
 <!doctype html>
 <html lang="@System.Globalization.CultureInfo.CurrentUICulture.Name">
@@ -72,7 +77,8 @@
             }
             else
             {
-                @if ((UiOptions.EnabledPages & HelloUiPages.Login) != 0)
+                @if (!isLoginPage
+                    && (UiOptions.EnabledPages & HelloUiPages.Login) != 0)
                 {
                     <a asp-page="/SkopkaHello/Login">@Text["Layout.SignIn"]</a>
                 }

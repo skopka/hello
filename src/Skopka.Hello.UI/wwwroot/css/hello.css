@@ -503,16 +503,26 @@ select {
 }
 
 @media (max-width: 42rem) {
-  .hello-header,
-  .hello-header nav,
   .hello-session,
   .hello-danger-zone {
     align-items: stretch;
     flex-direction: column;
   }
 
+  .hello-header {
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+  }
+
   .hello-header nav {
-    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.4rem 0.75rem;
+    text-align: right;
+  }
+
+  .hello-header nav form {
+    flex: 0 0 auto;
   }
 
   .hello-footer,

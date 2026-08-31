@@ -38,6 +38,8 @@ public sealed class AuthorizationServerFlowTests
     private const string PortalClientSecret = "home-portal-test-secret";
     private const string PortalRedirectUri =
         "https://home.example.test/signin-oidc";
+    private const string PortalPostLogoutRedirectUri =
+        "https://home.example.test/signout-callback-oidc";
     private const string RoundcubeClientId = "roundcube";
     private const string RoundcubeClientSecret = "roundcube-test-secret";
     private const string RoundcubeRedirectUri =
@@ -153,6 +155,52 @@ public sealed class AuthorizationServerFlowTests
     }
 
     [Fact]
+    public async Task EndSessionReturnsToRegisteredClient()
+    {
+        await using var host = await TestAuthorizationHost.CreateAsync();
+        const string verifier =
+            "portal-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789";
+        var code = await AuthorizeCodeAsync(
+            host.Client,
+            PortalClientId,
+            PortalRedirectUri,
+            "openid offline_access profile email",
+            verifier);
+        var tokens = await ExchangeAsync(
+            host.Client,
+            new Dictionary<string, string>
+            {
+                [Parameters.GrantType] = GrantTypes.AuthorizationCode,
+                [Parameters.ClientId] = PortalClientId,
+                [Parameters.ClientSecret] = PortalClientSecret,
+                [Parameters.RedirectUri] = PortalRedirectUri,
+                [Parameters.Code] = code,
+                [Parameters.CodeVerifier] = verifier,
+            });
+
+        var logoutUri = QueryHelpers.AddQueryString(
+            "/connect/logout",
+            new Dictionary<string, string?>
+            {
+                [Parameters.IdTokenHint] = tokens.IdentityToken,
+                [Parameters.PostLogoutRedirectUri] =
+                    PortalPostLogoutRedirectUri,
+                [Parameters.State] = "logout-state",
+            });
+        using var logout = await host.Client.GetAsync(logoutUri);
+
+        Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
+        var location = Assert.IsType<Uri>(logout.Headers.Location);
+        Assert.Equal(
+            PortalPostLogoutRedirectUri,
+            location.GetLeftPart(UriPartial.Path));
+        Assert.Equal(
+            "logout-state",
+            QueryHelpers.ParseQuery(location.Query)[Parameters.State]);
+        Assert.Equal(1, host.SessionTerminator.CallCount);
+    }
+
+    [Fact]
     public async Task RoundcubeConfidentialFlowProducesStalwartJwtAndRotatesRefresh()
     {
         await using var host = await TestAuthorizationHost.CreateAsync(
@@ -187,6 +235,10 @@ public sealed class AuthorizationServerFlowTests
         Assert.Equal(
             Issuer.AbsoluteUri,
             discovery.RootElement.GetProperty("issuer").GetString());
+        Assert.Equal(
+            Issuer + "connect/logout",
+            discovery.RootElement.GetProperty("end_session_endpoint")
+                .GetString());
         var jwksUri = discovery.RootElement.GetProperty("jwks_uri")
             .GetString();
         Assert.False(string.IsNullOrWhiteSpace(jwksUri));
@@ -664,17 +716,21 @@ public sealed class AuthorizationServerFlowTests
             WebApplication application,
             SqliteConnection connection,
             TestSessionRegistry sessions,
+            TestAuthorizationSessionTerminator sessionTerminator,
             HttpClient client,
             bool staleClientWasRemoved)
         {
             this.application = application;
             this.connection = connection;
             Sessions = sessions;
+            SessionTerminator = sessionTerminator;
             Client = client;
             StaleClientWasRemoved = staleClientWasRemoved;
         }
 
         public TestSessionRegistry Sessions { get; }
+
+        public TestAuthorizationSessionTerminator SessionTerminator { get; }
 
         public HttpClient Client { get; }
 
@@ -687,6 +743,8 @@ public sealed class AuthorizationServerFlowTests
             var connection = new SqliteConnection("Data Source=:memory:");
             await connection.OpenAsync();
             var sessions = new TestSessionRegistry();
+            var sessionTerminator =
+                new TestAuthorizationSessionTerminator();
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions
                 {
@@ -695,6 +753,8 @@ public sealed class AuthorizationServerFlowTests
             builder.WebHost.UseTestServer();
             builder.Services.AddHttpContextAccessor();
             builder.Services.AddSingleton(sessions);
+            builder.Services.AddSingleton<
+                IHelloAuthorizationSessionTerminator>(sessionTerminator);
             builder.Services.AddSingleton<
                 IIdentitySessionRegistry<TestProfile>>(sessions);
             builder.Services.AddSingleton<
@@ -773,6 +833,10 @@ public sealed class AuthorizationServerFlowTests
                             ClientSecret = PortalClientSecret,
                             Resource = HelloResource,
                             RedirectUris = [PortalRedirectUri],
+                            PostLogoutRedirectUris =
+                            [
+                                PortalPostLogoutRedirectUri,
+                            ],
                             Scopes =
                             [
                                 Scopes.OpenId,
@@ -877,6 +941,7 @@ public sealed class AuthorizationServerFlowTests
                 application,
                 connection,
                 sessions,
+                sessionTerminator,
                 client,
                 staleClientWasRemoved);
         }
@@ -886,6 +951,20 @@ public sealed class AuthorizationServerFlowTests
             Client.Dispose();
             await application.DisposeAsync();
             await connection.DisposeAsync();
+        }
+    }
+
+    private sealed class TestAuthorizationSessionTerminator
+        : IHelloAuthorizationSessionTerminator
+    {
+        public int CallCount { get; private set; }
+
+        public Task TerminateAsync(
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
+            return Task.CompletedTask;
         }
     }
 

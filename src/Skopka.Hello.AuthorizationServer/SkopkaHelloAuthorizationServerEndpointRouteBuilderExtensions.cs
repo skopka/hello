@@ -34,7 +34,34 @@ public static class
                 ExchangeAsync<TProfile>)
             .AllowAnonymous()
             .WithName("SkopkaHelloToken");
+        endpoints.MapMethods(
+                options.EndSessionEndpointPath,
+                [HttpMethods.Get, HttpMethods.Post],
+                EndSessionAsync<TProfile>)
+            .AllowAnonymous()
+            .WithName("SkopkaHelloEndSession");
         return endpoints;
+    }
+
+    private static async Task<IResult> EndSessionAsync<TProfile>(
+        HttpContext httpContext,
+        IHelloAuthorizationSessionTerminator sessionTerminator,
+        CancellationToken cancellationToken)
+    {
+        _ = httpContext.GetOpenIddictServerRequest()
+            ?? throw new InvalidOperationException(
+                "OpenIddict did not expose the end-session request.");
+
+        await sessionTerminator.TerminateAsync(
+            httpContext,
+            cancellationToken);
+
+        return Results.SignOut(
+            new AuthenticationProperties
+            {
+                RedirectUri = "/",
+            },
+            [OpenIddictServerAspNetCoreDefaults.AuthenticationScheme]);
     }
 
     private static async Task<IResult> AuthorizeAsync<TProfile>(

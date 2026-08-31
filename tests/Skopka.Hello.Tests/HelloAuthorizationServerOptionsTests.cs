@@ -177,6 +177,57 @@ public sealed class HelloAuthorizationServerOptionsTests
     }
 
     [Fact]
+    public void ClientSupportsPostLogoutRedirects()
+    {
+        var options = CreateOptions();
+        options.Clients.Add(new HelloAuthorizationClientOptions
+        {
+            ClientId = "bff",
+            DisplayName = "BFF",
+            Type = HelloAuthorizationClientType.Confidential,
+            ClientSecret = "secret",
+            RedirectUris = ["https://bff.example.test/signin-oidc"],
+            PostLogoutRedirectUris =
+            [
+                "https://bff.example.test/signed-out",
+            ],
+            Scopes = ["openid"],
+        });
+
+        options.Validate();
+    }
+
+    [Theory]
+    [InlineData("http://bff.example.test/signed-out")]
+    [InlineData("https://user@bff.example.test/signed-out")]
+    [InlineData("https://bff.example.test/signed-out#fragment")]
+    public void ClientRejectsUnsafePostLogoutRedirect(string redirectUri)
+    {
+        var options = CreateOptions();
+        options.Clients.Add(new HelloAuthorizationClientOptions
+        {
+            ClientId = "bff",
+            DisplayName = "BFF",
+            Type = HelloAuthorizationClientType.Confidential,
+            ClientSecret = "secret",
+            RedirectUris = ["https://bff.example.test/signin-oidc"],
+            PostLogoutRedirectUris = [redirectUri],
+            Scopes = ["openid"],
+        });
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Fact]
+    public void EndpointPathsMustBeDistinct()
+    {
+        var options = CreateOptions();
+        options.EndSessionEndpointPath = options.TokenEndpointPath;
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Fact]
     public void ProductionIssuerMustUseHttps()
     {
         var options = CreateOptions();

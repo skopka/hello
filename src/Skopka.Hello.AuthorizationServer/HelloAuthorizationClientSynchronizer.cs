@@ -93,6 +93,9 @@ internal sealed class HelloAuthorizationClientSynchronizer(
 
         descriptor.RedirectUris.UnionWith(
             client.RedirectUris.Select(uri => new Uri(uri, UriKind.Absolute)));
+        descriptor.PostLogoutRedirectUris.UnionWith(
+            client.PostLogoutRedirectUris.Select(
+                uri => new Uri(uri, UriKind.Absolute)));
         descriptor.Permissions.UnionWith(
         [
             Permissions.Endpoints.Authorization,
@@ -101,6 +104,10 @@ internal sealed class HelloAuthorizationClientSynchronizer(
             Permissions.GrantTypes.RefreshToken,
             Permissions.ResponseTypes.Code,
         ]);
+        if (client.PostLogoutRedirectUris.Count > 0)
+        {
+            descriptor.Permissions.Add(Permissions.Endpoints.EndSession);
+        }
         descriptor.Permissions.UnionWith(
             client.Scopes
                 .Where(scope => scope is not Scopes.OpenId

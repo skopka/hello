@@ -109,11 +109,12 @@ public static class
 
         var forceLogin = HasPrompt(request, "login")
             || httpContext.Request.Query.ContainsKey("max_age");
-        if (HasPrompt(request, "select_account") && !forceLogin)
-        {
-            return RedirectToAccountSelection(httpContext, options);
-        }
 
+        // Account selection is decided after the sign-in is known, below.
+        // Choosing an account is a question about the accounts this browser
+        // holds, and asking it of a browser holding none showed a page saying
+        // there were none — one screen in front of the sign-in form the
+        // request was always going to end at.
         var authentication = await httpContext.AuthenticateAsync(
             options.BrowserAuthenticationScheme);
         if (forceLogin && authentication.Succeeded)
@@ -526,10 +527,16 @@ public static class
                 out userId)
             && userId != Guid.Empty;
 
+    /// <summary>
+    /// Where a sign-in returns to. Both prompts are dropped: signing in is the
+    /// answer to being asked to sign in, and it is also the answer to being
+    /// asked which account — coming back to a chooser having just named one
+    /// would ask the same question twice.
+    /// </summary>
     private static string BuildLoginReturnUrl(HttpContext httpContext)
         => BuildReturnUrl(
             httpContext,
-            ["login"],
+            ["login", "select_account"],
             removeMaxAge: true);
 
     private static IResult RedirectToAccountSelection(

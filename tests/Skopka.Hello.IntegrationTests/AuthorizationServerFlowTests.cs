@@ -189,6 +189,41 @@ public sealed class AuthorizationServerFlowTests
     }
 
     [Fact]
+    public async Task SelectAccountSignsInFirstWhenTheBrowserHoldsNothing()
+    {
+        // Choosing an account is a question about the accounts a browser
+        // holds, and one holding none has nothing to choose between. Asking
+        // anyway put a page saying so in front of the sign-in form the request
+        // was always going to end at.
+        await using var host = await TestAuthorizationHost.CreateAsync(
+            signedIn: false);
+        const string verifier =
+            "select-account-none-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJ";
+        var challenge = Base64UrlEncoder.Encode(
+            SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
+        var authorizeUri = QueryHelpers.AddQueryString(
+            "/connect/authorize",
+            new Dictionary<string, string?>
+            {
+                [Parameters.ClientId] = ClientId,
+                [Parameters.RedirectUri] = RedirectUri,
+                [Parameters.ResponseType] = ResponseTypes.Code,
+                [Parameters.Scope] = "openid profile",
+                [Parameters.CodeChallenge] = challenge,
+                [Parameters.CodeChallengeMethod] =
+                    CodeChallengeMethods.Sha256,
+                [Parameters.Prompt] = "select_account",
+            });
+
+        using var response = await host.Client.GetAsync(authorizeUri);
+
+        // The browser scheme is challenged. A deployment renders its sign-in
+        // page from that; this handler has no page and answers plainly.
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(response.Headers.Location);
+    }
+
+    [Fact]
     public async Task EndSessionReturnsToRegisteredClient()
     {
         await using var host = await TestAuthorizationHost.CreateAsync();
@@ -772,7 +807,8 @@ public sealed class AuthorizationServerFlowTests
 
         public static async Task<TestAuthorizationHost> CreateAsync(
             HelloAuthorizationAccessTokenFormat accessTokenFormat =
-                HelloAuthorizationAccessTokenFormat.Reference)
+                HelloAuthorizationAccessTokenFormat.Reference,
+            bool signedIn = true)
         {
             var connection = new SqliteConnection("Data Source=:memory:");
             await connection.OpenAsync();
@@ -786,6 +822,7 @@ public sealed class AuthorizationServerFlowTests
                 });
             builder.WebHost.UseTestServer();
             builder.Services.AddHttpContextAccessor();
+            builder.Services.AddSingleton(new TestBrowserSession(signedIn));
             builder.Services.AddSingleton(sessions);
             builder.Services.AddSingleton<
                 IHelloAuthorizationSessionTerminator>(sessionTerminator);
@@ -1014,10 +1051,16 @@ public sealed class AuthorizationServerFlowTests
         }
     }
 
+    /// <summary>
+    /// Whether the browser in a given test holds a sign-in.
+    /// </summary>
+    private sealed record TestBrowserSession(bool IsSignedIn);
+
     private sealed class TestBrowserAuthenticationHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
         ILoggerFactory logger,
-        UrlEncoder encoder)
+        UrlEncoder encoder,
+        TestBrowserSession session)
         : AuthenticationHandler<AuthenticationSchemeOptions>(
             options,
             logger,
@@ -1025,6 +1068,11 @@ public sealed class AuthorizationServerFlowTests
     {
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
+            if (!session.IsSignedIn)
+            {
+                return Task.FromResult(AuthenticateResult.NoResult());
+            }
+
             var identity = new ClaimsIdentity(Scheme.Name);
             identity.AddClaim(new Claim(
                 Claims.Subject,

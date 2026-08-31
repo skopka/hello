@@ -240,6 +240,7 @@ public sealed class HelloUiRoutingTests
             new HelloUiRoutePaths("/identity"),
             selfRegistrationEnabled: true,
             crossDeviceEnabled: false,
+            accountSwitchingEnabled: true,
             enabledPages: HelloUiPages.All,
             emailConfirmationEnabled: true,
             phoneConfirmationEnabled: true);

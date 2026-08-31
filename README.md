@@ -194,6 +194,26 @@ if `HelloUiPages.Registration` is selected. A login-only configuration must set
 `AuthenticatedRedirectPath` to a local absolute path; a valid local
 `ReturnUrl` still takes priority after sign-in.
 
+Hosts can opt in to device-local account switching:
+
+```csharp
+services.AddSkopkaHelloUi<Profile, ProfileFactory>(options =>
+{
+    options.AccountSwitching.Enabled = true;
+});
+```
+
+Hello keeps at most five accounts by default in an encrypted, authenticated,
+secure and HTTP-only cookie. Refresh tokens are never exposed to page markup
+or browser storage. Switching refreshes and rotates the selected logical
+session; adding an account clears only the current browser authentication
+ticket without revoking the saved session. Set
+`HelloAuthorizationServerOptions.AccountSelectionEnabled` when the host also
+wants the authorization endpoint to support the standard
+`prompt=select_account` interaction. If the UI uses a non-default route
+prefix, set `AccountSelectionPath` to its accounts route. Both switches are
+disabled by default.
+
 Built-in password and external registration fields can independently be
 `Hidden`, `Optional` or `Required` through `options.Registration`. Display
 name is required by default, email/user name/phone are optional, and the

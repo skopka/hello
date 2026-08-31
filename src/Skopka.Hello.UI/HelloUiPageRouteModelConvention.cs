@@ -6,6 +6,7 @@ internal sealed class HelloUiPageRouteModelConvention(
     HelloUiRoutePaths routes,
     bool selfRegistrationEnabled,
     bool crossDeviceEnabled,
+    bool accountSwitchingEnabled,
     HelloUiPages enabledPages,
     bool emailConfirmationEnabled,
     bool phoneConfirmationEnabled)
@@ -22,6 +23,11 @@ internal sealed class HelloUiPageRouteModelConvention(
             ["/Pages/SkopkaHello/Login.cshtml"] =
                 IsEnabled(enabledPages, HelloUiPages.Login)
                     ? routes.LoginPath
+                    : null,
+            ["/Pages/SkopkaHello/Accounts.cshtml"] =
+                accountSwitchingEnabled
+                && IsEnabled(enabledPages, HelloUiPages.Login)
+                    ? routes.AccountsPath
                     : null,
             ["/Pages/SkopkaHello/Register.cshtml"] =
                 selfRegistrationEnabled

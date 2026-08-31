@@ -228,6 +228,26 @@ public sealed class HelloAuthorizationServerOptionsTests
     }
 
     [Fact]
+    public void AccountSelectionIsOptInAndUsesThePackagedChooserPath()
+    {
+        var options = CreateOptions();
+
+        Assert.False(options.AccountSelectionEnabled);
+        Assert.Equal("/hello/accounts", options.AccountSelectionPath);
+        options.Validate();
+    }
+
+    [Fact]
+    public void AccountSelectionRejectsAnEndpointCollision()
+    {
+        var options = CreateOptions();
+        options.AccountSelectionEnabled = true;
+        options.AccountSelectionPath = options.AuthorizationEndpointPath;
+
+        Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Fact]
     public void ProductionIssuerMustUseHttps()
     {
         var options = CreateOptions();

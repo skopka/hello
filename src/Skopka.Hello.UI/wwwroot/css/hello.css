@@ -489,6 +489,63 @@ select {
   gap: 2rem;
 }
 
+.hello-account-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.hello-saved-account {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+}
+
+.hello-account-avatar {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(
+    in srgb,
+    var(--skopka-hello-color-primary) 18%,
+    var(--skopka-hello-color-surface)
+  );
+  color: var(--skopka-hello-color-primary);
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.hello-saved-account h2,
+.hello-saved-account p {
+  margin: 0;
+}
+
+.hello-saved-account h2 {
+  font-size: 1.05rem;
+}
+
+.hello-saved-account p {
+  overflow: hidden;
+  color: var(--skopka-hello-color-muted);
+  text-overflow: ellipsis;
+}
+
+.hello-saved-account-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.hello-saved-account-actions form {
+  margin: 0;
+}
+
+.hello-account-add {
+  margin-top: 1rem;
+}
+
 .hello-session h2 {
   font-size: 1.05rem;
 }
@@ -525,9 +582,21 @@ select {
   }
 
   .hello-session,
-  .hello-danger-zone {
+  .hello-danger-zone,
+  .hello-saved-account {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .hello-saved-account {
+    display: flex;
+  }
+
+  .hello-saved-account-actions,
+  .hello-saved-account-actions form,
+  .hello-saved-account-actions .hello-button,
+  .hello-account-add .hello-button {
+    width: 100%;
   }
 
   .hello-header {

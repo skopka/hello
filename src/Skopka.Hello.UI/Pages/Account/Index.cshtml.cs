@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Skopka.Hello.UI.Pages;
 
@@ -402,19 +403,39 @@ public sealed class AccountModel(
         CancellationToken cancellationToken)
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
-        var refreshToken = sessionCookies.ReadRefreshToken(
-            HttpContext);
-        if (refreshToken is not null)
+        var accountSwitcher = HttpContext.RequestServices
+            .GetRequiredService<IHelloUiAccountSwitcher>();
+        var savedAccounts = accountSwitcher.List(HttpContext);
+        if (uiOptions.AccountSwitching.Enabled
+            && HelloUiPrincipalFactory.TryGetUserId(
+                User,
+                out var userId))
         {
-            await application.LogoutAsync(
-                refreshToken,
+            await accountSwitcher.RemoveAsync(
+                HttpContext,
+                userId,
+                revokeSession: true,
                 cancellationToken);
+        }
+        else
+        {
+            var refreshToken = sessionCookies.ReadRefreshToken(
+                HttpContext);
+            if (refreshToken is not null)
+            {
+                await application.LogoutAsync(
+                    refreshToken,
+                    cancellationToken);
+            }
         }
 
         sessionCookies.DeleteSessionCookies(HttpContext);
         await HttpContext.SignOutAsync(
             HelloUiDefaults.AuthenticationScheme);
-        return RedirectToPage("/SkopkaHello/Login");
+        return uiOptions.AccountSwitching.Enabled
+            && savedAccounts.Count > 1
+                ? RedirectToPage("/SkopkaHello/Accounts")
+                : RedirectToPage("/SkopkaHello/Login");
     }
 
     public sealed class ChangeUserNameInput

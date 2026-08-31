@@ -51,6 +51,11 @@ public sealed class HelloAuthorizationServerOptions
 
     public bool DisableTransportSecurityRequirement { get; set; }
 
+    public bool AccountSelectionEnabled { get; set; }
+
+    public string AccountSelectionPath { get; set; } =
+        "/hello/accounts";
+
     public List<HelloAuthorizationClientOptions> Clients { get; set; } = [];
 
     public void Validate()
@@ -71,6 +76,12 @@ public sealed class HelloAuthorizationServerOptions
         ValidatePath(AuthorizationEndpointPath, nameof(AuthorizationEndpointPath));
         ValidatePath(TokenEndpointPath, nameof(TokenEndpointPath));
         ValidatePath(EndSessionEndpointPath, nameof(EndSessionEndpointPath));
+        if (AccountSelectionEnabled)
+        {
+            ValidatePath(
+                AccountSelectionPath,
+                nameof(AccountSelectionPath));
+        }
         var endpointPaths = new HashSet<string>(
             StringComparer.OrdinalIgnoreCase)
         {
@@ -78,10 +89,16 @@ public sealed class HelloAuthorizationServerOptions
             TokenEndpointPath,
             EndSessionEndpointPath,
         };
-        if (endpointPaths.Count != 3)
+        if (AccountSelectionEnabled)
+        {
+            endpointPaths.Add(AccountSelectionPath);
+        }
+
+        var expectedEndpointCount = AccountSelectionEnabled ? 4 : 3;
+        if (endpointPaths.Count != expectedEndpointCount)
         {
             throw new InvalidOperationException(
-                "Authorization, token and end-session endpoint paths must be different.");
+                "Authorization, token, end-session and account-selection paths must be different.");
         }
 
         ArgumentException.ThrowIfNullOrWhiteSpace(

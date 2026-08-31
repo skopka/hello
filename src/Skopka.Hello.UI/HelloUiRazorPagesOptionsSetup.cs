@@ -23,6 +23,7 @@ internal sealed class HelloUiRazorPagesOptionsSetup(
                 routes,
                 helloOptions.SelfRegistrationEnabled,
                 crossDeviceOptions.Enabled,
+                uiOptions.AccountSwitching.Enabled,
                 uiOptions.EnabledPages,
                 uiOptions.ContactConfirmation.EmailEnabled,
                 uiOptions.ContactConfirmation.PhoneEnabled));

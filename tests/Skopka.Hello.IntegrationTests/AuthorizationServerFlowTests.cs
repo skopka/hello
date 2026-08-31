@@ -155,6 +155,40 @@ public sealed class AuthorizationServerFlowTests
     }
 
     [Fact]
+    public async Task SelectAccountRedirectsToConfiguredChooserOnce()
+    {
+        await using var host = await TestAuthorizationHost.CreateAsync();
+        const string verifier =
+            "select-account-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        var challenge = Base64UrlEncoder.Encode(
+            SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
+        var authorizeUri = QueryHelpers.AddQueryString(
+            "/connect/authorize",
+            new Dictionary<string, string?>
+            {
+                [Parameters.ClientId] = ClientId,
+                [Parameters.RedirectUri] = RedirectUri,
+                [Parameters.ResponseType] = ResponseTypes.Code,
+                [Parameters.Scope] = "openid profile",
+                [Parameters.CodeChallenge] = challenge,
+                [Parameters.CodeChallengeMethod] =
+                    CodeChallengeMethods.Sha256,
+                [Parameters.Prompt] = "select_account",
+            });
+
+        using var response = await host.Client.GetAsync(authorizeUri);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var location = Assert.IsType<Uri>(response.Headers.Location);
+        var absoluteLocation = new Uri(Issuer, location);
+        Assert.Equal("/hello/accounts", absoluteLocation.AbsolutePath);
+        var query = QueryHelpers.ParseQuery(absoluteLocation.Query);
+        var returnUrl = Assert.Single(query["returnUrl"]);
+        Assert.Contains("/connect/authorize", returnUrl, StringComparison.Ordinal);
+        Assert.DoesNotContain("select_account", returnUrl, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task EndSessionReturnsToRegisteredClient()
     {
         await using var host = await TestAuthorizationHost.CreateAsync();
@@ -805,6 +839,7 @@ public sealed class AuthorizationServerFlowTests
                 {
                     options.Issuer = Issuer;
                     options.BrowserAuthenticationScheme = BrowserScheme;
+                    options.AccountSelectionEnabled = true;
                     options.Resource = HelloResource;
                     options.AccessTokenFormat = accessTokenFormat;
                     options.AccessTokenLifetime = TimeSpan.FromMinutes(5);

@@ -99,17 +99,23 @@ public static class
                 "Interactive third-party consent is not supported.");
         }
 
-        if (HasPrompt(request, "select_account"))
+        if (HasPrompt(request, "select_account")
+            && !options.AccountSelectionEnabled)
         {
             return Forbid(
                 Errors.InteractionRequired,
                 "Account selection is not supported.");
         }
 
-        var authentication = await httpContext.AuthenticateAsync(
-            options.BrowserAuthenticationScheme);
         var forceLogin = HasPrompt(request, "login")
             || httpContext.Request.Query.ContainsKey("max_age");
+        if (HasPrompt(request, "select_account") && !forceLogin)
+        {
+            return RedirectToAccountSelection(httpContext, options);
+        }
+
+        var authentication = await httpContext.AuthenticateAsync(
+            options.BrowserAuthenticationScheme);
         if (forceLogin && authentication.Succeeded)
         {
             await httpContext.SignOutAsync(
@@ -138,6 +144,11 @@ public static class
                     RedirectUri = BuildLoginReturnUrl(httpContext),
                 },
                 [options.BrowserAuthenticationScheme]);
+        }
+
+        if (HasPrompt(request, "select_account"))
+        {
+            return RedirectToAccountSelection(httpContext, options);
         }
 
         if (!TryReadSession(
@@ -516,11 +527,71 @@ public static class
             && userId != Guid.Empty;
 
     private static string BuildLoginReturnUrl(HttpContext httpContext)
+        => BuildReturnUrl(
+            httpContext,
+            ["login"],
+            removeMaxAge: true);
+
+    private static IResult RedirectToAccountSelection(
+        HttpContext httpContext,
+        HelloAuthorizationServerOptions options)
     {
-        var query = httpContext.Request.Query
-            .Where(parameter => parameter.Key is not "prompt" and not "max_age")
-            .SelectMany(parameter => parameter.Value.Select(value =>
-                new KeyValuePair<string, string?>(parameter.Key, value)));
+        var returnUrl = BuildReturnUrl(
+            httpContext,
+            ["select_account"],
+            removeMaxAge: false);
+        var selectionUrl = httpContext.Request.PathBase
+            + options.AccountSelectionPath
+            + QueryString.Create("returnUrl", returnUrl);
+        return Results.Redirect(selectionUrl);
+    }
+
+    private static string BuildReturnUrl(
+        HttpContext httpContext,
+        IReadOnlyCollection<string> removedPrompts,
+        bool removeMaxAge)
+    {
+        var query = new List<KeyValuePair<string, string?>>();
+        foreach (var parameter in httpContext.Request.Query)
+        {
+            if (removeMaxAge
+                && String.Equals(
+                    parameter.Key,
+                    "max_age",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!String.Equals(
+                    parameter.Key,
+                    "prompt",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                query.AddRange(parameter.Value.Select(value =>
+                    new KeyValuePair<string, string?>(
+                        parameter.Key,
+                        value)));
+                continue;
+            }
+
+            var prompts = parameter.Value
+                .SelectMany(value => (value ?? string.Empty).Split(
+                    ' ',
+                    StringSplitOptions.RemoveEmptyEntries))
+                .Where(prompt => !removedPrompts.Contains(
+                    prompt,
+                    StringComparer.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (prompts.Length > 0)
+            {
+                query.Add(new KeyValuePair<string, string?>(
+                    parameter.Key,
+                    String.Join(' ', prompts)));
+            }
+        }
+
         return httpContext.Request.PathBase
             + httpContext.Request.Path
             + QueryString.Create(query);

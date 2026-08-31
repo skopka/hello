@@ -16,6 +16,17 @@
     "Layout.Language": "Язык",
     "Layout.ChangeLanguage": "Изменить язык",
 
+    "Accounts.Eyebrow": "Аккаунт",
+    "Accounts.Title": "Выберите аккаунт",
+    "Accounts.Instructions": "Продолжите с сохранённым аккаунтом на этом устройстве или добавьте другой.",
+    "Accounts.NoneTitle": "Нет сохранённых аккаунтов",
+    "Accounts.NoneDescription": "Добавьте аккаунт, чтобы войти на этом устройстве.",
+    "Accounts.Current": "Текущий",
+    "Accounts.Continue": "Продолжить",
+    "Accounts.Switch": "Переключить",
+    "Accounts.Remove": "Удалить",
+    "Accounts.Add": "Добавить другой аккаунт",
+
     "Legal.Navigation": "Правовая информация",
     "Legal.RegistrationNotice": "Перед созданием аккаунта ознакомьтесь с применимыми документами:",
     "Legal.AcceptTermsOfServicePrefix": "Я ознакомился(-ась) и принимаю",
@@ -210,6 +221,7 @@
     "Account.EditableProfile": "Редактируемый профиль",
     "Account.UpdateProfile": "Обновить профиль",
     "Account.ManageSessions": "Управление сессиями",
+    "Account.SwitchAccount": "Переключить аккаунт",
     "Account.SignInRequests": "Подтвердить другое устройство",
     "Account.CredentialsAndDeletion": "Учётные данные и удаление",
     "Account.ExternalSignInMethods": "Внешние способы входа",
@@ -311,6 +323,7 @@
     "Errors.identity.device_authorization.verifier_invalid": "Этот браузер не может завершить запрос входа с другого устройства.",
     "Errors.identity.device_authorization.state_invalid": "Запрос входа с другого устройства больше нельзя изменить или завершить.",
     "Errors.identity.device_authorization.step_up_invalid": "Нужно свежее подтверждение через аутентификатор.",
-    "Errors.hello.cross_device.return_url_invalid": "Запрошенный адрес возврата запрещён."
+    "Errors.hello.cross_device.return_url_invalid": "Запрошенный адрес возврата запрещён.",
+    "Errors.hello.account_switching.account_unavailable": "Сохранённый аккаунт недоступен или сессия истекла. Войдите снова."
   }
 }

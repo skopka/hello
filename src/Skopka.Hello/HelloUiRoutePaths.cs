@@ -12,6 +12,7 @@ public sealed class HelloUiRoutePaths
         PathPrefix = NormalizePathPrefix(pathPrefix);
         RootPath = PathPrefix;
         LoginPath = Append("/login");
+        AccountsPath = Append("/accounts");
         RegisterPath = Append("/register");
         ForgotPasswordPath = Append("/forgot-password");
         ResetPasswordPath = Append("/reset-password");
@@ -39,6 +40,8 @@ public sealed class HelloUiRoutePaths
     public string RootPath { get; }
 
     public string LoginPath { get; }
+
+    public string AccountsPath { get; }
 
     public string RegisterPath { get; }
 

@@ -47,6 +47,8 @@ public sealed class AuthenticationFlowTests
         "__Host-Skopka.Hello.XSRF-TOKEN";
     private const string AntiforgeryHeaderName = "X-CSRF-TOKEN";
     private const string UiCookieName = "__Host-Skopka.Hello.UI";
+    private const string AccountsCookieName =
+        "__Host-Skopka.Hello.Accounts";
     private const string CrossDeviceCookieName =
         "__Host-Skopka.Hello.CrossDevice";
     private const string UiAdministratorPolicy =
@@ -1858,6 +1860,107 @@ public sealed class AuthenticationFlowTests
             usersHtml,
             StringComparison.Ordinal);
 
+    }
+
+    [Fact]
+    public async Task BrowserCanAddAndSwitchSavedAccounts()
+    {
+        await using var postgres = new PostgreSqlBuilder(
+                "postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            configureUi: options =>
+                options.AccountSwitching.Enabled = true);
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        Dictionary<string, string> cookies = new(StringComparer.Ordinal);
+
+        var firstUserId = await RegisterUiAccountAsync(
+            client,
+            "saved-alice",
+            "saved-alice@example.test",
+            "Saved Alice");
+        await RegisterUiAccountAsync(
+            client,
+            "saved-bob",
+            "saved-bob@example.test",
+            "Saved Bob");
+
+        await LoginUiAsync(
+            client,
+            cookies,
+            "saved-alice@example.test");
+        Assert.True(cookies.ContainsKey(AccountsCookieName));
+
+        using var chooser = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/accounts",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, chooser.StatusCode);
+        MergeCookies(cookies, chooser);
+        var chooserHtml = await chooser.Content.ReadAsStringAsync();
+        Assert.Contains("Saved Alice", chooserHtml, StringComparison.Ordinal);
+        var addToken = ReadInputValue(
+            chooserHtml,
+            "__RequestVerificationToken");
+
+        using var add = await SendFormAsync(
+            client,
+            "/hello/accounts?handler=Add",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = addToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, add.StatusCode);
+        Assert.StartsWith(
+            "/hello/login",
+            add.Headers.Location?.OriginalString,
+            StringComparison.Ordinal);
+        MergeCookies(cookies, add);
+
+        await LoginUiAsync(
+            client,
+            cookies,
+            "saved-bob@example.test");
+        using var chooserWithBoth = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/accounts",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, chooserWithBoth.StatusCode);
+        MergeCookies(cookies, chooserWithBoth);
+        var bothHtml = await chooserWithBoth.Content.ReadAsStringAsync();
+        Assert.Contains("Saved Alice", bothHtml, StringComparison.Ordinal);
+        Assert.Contains("Saved Bob", bothHtml, StringComparison.Ordinal);
+        var switchToken = ReadInputValue(
+            bothHtml,
+            "__RequestVerificationToken");
+
+        using var switched = await SendFormAsync(
+            client,
+            "/hello/accounts?handler=Switch",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["userId"] = firstUserId.ToString("D"),
+                ["__RequestVerificationToken"] = switchToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, switched.StatusCode);
+        MergeCookies(cookies, switched);
+
+        using var current = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/integration/current-ui-user",
+            cookies);
+        var currentUser = await current.Content
+            .ReadFromJsonAsync<HelloUiUser>();
+        Assert.NotNull(currentUser);
+        Assert.Equal(firstUserId, currentUser.UserId);
+        Assert.Equal("Saved Alice", currentUser.DisplayName);
     }
 
     [Fact]
@@ -4153,6 +4256,62 @@ public sealed class AuthenticationFlowTests
         return (binary % 1_000_000).ToString(
             "D6",
             CultureInfo.InvariantCulture);
+    }
+
+    private static async Task<Guid> RegisterUiAccountAsync(
+        HttpClient client,
+        string userName,
+        string email,
+        string displayName)
+    {
+        using var response = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName,
+                email,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName,
+                    locale = "en",
+                },
+                password = "correct horse battery staple",
+            });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        using var document = JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync());
+        return document.RootElement.GetProperty("id").GetGuid();
+    }
+
+    private static async Task LoginUiAsync(
+        HttpClient client,
+        Dictionary<string, string> cookies,
+        string login)
+    {
+        using var loginPage = await SendAsync(
+            client,
+            HttpMethod.Get,
+            "/hello/login",
+            cookies);
+        Assert.Equal(HttpStatusCode.OK, loginPage.StatusCode);
+        MergeCookies(cookies, loginPage);
+        var token = ReadInputValue(
+            await loginPage.Content.ReadAsStringAsync(),
+            "__RequestVerificationToken");
+        using var response = await SendFormAsync(
+            client,
+            "/hello/login",
+            cookies,
+            new Dictionary<string, string>
+            {
+                ["Input.Login"] = login,
+                ["Input.Password"] =
+                    "correct horse battery staple",
+                ["__RequestVerificationToken"] = token,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        MergeCookies(cookies, response);
     }
 
     private static async Task<LoginResult> LoginAsync(

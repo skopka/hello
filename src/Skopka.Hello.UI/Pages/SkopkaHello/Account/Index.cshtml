@@ -196,6 +196,13 @@
     }
 
     <div class="hello-actions">
+        @if (UiOptions.AccountSwitching.Enabled)
+        {
+            <a class="hello-button"
+               asp-page="/SkopkaHello/Accounts">
+                @Text["Account.SwitchAccount"]
+            </a>
+        }
         @if ((UiOptions.EnabledPages & HelloUiPages.Sessions) != 0)
         {
             <a class="hello-button"

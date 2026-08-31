@@ -18,6 +18,11 @@ public sealed class SkopkaHelloUiOptionsTests
         options.Validate();
 
         Assert.Equal(HelloUiPages.All, options.EnabledPages);
+        Assert.False(options.AccountSwitching.Enabled);
+        Assert.Equal(
+            "__Host-Skopka.Hello.Accounts",
+            options.AccountSwitching.CookieName);
+        Assert.Equal(5, options.AccountSwitching.MaximumSavedAccounts);
         Assert.Null(options.AuthenticatedRedirectPath);
         Assert.Null(options.ApplicationHomeUrl);
         Assert.Null(options.LayoutPath);

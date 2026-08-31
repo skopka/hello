@@ -44,6 +44,9 @@ public sealed class SkopkaHelloUiOptions
     public HelloUiContactConfirmationOptions ContactConfirmation { get; } =
         new();
 
+    public HelloUiAccountSwitchingOptions AccountSwitching { get; } =
+        new();
+
     public SkopkaHelloUiLocalizationOptions Localization { get; } =
         new();
 
@@ -52,6 +55,7 @@ public sealed class SkopkaHelloUiOptions
         Registration.Validate();
         Account.Validate();
         ContactConfirmation.Validate();
+        AccountSwitching.Validate(SecureCookies);
         Localization.Validate();
 
         if ((EnabledPages & ~HelloUiPages.All) != 0)
@@ -295,6 +299,7 @@ public sealed class SkopkaHelloUiOptions
         [
             routes.RootPath,
             routes.LoginPath,
+            routes.AccountsPath,
             routes.RegisterPath,
             routes.ForgotPasswordPath,
             routes.ResetPasswordPath,

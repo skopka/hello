@@ -80,6 +80,9 @@ public static class SkopkaHelloUiServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.UI.IHelloUiUserAccessor,
             Skopka.Hello.UI.HelloUiUserAccessor>();
+        services.TryAddScoped<
+            Skopka.Hello.UI.IHelloUiAccountSwitcher,
+            Skopka.Hello.UI.HelloUiAccountSwitcher<TProfile>>();
         var crossDeviceEnabled = services.LastOrDefault(descriptor =>
                 descriptor.ServiceType
                     == typeof(Skopka.Hello.HelloCrossDeviceSignInOptions))

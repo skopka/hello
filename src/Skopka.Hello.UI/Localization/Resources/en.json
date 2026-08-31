@@ -16,6 +16,17 @@
     "Layout.Language": "Language",
     "Layout.ChangeLanguage": "Change language",
 
+    "Accounts.Eyebrow": "Account",
+    "Accounts.Title": "Choose an account",
+    "Accounts.Instructions": "Continue with a saved account on this device or add another one.",
+    "Accounts.NoneTitle": "No saved accounts",
+    "Accounts.NoneDescription": "Add an account to sign in on this device.",
+    "Accounts.Current": "Current",
+    "Accounts.Continue": "Continue",
+    "Accounts.Switch": "Switch",
+    "Accounts.Remove": "Remove",
+    "Accounts.Add": "Add another account",
+
     "Legal.Navigation": "Legal information",
     "Legal.RegistrationNotice": "Review the applicable documents before creating your account:",
     "Legal.AcceptTermsOfServicePrefix": "I have read and accept the",
@@ -210,6 +221,7 @@
     "Account.EditableProfile": "Editable profile",
     "Account.UpdateProfile": "Update profile",
     "Account.ManageSessions": "Manage sessions",
+    "Account.SwitchAccount": "Switch account",
     "Account.SignInRequests": "Approve another device",
     "Account.CredentialsAndDeletion": "Credentials and deletion",
     "Account.ExternalSignInMethods": "External sign-in methods",
@@ -311,6 +323,7 @@
     "Errors.identity.device_authorization.verifier_invalid": "This browser cannot complete the cross-device sign-in request.",
     "Errors.identity.device_authorization.state_invalid": "The cross-device sign-in request can no longer be changed or completed.",
     "Errors.identity.device_authorization.step_up_invalid": "A fresh authenticator confirmation is required.",
-    "Errors.hello.cross_device.return_url_invalid": "The requested return address is not allowed."
+    "Errors.hello.cross_device.return_url_invalid": "The requested return address is not allowed.",
+    "Errors.hello.account_switching.account_unavailable": "The saved account is unavailable or expired. Sign in again."
   }
 }

@@ -1,0 +1,81 @@
+@page
+@model AccountsModel
+@{
+    ViewData["Title"] = Text["Accounts.Title"];
+}
+
+<section class="hello-page-heading">
+    <p class="hello-eyebrow">@Text["Accounts.Eyebrow"]</p>
+    <h1>@Text["Accounts.Title"]</h1>
+    <p class="hello-muted">@Text["Accounts.Instructions"]</p>
+</section>
+
+<div asp-validation-summary="ModelOnly"
+     class="hello-validation"
+     role="alert"></div>
+
+@if (Model.Accounts.Count == 0)
+{
+    <section class="hello-card hello-empty-state">
+        <h2>@Text["Accounts.NoneTitle"]</h2>
+        <p>@Text["Accounts.NoneDescription"]</p>
+    </section>
+}
+else
+{
+    <div class="hello-account-list">
+        @foreach (var account in Model.Accounts)
+        {
+            <article class="hello-card hello-saved-account">
+                <div class="hello-account-avatar" aria-hidden="true">
+                    @account.DisplayName[..1].ToUpperInvariant()
+                </div>
+                <div class="hello-saved-account-details">
+                    <h2>
+                        @account.DisplayName
+                        @if (account.IsCurrent)
+                        {
+                            <span class="hello-badge">@Text["Accounts.Current"]</span>
+                        }
+                    </h2>
+                    @if (!String.IsNullOrWhiteSpace(account.Email))
+                    {
+                        <p>@account.Email</p>
+                    }
+                    else if (!String.IsNullOrWhiteSpace(account.UserName))
+                    {
+                        <p>@@@account.UserName</p>
+                    }
+                </div>
+                <div class="hello-saved-account-actions">
+                    <form method="post" asp-page-handler="Switch">
+                        <input type="hidden" name="userId" value="@account.UserId" />
+                        <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+                        <button class="hello-button" type="submit">
+                            @(account.IsCurrent
+                                ? Text["Accounts.Continue"]
+                                : Text["Accounts.Switch"])
+                        </button>
+                    </form>
+                    @if (!account.IsCurrent)
+                    {
+                        <form method="post" asp-page-handler="Remove">
+                            <input type="hidden" name="userId" value="@account.UserId" />
+                            <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+                            <button class="hello-button hello-button-secondary" type="submit">
+                                @Text["Accounts.Remove"]
+                            </button>
+                        </form>
+                    }
+                </div>
+            </article>
+        }
+    </div>
+}
+
+<form method="post" asp-page-handler="Add" class="hello-account-add">
+    <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+    <button class="hello-button hello-button-secondary" type="submit">
+        @Text["Accounts.Add"]
+    </button>
+</form>

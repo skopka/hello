@@ -7,6 +7,7 @@ namespace Skopka.Hello.UI;
 internal sealed class HelloUiCookieAuthenticationEvents<TProfile>(
     IHelloIdentityApplication<TProfile> application,
     IHelloSessionCookieManager sessionCookies,
+    IHelloUiAccountSwitcher accountSwitcher,
     IHelloUiProfileFactory<TProfile> profiles,
     SkopkaHelloUiOptions options)
     : CookieAuthenticationEvents
@@ -31,11 +32,27 @@ internal sealed class HelloUiCookieAuthenticationEvents<TProfile>(
             context.HttpContext.RequestAborted);
         if (validated.IsSuccess)
         {
-            context.ReplacePrincipal(
-                HelloUiPrincipalFactory.Create(
+            var validatedPrincipal = HelloUiPrincipalFactory.Create(
                     validated.Value,
                     sessionId,
-                    profiles));
+                    profiles);
+            context.ReplacePrincipal(validatedPrincipal);
+            var currentRefreshToken = sessionCookies.ReadRefreshToken(
+                context.HttpContext);
+            if (currentRefreshToken is not null
+                && context.Properties.ExpiresUtc is { } expiresAt)
+            {
+                accountSwitcher.Save(
+                    context.HttpContext,
+                    validatedPrincipal,
+                    new HelloSession(
+                        sessionId,
+                        accessToken,
+                        expiresAt,
+                        currentRefreshToken,
+                        expiresAt));
+            }
+
             return;
         }
 
@@ -78,16 +95,30 @@ internal sealed class HelloUiCookieAuthenticationEvents<TProfile>(
         ]);
         context.Properties.ExpiresUtc =
             refreshed.Value.RefreshTokenExpiresAt;
-        context.ReplacePrincipal(
-            HelloUiPrincipalFactory.Create(
+        var refreshedPrincipal = HelloUiPrincipalFactory.Create(
                 account.Value,
                 refreshed.Value.SessionId,
-                profiles));
+                profiles);
+        context.ReplacePrincipal(refreshedPrincipal);
+        accountSwitcher.Save(
+            context.HttpContext,
+            refreshedPrincipal,
+            refreshed.Value);
         context.ShouldRenew = true;
     }
 
     private void Reject(CookieValidatePrincipalContext context)
     {
+        if (context.Principal is not null
+            && HelloUiPrincipalFactory.TryGetSessionId(
+                context.Principal,
+                out var sessionId))
+        {
+            accountSwitcher.RemoveSession(
+                context.HttpContext,
+                sessionId);
+        }
+
         context.RejectPrincipal();
         sessionCookies.DeleteSessionCookies(context.HttpContext);
         context.HttpContext.Response.Cookies.Delete(

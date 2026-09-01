@@ -9,7 +9,7 @@
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
 
-    <VersionPrefix>0.21.3</VersionPrefix>
+    <VersionPrefix>0.21.4</VersionPrefix>
     <Authors>Skopka contributors</Authors>
     <Company>Skopka</Company>
     <Product>Skopka.Hello</Product>

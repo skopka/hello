@@ -74,6 +74,18 @@ public static class SkopkaHelloServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.IHelloExternalIdentityApplication<TProfile>,
             Skopka.Hello.HelloExternalIdentityApplication<TProfile>>();
+        // Registered whether or not passkeys are enabled: the application
+        // answers "not enabled" itself, which is one place rather than a
+        // missing service every caller has to be ready for.
+        services.TryAddSingleton<Skopka.Hello.WebAuthn.HelloWebAuthnTickets>();
+        services.TryAddSingleton<
+            Skopka.Hello.WebAuthn.InMemoryHelloWebAuthnFlowStore>();
+        services.TryAddSingleton<
+            Skopka.Hello.WebAuthn.IHelloWebAuthnFlowStore,
+            Skopka.Hello.WebAuthn.HelloWebAuthnFlowStore<TProfile>>();
+        services.TryAddScoped<
+            Skopka.Hello.WebAuthn.IHelloWebAuthnApplication<TProfile>,
+            Skopka.Hello.WebAuthn.HelloWebAuthnApplication<TProfile>>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<
                 Skopka.Hello.IHelloStepUpRequirementProvider<TProfile>,

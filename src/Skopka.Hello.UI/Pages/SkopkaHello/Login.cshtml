@@ -134,6 +134,48 @@
         </button>
     </form>
 
+    @if (Model.PasskeysEnabled)
+    {
+        @* Hidden until the page script has seen that this browser can do it.
+           A button that opens nothing is worse than no button. *@
+        <div data-passkey
+             data-ceremony="get"
+             data-challenge-url="@Url.Page(null, "PasskeyChallenge")"
+             hidden>
+            <div class="hello-divider" role="separator">
+                <span>@Text["Login.OrUsePasskey"]</span>
+            </div>
+            <form method="post"
+                  asp-page-handler="Passkey"
+                  class="hello-form"
+                  data-passkey-form>
+                <input asp-for="ReturnUrl" type="hidden" />
+                <input asp-for="Passkey.Ticket" type="hidden"
+                       data-passkey-field="ticket" />
+                <input asp-for="Passkey.CredentialId" type="hidden"
+                       data-passkey-field="credentialId" />
+                <input asp-for="Passkey.ClientDataJson" type="hidden"
+                       data-passkey-field="clientDataJson" />
+                <input asp-for="Passkey.AuthenticatorData" type="hidden"
+                       data-passkey-field="authenticatorData" />
+                <input asp-for="Passkey.Signature" type="hidden"
+                       data-passkey-field="signature" />
+                <button class="hello-button hello-button-secondary"
+                        type="button"
+                        data-passkey-start>
+                    @Text["Login.PasskeyAction"]
+                </button>
+                <p class="hello-status" role="status" data-passkey-busy hidden>
+                    @Text["Login.PasskeyBusy"]
+                </p>
+                <p class="hello-status hello-status-error" role="alert"
+                   data-passkey-error hidden>
+                    @Text["Login.PasskeyFailed"]
+                </p>
+            </form>
+        </div>
+    }
+
     @if (Model.CrossDeviceEnabled)
     {
         <div class="hello-divider" role="separator">
@@ -189,3 +231,8 @@
         </p>
     }
 </section>
+
+@if (Model.PasskeysEnabled)
+{
+    <script src="/_content/Skopka.Hello.UI/js/passkey.js" defer></script>
+}

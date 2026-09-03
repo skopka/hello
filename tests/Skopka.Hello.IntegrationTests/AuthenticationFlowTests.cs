@@ -4841,6 +4841,47 @@ public sealed class AuthenticationFlowTests
             return writer.Encode();
         }
     }
+
+    /// <summary>
+    /// The login page carries the passkey form and its script when the host has
+    /// passkeys, and neither when it does not. The block ships hidden: the
+    /// script reveals it only on a browser that can answer, because a button
+    /// that opens nothing is worse than no button.
+    /// </summary>
+    [Fact]
+    public async Task LoginPageOffersAPasskeyOnlyWhereTheHostHasThem()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+
+        await using var withPasskeys = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            passkeysEnabled: true);
+        using var enabledClient = withPasskeys.CreateClient();
+        using var enabled = await enabledClient.GetAsync("/hello/login");
+        var enabledHtml = await enabled.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
+        Assert.Contains("data-passkey", enabledHtml, StringComparison.Ordinal);
+        Assert.Contains(
+            "js/passkey.js",
+            enabledHtml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "handler=PasskeyChallenge",
+            enabledHtml,
+            StringComparison.Ordinal);
+
+        await using var withoutPasskeys = await TestApplication.CreateAsync(
+            postgres.GetConnectionString());
+        using var plainClient = withoutPasskeys.CreateClient();
+        using var plain = await plainClient.GetAsync("/hello/login");
+        var plainHtml = await plain.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, plain.StatusCode);
+        Assert.DoesNotContain("data-passkey", plainHtml, StringComparison.Ordinal);
+    }
     private static async Task<LoginResult> LoginAsync(
         HttpClient client,
         string login = "alice@example.test",

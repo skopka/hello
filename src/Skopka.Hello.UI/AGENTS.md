@@ -46,3 +46,13 @@ receive selectors. Disabled pages remain packaged but must have no HTTP route,
 link or reachable handler through an enabled page. Preserve the declared Login
 and Account dependencies and use the configured local authenticated redirect
 when Account is not available.
+
+The passkey block ships hidden and is revealed by the page script only on a
+browser that can answer: a button that opens nothing is worse than no button.
+The script never invents a challenge — it asks an antiforgery-protected page
+handler for one and posts the authenticator's answer back on the form it came
+on. Values cross that boundary as base64url and are decoded where they are
+understood. A passkey sign-in ends in the UI ticket, like a password one, not in
+a JSON session. Removing a key rotates the security stamp, so the page that did
+it redirects to Login rather than rendering a view its own ticket no longer
+opens.

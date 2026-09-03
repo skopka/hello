@@ -13,7 +13,8 @@ public sealed class LoginModel(
     SkopkaHelloUiOptions uiOptions,
     HelloUiRoutePaths routes,
     IHelloUiLocalizer text,
-    IHelloUiCrossDeviceApplication? crossDevice = null)
+    IHelloUiCrossDeviceApplication? crossDevice = null,
+    IHelloUiWebAuthnApplication? passkeys = null)
     : PageModel
 {
     [BindProperty]
@@ -57,6 +58,94 @@ public sealed class LoginModel(
     public bool PasswordReset { get; private set; }
 
     public bool CrossDeviceEnabled => crossDevice is not null;
+
+    /// <summary>
+    /// Offered when the host has passkeys, and hidden again by the page script
+    /// on a browser that cannot do them: a button that opens nothing is worse
+    /// than no button.
+    /// </summary>
+    public bool PasskeysEnabled => passkeys is not null;
+
+    [BindProperty]
+    public PasskeyInput Passkey { get; set; } = new();
+
+    /// <summary>
+    /// The challenge the script asks for before calling the authenticator.
+    /// A POST, so the antiforgery token protects it like every other mutation
+    /// here — issuing a challenge spends nothing, but answering one does.
+    /// </summary>
+    public async Task<IActionResult> OnPostPasskeyChallengeAsync(
+        CancellationToken cancellationToken)
+    {
+        if (passkeys is null)
+        {
+            return NotFound();
+        }
+
+        var issued = await passkeys.BeginSignInAsync(
+            HttpContext,
+            cancellationToken);
+        return issued.IsSuccess
+            ? new JsonResult(issued.Value)
+            : StatusCode(400);
+    }
+
+    public async Task<IActionResult> OnPostPasskeyAsync(
+        CancellationToken cancellationToken)
+    {
+        if (passkeys is null)
+        {
+            return NotFound();
+        }
+
+        var transport = sessionCookies.ValidateTransport(HttpContext);
+        if (!transport.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, transport.Errors, text);
+            return Page();
+        }
+
+        var signedIn = await passkeys.SignInAsync(
+            new HelloUiWebAuthnAssertion(
+                Passkey.Ticket,
+                Passkey.CredentialId,
+                Passkey.ClientDataJson,
+                Passkey.AuthenticatorData,
+                Passkey.Signature),
+            HttpContext,
+            cancellationToken);
+        if (!signedIn.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, signedIn.Errors, text);
+            return Page();
+        }
+
+        await HelloUiSession.EstablishAsync(
+            HttpContext,
+            sessionCookies,
+            signedIn.Value);
+
+        return Url.IsLocalUrl(ReturnUrl)
+            ? LocalRedirect(ReturnUrl)
+            : LocalRedirect(uiOptions.GetAuthenticatedRedirectPath(routes));
+    }
+
+    /// <summary>
+    /// Filled in by the page script from what the authenticator answered. Every
+    /// field is opaque text here and is checked where it is understood.
+    /// </summary>
+    public sealed class PasskeyInput
+    {
+        public string Ticket { get; set; } = string.Empty;
+
+        public string CredentialId { get; set; } = string.Empty;
+
+        public string ClientDataJson { get; set; } = string.Empty;
+
+        public string AuthenticatorData { get; set; } = string.Empty;
+
+        public string Signature { get; set; } = string.Empty;
+    }
 
     public async Task<IActionResult> OnGetAsync(
         bool registered,

@@ -96,6 +96,20 @@ public static class SkopkaHelloUiServiceCollectionExtensions
                 Skopka.Hello.UI.HelloUiCrossDeviceApplication<TProfile>>();
         }
 
+        // Registered when the identity builder registered the WebAuthn
+        // service, which is the same question the API routes ask. A page that
+        // offers a passkey to a host that has none would be a button leading
+        // nowhere.
+        if (services.Any(descriptor =>
+            descriptor.ServiceType
+                == typeof(Skopka.Identity.WebAuthn.IIdentityWebAuthnService<
+                    TProfile>)))
+        {
+            services.TryAddScoped<
+                Skopka.Hello.UI.IHelloUiWebAuthnApplication,
+                Skopka.Hello.UI.HelloUiWebAuthnApplication<TProfile>>();
+        }
+
         services
             .AddAuthentication()
             .AddCookie(

@@ -299,7 +299,84 @@
         </form>
     }
 
+    @if (Model.PasskeysEnabled)
+    {
+        <h2>@Text["Security.PasskeysTitle"]</h2>
+        <p class="hello-hint">@Text["Security.PasskeysHint"]</p>
+
+        @if (Model.Passkeys is { Count: > 0 })
+        {
+            <ul class="hello-list">
+                @foreach (var passkey in Model.Passkeys)
+                {
+                    <li>
+                        <span>
+                            @(string.IsNullOrWhiteSpace(passkey.Label)
+                                ? Text["Security.PasskeyUnnamed"]
+                                : passkey.Label)
+                        </span>
+                        <span class="hello-hint">
+                            @(passkey.LastUsedAt is null
+                                ? Text["Security.PasskeyNeverUsed"]
+                                : Text["Security.PasskeyLastUsed"])
+                        </span>
+                        <form method="post" asp-page-handler="RemovePasskey">
+                            <input type="hidden"
+                                   name="credentialId"
+                                   value="@passkey.Id" />
+                            <button class="hello-button hello-button-secondary"
+                                    type="submit">
+                                @Text["Security.RemovePasskey"]
+                            </button>
+                        </form>
+                    </li>
+                }
+            </ul>
+        }
+        else
+        {
+            <p class="hello-hint">@Text["Security.NoPasskeys"]</p>
+        }
+
+        @* Hidden until the page script has seen that this browser can do it. *@
+        <div data-passkey
+             data-ceremony="create"
+             data-challenge-url="@Url.Page(null, "PasskeyChallenge")"
+             hidden>
+            <form method="post"
+                  asp-page-handler="AddPasskey"
+                  class="hello-form"
+                  data-passkey-form>
+                <input asp-for="Passkey.Ticket" type="hidden"
+                       data-passkey-field="ticket" />
+                <input asp-for="Passkey.ClientDataJson" type="hidden"
+                       data-passkey-field="clientDataJson" />
+                <input asp-for="Passkey.AttestationObject" type="hidden"
+                       data-passkey-field="attestationObject" />
+                <label asp-for="Passkey.Label">@Text["Field.PasskeyLabel"]</label>
+                <input asp-for="Passkey.Label" autocomplete="off" />
+                <button class="hello-button"
+                        type="button"
+                        data-passkey-start>
+                    @Text["Security.AddPasskey"]
+                </button>
+                <p class="hello-status" role="status" data-passkey-busy hidden>
+                    @Text["Security.PasskeyBusy"]
+                </p>
+                <p class="hello-status hello-status-error" role="alert"
+                   data-passkey-error hidden>
+                    @Text["Security.PasskeyFailed"]
+                </p>
+            </form>
+        </div>
+    }
+
     <p class="hello-card-footer">
         <a asp-page="/SkopkaHello/Account/Index">@Text["Common.BackToAccount"]</a>
     </p>
 </section>
+
+@if (Model.PasskeysEnabled)
+{
+    <script src="/_content/Skopka.Hello.UI/js/passkey.js" defer></script>
+}

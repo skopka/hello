@@ -11,9 +11,108 @@ public sealed class AccountSecurityModel(
     IHelloUiApplication application,
     IHelloSessionCookieManager sessionCookies,
     HelloUiPrgStateStore prgState,
-    IHelloUiLocalizer text)
+    IHelloUiLocalizer text,
+    IHelloUiWebAuthnApplication? passkeys = null)
     : PageModel
 {
+
+    /// <summary>
+    /// The keys on this account, or null where the host has no passkeys at all
+    /// — which the page reads as "do not mention them" rather than "none".
+    /// </summary>
+    public IReadOnlyList<HelloUiWebAuthnCredential>? Passkeys
+    {
+        get;
+        private set;
+    }
+
+    public bool PasskeysEnabled => passkeys is not null;
+
+    [BindProperty]
+    public PasskeyInput Passkey { get; set; } = new();
+
+    public async Task<IActionResult> OnPostPasskeyChallengeAsync(
+        CancellationToken cancellationToken)
+    {
+        if (passkeys is null)
+        {
+            return NotFound();
+        }
+
+        var issued = await passkeys.BeginRegistrationAsync(
+            HttpContext,
+            cancellationToken);
+        return issued.IsSuccess ? new JsonResult(issued.Value) : StatusCode(400);
+    }
+
+    public async Task<IActionResult> OnPostAddPasskeyAsync(
+        CancellationToken cancellationToken)
+    {
+        if (passkeys is null)
+        {
+            return NotFound();
+        }
+
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        var registered = await passkeys.RegisterAsync(
+            new HelloUiWebAuthnAttestation(
+                Passkey.Ticket,
+                Passkey.ClientDataJson,
+                Passkey.AttestationObject,
+                Passkey.Label),
+            HttpContext,
+            cancellationToken);
+        if (registered.IsSuccess)
+        {
+            return RedirectToPage(new { passkeyAdded = true });
+        }
+
+        HelloUiModelState.AddErrors(ModelState, registered.Errors, text);
+        return await LoadAsync(cancellationToken);
+    }
+
+    public async Task<IActionResult> OnPostRemovePasskeyAsync(
+        Guid credentialId,
+        CancellationToken cancellationToken)
+    {
+        if (passkeys is null)
+        {
+            return NotFound();
+        }
+
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        var removed = await passkeys.RemoveAsync(
+            credentialId,
+            HttpContext,
+            cancellationToken);
+        if (removed.IsSuccess)
+        {
+            // Removing a key rotates the security stamp, so the ticket this
+            // browser is holding is no longer good: sign in again rather than
+            // show a page nothing behind it will answer.
+            return RedirectToPage(
+                "/SkopkaHello/Login",
+                new { securityChanged = true });
+        }
+
+        HelloUiModelState.AddErrors(ModelState, removed.Errors, text);
+        return await LoadAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Filled in by the page script from what the authenticator answered.
+    /// </summary>
+    public sealed class PasskeyInput
+    {
+        public string Ticket { get; set; } = string.Empty;
+
+        public string ClientDataJson { get; set; } = string.Empty;
+
+        public string AttestationObject { get; set; } = string.Empty;
+
+        [StringLength(64)]
+        public string? Label { get; set; }
+    }
     public HelloCredentialState? Credentials { get; private set; }
 
     public HelloTotpState? Totp { get; private set; }
@@ -404,6 +503,17 @@ public sealed class AccountSecurityModel(
             if (totp.IsSuccess)
             {
                 Totp ??= totp.Value;
+                if (passkeys is not null)
+                {
+                    var listed = await passkeys.ListAsync(
+                        HttpContext,
+                        cancellationToken);
+                    if (listed.IsSuccess)
+                    {
+                        Passkeys = listed.Value;
+                    }
+                }
+
                 return true;
             }
 

@@ -31,3 +31,11 @@ Map the anonymous password-registration endpoint only when the shared startup
 self-registration policy is enabled. Do not use an endpoint-local flag or leave
 the route in OpenAPI when disabled; operation-level enforcement in the facade
 remains the defense-in-depth boundary.
+
+Passkey routes are mapped only when the identity builder registered the WebAuthn
+service, not behind an endpoint-local flag: a route a host has no service for is
+a route that answers with a missing dependency. Both halves of signing in are
+anonymous, because a credential identifies itself and there is nobody to
+authorize until it has. Binary fields travel base64url and are decoded before
+anything is looked up. Credential responses carry a label and dates only; never
+the public key, the credential identifier or the authenticator model.

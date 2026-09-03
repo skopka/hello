@@ -16,12 +16,13 @@ namespace Skopka.Hello.WebAuthn;
 /// turns a user Identity vouched for into a signed-in session.
 /// </summary>
 internal sealed class HelloWebAuthnApplication<TProfile>(
-    IIdentityWebAuthnService<TProfile> credentials,
     IIdentitySessionService<TProfile> sessions,
     IIdentitySignInMethodQueryService<TProfile> signInMethods,
     IHelloWebAuthnFlowStore flows,
     HelloWebAuthnTickets tickets,
     SkopkaHelloOptions options,
+    IIdentityWebAuthnService<TProfile>? credentials = null,
+    WebAuthnOptions? webAuthn = null,
     IEnumerable<IHelloAccessTokenValidator<TProfile>>? accessTokenValidators = null)
     : IHelloWebAuthnApplication<TProfile>
 {
@@ -43,7 +44,7 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
                 HelloWebAuthnRegistrationChallenge>(user.Errors);
         }
 
-        var registered = await credentials.ListAsync(
+        var registered = await credentials!.ListAsync(
             user.Value.Id,
             cancellationToken);
         if (!registered.IsSuccess)
@@ -59,7 +60,7 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
         return OperationResultFactory.Success(
             new HelloWebAuthnRegistrationChallenge(
                 issued.Ticket,
-                options.WebAuthn.RelyingPartyId,
+                webAuthn!.RelyingPartyId,
                 options.WebAuthn.RelyingPartyName,
                 issued.Payload.Challenge,
                 // The user handle is the account id and nothing else. A handle
@@ -72,7 +73,7 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
                 // account makes a second one rather than silently replacing it.
                 [.. registered.Value.Select(item => item.Id.ToByteArray())],
                 HelloWebAuthnAlgorithms.Offered,
-                options.WebAuthn.UserVerificationRequired,
+                webAuthn!.UserVerificationRequired,
                 issued.Payload.ExpiresAt));
     }
 
@@ -111,7 +112,7 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
             return Invalid<HelloWebAuthnCredential>();
         }
 
-        var registered = await credentials.RegisterAsync(
+        var registered = await credentials!.RegisterAsync(
             new RegisterWebAuthnCredentialCommand(
                 user.Value.Id,
                 command.ClientDataJson,
@@ -147,9 +148,9 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
         return Task.FromResult(OperationResultFactory.Success(
             new HelloWebAuthnAssertionChallenge(
                 issued.Ticket,
-                options.WebAuthn.RelyingPartyId,
+                webAuthn!.RelyingPartyId,
                 issued.Payload.Challenge,
-                options.WebAuthn.UserVerificationRequired,
+                webAuthn!.UserVerificationRequired,
                 issued.Payload.ExpiresAt)));
     }
 
@@ -173,7 +174,7 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
                 ticket.Errors);
         }
 
-        var authenticated = await credentials.AuthenticateAsync(
+        var authenticated = await credentials!.AuthenticateAsync(
             new AuthenticateWebAuthnCommand(
                 command.CredentialId,
                 command.ClientDataJson,
@@ -216,7 +217,7 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
                 IReadOnlyList<HelloWebAuthnCredential>>(user.Errors);
         }
 
-        var listed = await credentials.ListAsync(user.Value.Id, cancellationToken);
+        var listed = await credentials!.ListAsync(user.Value.Id, cancellationToken);
         return listed.IsSuccess
             ? OperationResultFactory.Success<IReadOnlyList<HelloWebAuthnCredential>>(
                 [.. listed.Value.Select(Describe)])
@@ -229,7 +230,7 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        if (!options.WebAuthn.Enabled)
+        if (credentials is null || webAuthn is null)
         {
             return OperationResultFactory.Fail(Disabled());
         }
@@ -259,7 +260,7 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
                 ErrorType.Conflict));
         }
 
-        return await credentials.RemoveAsync(
+        return await credentials!.RemoveAsync(
             new RemoveWebAuthnCredentialCommand(
                 user.Value.Id,
                 command.CredentialId,
@@ -283,7 +284,7 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
             return OperationResultFactory.Success(false);
         }
 
-        var listed = await credentials.ListAsync(userId, cancellationToken);
+        var listed = await credentials!.ListAsync(userId, cancellationToken);
         return listed.IsSuccess
             ? OperationResultFactory.Success(
                 !listed.Value.Any(item => item.Id != credentialId))
@@ -317,8 +318,15 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
                 ErrorType.Unauthorized));
     }
 
+    /// <summary>
+    /// Passkeys are available exactly when the identity builder was told to
+    /// support them. Asked of the container rather than of a second flag here:
+    /// a flag can be set on a host that never called UseWebAuthn, and the
+    /// failure would then be a missing service on the first request rather than
+    /// an answer.
+    /// </summary>
     private OperationResult<T>? Unavailable<T>()
-        => options.WebAuthn.Enabled
+        => credentials is not null && webAuthn is not null
             ? null
             : OperationResultFactory.Fail<T>(Disabled());
 

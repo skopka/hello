@@ -8,8 +8,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Hello;
 using Skopka.Hello.Oidc;
+using Skopka.Hello.WebAuthn;
 using Skopka.Identity.Errors;
 using Skopka.Identity.Sessions;
+using Skopka.Identity.WebAuthn;
 
 namespace Skopka.Hello.Endpoints;
 
@@ -259,6 +261,51 @@ public static class HelloEndpointRouteBuilderExtensions
             .RequireAuthorization()
             .WithName("SkopkaHelloDeleteSession");
 
+
+        // Mapped when the identity builder was told to support passkeys, which
+        // is the one place that decides it. A route offered by a host with no
+        // WebAuthn service is a route that answers with a missing dependency.
+        if (endpoints.ServiceProvider
+            .GetService<IIdentityWebAuthnService<TProfile>>() is not null)
+        {
+            // Both halves of signing in are anonymous: a passkey identifies
+            // itself, and there is nobody to authorize until it has.
+            endpoints.MapPost(
+                    "/auth/passkey/challenge",
+                    BeginWebAuthnSignInAsync<TProfile>)
+                .AllowAnonymous()
+                .WithName("SkopkaHelloBeginPasskeySignIn");
+
+            endpoints.MapPost(
+                    "/auth/passkey",
+                    CompleteWebAuthnSignInAsync<TProfile>)
+                .AllowAnonymous()
+                .WithName("SkopkaHelloCompletePasskeySignIn");
+
+            endpoints.MapGet(
+                    "/account/passkeys",
+                    ListWebAuthnCredentialsAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloListPasskeys");
+
+            endpoints.MapPost(
+                    "/account/passkeys/challenge",
+                    BeginWebAuthnRegistrationAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloBeginPasskeyRegistration");
+
+            endpoints.MapPost(
+                    "/account/passkeys",
+                    CompleteWebAuthnRegistrationAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloCompletePasskeyRegistration");
+
+            endpoints.MapDelete(
+                    "/account/passkeys/{credentialId:guid}",
+                    RemoveWebAuthnCredentialAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloRemovePasskey");
+        }
         if (helloOptions.Totp.Enabled)
         {
             endpoints.MapGet(
@@ -2220,6 +2267,237 @@ public static class HelloEndpointRouteBuilderExtensions
                 ? timeProvider.GetUtcNow()
                 : null);
 
+
+    private static Task<IResult> BeginWebAuthnSignInAsync<TProfile>(
+        IHelloWebAuthnApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => ChallengeAsync(
+            application.BeginSignInAsync(
+                new HelloBeginWebAuthnSignInCommand(
+                    requestContext.CreateClientKey(httpContext)),
+                cancellationToken),
+            httpContext,
+            challenge => new WebAuthnAssertionChallengeResponse(
+                challenge.Ticket,
+                challenge.RelyingPartyId,
+                Base64UrlTextEncoder.Encode(challenge.Challenge),
+                challenge.UserVerificationRequired,
+                challenge.ExpiresAt));
+
+    private static async Task<IResult> CompleteWebAuthnSignInAsync<TProfile>(
+        CompleteWebAuthnSignInRequest request,
+        IHelloWebAuthnApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        SkopkaHelloOptions options,
+        IHelloSessionCookieManager cookies,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var transport = cookies.ValidateTransport(httpContext);
+        if (!transport.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(transport, httpContext);
+        }
+
+        if (!TryDecode(request.CredentialId, out var credentialId)
+            || !TryDecode(request.ClientDataJson, out var clientData)
+            || !TryDecode(request.AuthenticatorData, out var authenticatorData)
+            || !TryDecode(request.Signature, out var signature))
+        {
+            return InvalidWebAuthnResponse(httpContext);
+        }
+
+        var authenticated = await application.SignInAsync(
+            new HelloCompleteWebAuthnSignInCommand(
+                request.Ticket,
+                credentialId,
+                clientData,
+                authenticatorData,
+                signature,
+                requestContext.CreateSessionMetadata(
+                    httpContext,
+                    options.ClientName),
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+        if (!authenticated.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(
+                authenticated,
+                httpContext);
+        }
+
+        cookies.WriteSessionCookies(httpContext, authenticated.Value.Session);
+        return TypedResults.Ok(ToSessionResponse(authenticated.Value.Session));
+    }
+
+    private static async Task<IResult> ListWebAuthnCredentialsAsync<TProfile>(
+        IHelloWebAuthnApplication<TProfile> application,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.ListAsync(accessToken, cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Ok(
+                result.Value.Select(ToWebAuthnCredentialResponse).ToArray())
+            : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    private static async Task<IResult> BeginWebAuthnRegistrationAsync<TProfile>(
+        IHelloWebAuthnApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        return await ChallengeAsync(
+            application.BeginRegistrationAsync(
+                new HelloBeginWebAuthnRegistrationCommand(
+                    accessToken,
+                    requestContext.CreateClientKey(httpContext)),
+                cancellationToken),
+            httpContext,
+            challenge => new WebAuthnRegistrationChallengeResponse(
+                challenge.Ticket,
+                challenge.RelyingPartyId,
+                challenge.RelyingPartyName,
+                Base64UrlTextEncoder.Encode(challenge.Challenge),
+                Base64UrlTextEncoder.Encode(challenge.UserHandle),
+                challenge.UserName,
+                challenge.UserDisplayName,
+                [.. challenge.ExistingCredentialIds.Select(
+                    Base64UrlTextEncoder.Encode)],
+                challenge.Algorithms,
+                challenge.UserVerificationRequired,
+                challenge.ExpiresAt));
+    }
+
+    private static async Task<IResult> CompleteWebAuthnRegistrationAsync<TProfile>(
+        CompleteWebAuthnRegistrationRequest request,
+        IHelloWebAuthnApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        if (!TryDecode(request.ClientDataJson, out var clientData)
+            || !TryDecode(request.AttestationObject, out var attestation))
+        {
+            return InvalidWebAuthnResponse(httpContext);
+        }
+
+        var result = await application.CompleteRegistrationAsync(
+            new HelloCompleteWebAuthnRegistrationCommand(
+                accessToken,
+                request.Ticket,
+                clientData,
+                attestation,
+                request.Label,
+                requestContext.CreateClientKey(httpContext)),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Ok(ToWebAuthnCredentialResponse(result.Value))
+            : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    private static async Task<IResult> RemoveWebAuthnCredentialAsync<TProfile>(
+        Guid credentialId,
+        IHelloWebAuthnApplication<TProfile> application,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var accessToken = ReadBearerToken(httpContext);
+        if (accessToken is null)
+        {
+            return InvalidSession(httpContext);
+        }
+
+        var result = await application.RemoveAsync(
+            new HelloRemoveWebAuthnCredentialCommand(accessToken, credentialId),
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.NoContent()
+            : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    /// <summary>
+    /// A challenge is issued the same way for both ceremonies, and only the
+    /// shape of the answer differs.
+    /// </summary>
+    private static async Task<IResult> ChallengeAsync<TChallenge, TResponse>(
+        Task<OperationResult<TChallenge>> issuing,
+        HttpContext httpContext,
+        Func<TChallenge, TResponse> describe)
+    {
+        var issued = await issuing;
+        return issued.IsSuccess
+            ? TypedResults.Ok(describe(issued.Value))
+            : OperationResultProblemMapper.ToResult(issued, httpContext);
+    }
+
+    /// <summary>
+    /// A response whose fields are not even base64url never came from an
+    /// authenticator, so it is answered before anything is looked up.
+    /// </summary>
+    private static bool TryDecode(string? value, out byte[] decoded)
+    {
+        decoded = [];
+        if (string.IsNullOrEmpty(value) || value.Length > 32768)
+        {
+            return false;
+        }
+
+        try
+        {
+            decoded = Base64UrlTextEncoder.Decode(value);
+            return decoded.Length > 0;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private static Microsoft.AspNetCore.Http.HttpResults.ProblemHttpResult
+        InvalidWebAuthnResponse(HttpContext httpContext)
+        => OperationResultProblemMapper.ToResult(
+            OperationResultFactory.Fail(new Error(
+                HelloWebAuthnErrorCodes.ChallengeInvalid,
+                "The authenticator response cannot be read.",
+                ErrorType.Validation)),
+            httpContext);
+
+    private static WebAuthnCredentialResponse ToWebAuthnCredentialResponse(
+        HelloWebAuthnCredential credential)
+        => new(
+            credential.Id,
+            credential.Label,
+            credential.BackedUp,
+            credential.CreatedAt,
+            credential.LastUsedAt);
     private static TotpStateResponse ToTotpStateResponse(
         HelloTotpState state)
         => new(

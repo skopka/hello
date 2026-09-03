@@ -94,6 +94,15 @@ ready Server backs this replay guard with the persistent HMAC rate limiter;
 hosts without one use the bounded process-local fallback or replace
 `IHelloOidcFlowStore` with a shared atomic implementation.
 
+Passkeys are available when the identity builder registered the WebAuthn
+service; there is no second flag, because a flag set on a host that never called
+UseWebAuthn is a route that fails on its first request. Identity owns the
+credential, the relying party id and the allowed origins. Hello owns the
+challenge: it travels as a protected ticket rather than a stored row, because
+most started ceremonies are never finished, and single use is enforced through
+the same replay guard the external OIDC flow uses. Signing in names no account
+and asks for none. Removing a key preserves at least one enabled sign-in method.
+
 The optional authorization server uses OpenIddict authorization code with
 mandatory PKCE for pre-registered native and BFF clients. Authorization codes
 and rotating refresh tokens remain reference tokens. Access tokens are opaque

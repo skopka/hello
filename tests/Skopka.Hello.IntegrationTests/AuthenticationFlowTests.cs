@@ -4570,6 +4570,277 @@ public sealed class AuthenticationFlowTests
         MergeCookies(cookies, response);
     }
 
+
+    /// <summary>
+    /// The whole passkey round trip over HTTP: a key registered against a
+    /// session, then a sign-in that types nothing, then the challenge refused
+    /// the second time it is offered.
+    ///
+    /// A software authenticator stands in for a real one. What it exercises is
+    /// every link between the browser and the database — base64url on the wire,
+    /// the protected ticket, the single-use guard, the verifier, the credential
+    /// row and the session that comes out — none of which a unit test reaches.
+    /// </summary>
+    [Fact]
+    public async Task PasskeyRegistersAgainstASessionAndThenSignsInAlone()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            passkeysEnabled: true);
+        using var client = app.CreateClient();
+        const string email = "passkey@example.test";
+        const string password = "correct horse battery staple";
+
+        using var registration = await client.PostAsJsonAsync(
+            "/auth/register",
+            new
+            {
+                userName = "passkey-alice",
+                email,
+                phone = (string?)null,
+                profile = new
+                {
+                    displayName = "Passkey Alice",
+                    locale = "en",
+                },
+                password,
+            });
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+        var actor = await LoginAsync(client, email, password);
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", actor.AccessToken);
+
+        // Nothing yet, and the list says so rather than failing.
+        using var empty = await client.GetAsync("/account/passkeys");
+        Assert.Equal(HttpStatusCode.OK, empty.StatusCode);
+        Assert.Empty(await empty.Content
+            .ReadFromJsonAsync<WebAuthnCredentialResponse[]>(WebJsonOptions)
+            ?? []);
+
+        using var beginRegistration = await client.PostAsync(
+            "/account/passkeys/challenge",
+            content: null);
+        Assert.Equal(HttpStatusCode.OK, beginRegistration.StatusCode);
+        var offer = await beginRegistration.Content
+            .ReadFromJsonAsync<WebAuthnRegistrationChallengeResponse>(
+                WebJsonOptions);
+        Assert.NotNull(offer);
+        Assert.Equal("integration.skopka.test", offer.RelyingPartyId);
+        Assert.True(offer.UserVerificationRequired);
+        Assert.Contains(-7, offer.Algorithms);
+
+        var authenticator = new SoftwareAuthenticator(offer.RelyingPartyId);
+        using var completeRegistration = await client.PostAsJsonAsync(
+            "/account/passkeys",
+            new CompleteWebAuthnRegistrationRequest(
+                offer.Ticket,
+                Base64UrlTextEncoder.Encode(
+                    SoftwareAuthenticator.ClientData("webauthn.create", offer.Challenge)),
+                Base64UrlTextEncoder.Encode(authenticator.Attestation()),
+                "Ключ на ноутбуке"),
+            WebJsonOptions);
+        Assert.Equal(HttpStatusCode.OK, completeRegistration.StatusCode);
+        var credential = await completeRegistration.Content
+            .ReadFromJsonAsync<WebAuthnCredentialResponse>(WebJsonOptions);
+        Assert.NotNull(credential);
+        Assert.Equal("Ключ на ноутбуке", credential.Label);
+        Assert.Null(credential.LastUsedAt);
+
+        // A ticket is worth one answer. The same one again is refused before
+        // the authenticator response is even looked at.
+        using var replayedRegistration = await client.PostAsJsonAsync(
+            "/account/passkeys",
+            new CompleteWebAuthnRegistrationRequest(
+                offer.Ticket,
+                Base64UrlTextEncoder.Encode(
+                    SoftwareAuthenticator.ClientData("webauthn.create", offer.Challenge)),
+                Base64UrlTextEncoder.Encode(authenticator.Attestation()),
+                null),
+            WebJsonOptions);
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            replayedRegistration.StatusCode);
+
+        // From here on nobody is signed in: this is what a sign-in with a
+        // passkey has to work from.
+        using var anonymous = app.CreateClient();
+        using var beginSignIn = await anonymous.PostAsync(
+            "/auth/passkey/challenge",
+            content: null);
+        Assert.Equal(HttpStatusCode.OK, beginSignIn.StatusCode);
+        var assertionOffer = await beginSignIn.Content
+            .ReadFromJsonAsync<WebAuthnAssertionChallengeResponse>(WebJsonOptions);
+        Assert.NotNull(assertionOffer);
+
+        var clientData = SoftwareAuthenticator.ClientData(
+            "webauthn.get",
+            assertionOffer.Challenge);
+        var assertion = authenticator.Assert(clientData);
+        using var signedIn = await anonymous.PostAsJsonAsync(
+            "/auth/passkey",
+            new CompleteWebAuthnSignInRequest(
+                assertionOffer.Ticket,
+                Base64UrlTextEncoder.Encode(authenticator.CredentialId),
+                Base64UrlTextEncoder.Encode(clientData),
+                Base64UrlTextEncoder.Encode(assertion.AuthenticatorData),
+                Base64UrlTextEncoder.Encode(assertion.Signature)),
+            WebJsonOptions);
+        Assert.Equal(HttpStatusCode.OK, signedIn.StatusCode);
+        var passkeySession = await signedIn.Content
+            .ReadFromJsonAsync<SessionPayload>(WebJsonOptions);
+        Assert.NotNull(passkeySession);
+        Assert.False(string.IsNullOrWhiteSpace(passkeySession.AccessToken));
+
+        // The session a passkey issued is a session: it reads the account it
+        // belongs to, and the account is the one the key was registered for.
+        anonymous.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", passkeySession.AccessToken);
+        using var account = await anonymous.GetAsync("/account/me");
+        Assert.Equal(HttpStatusCode.OK, account.StatusCode);
+        Assert.Contains(
+            email,
+            await account.Content.ReadAsStringAsync(),
+            StringComparison.Ordinal);
+
+        // And the key now says when it was last used, which the first listing
+        // could not.
+        using var used = await client.GetAsync("/account/passkeys");
+        var listed = Assert.Single(
+            await used.Content.ReadFromJsonAsync<WebAuthnCredentialResponse[]>(
+                WebJsonOptions) ?? []);
+        Assert.NotNull(listed.LastUsedAt);
+
+        // A password remains, so the key may go.
+        using var removed = await client.DeleteAsync(
+            $"/account/passkeys/{listed.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
+    }
+
+    /// <summary>
+    /// Not offered at all by a host that never asked for passkeys, rather than
+    /// offered and answering that they are unavailable.
+    /// </summary>
+    [Fact]
+    public async Task PasskeyRoutesAreAbsentWhenTheHostDidNotAskForThem()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString());
+        using var client = app.CreateClient();
+
+        using var challenge = await client.PostAsync(
+            "/auth/passkey/challenge",
+            content: null);
+
+        Assert.Equal(HttpStatusCode.NotFound, challenge.StatusCode);
+    }
+
+    /// <summary>
+    /// One authenticator, in the byte layouts the specification defines. The
+    /// same shape the library's own tests use, repeated here because what is
+    /// being exercised is the wire and not the verifier.
+    /// </summary>
+    private sealed class SoftwareAuthenticator(string relyingParty)
+    {
+        private readonly ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        private uint counter;
+
+        public byte[] CredentialId { get; } =
+            RandomNumberGenerator.GetBytes(32);
+
+        public static byte[] ClientData(string ceremony, string challenge)
+            => System.Text.Encoding.UTF8.GetBytes(
+                $$"""
+                {"type":"{{ceremony}}","challenge":"{{challenge}}","origin":"https://integration.skopka.test","crossOrigin":false}
+                """);
+
+        public byte[] Attestation()
+        {
+            var writer = new System.Formats.Cbor.CborWriter(
+                System.Formats.Cbor.CborConformanceMode.Ctap2Canonical);
+            writer.WriteStartMap(3);
+            writer.WriteTextString("fmt");
+            writer.WriteTextString("none");
+            writer.WriteTextString("attStmt");
+            writer.WriteStartMap(0);
+            writer.WriteEndMap();
+            writer.WriteTextString("authData");
+            writer.WriteByteString(AttestedData());
+            writer.WriteEndMap();
+            return writer.Encode();
+        }
+
+        public (byte[] AuthenticatorData, byte[] Signature) Assert(
+            byte[] clientDataJson)
+        {
+            counter++;
+            var data = Header();
+            var signed = new byte[data.Length + SHA256.HashSizeInBytes];
+            data.CopyTo(signed, 0);
+            SHA256.HashData(clientDataJson, signed.AsSpan(data.Length));
+            return (
+                data,
+                key.SignData(
+                    signed,
+                    HashAlgorithmName.SHA256,
+                    DSASignatureFormat.Rfc3279DerSequence));
+        }
+
+        private byte[] Header()
+        {
+            var data = new byte[37];
+            SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(relyingParty),
+                data);
+            // Present and verified, which is what a platform authenticator
+            // reports after a fingerprint or a face.
+            data[32] = 0b0000_0101;
+            BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(33), counter);
+            return data;
+        }
+
+        private byte[] AttestedData()
+        {
+            var header = Header();
+            // The attested-credential flag: the key follows the header.
+            header[32] |= 0b0100_0000;
+            var cose = CoseKey();
+            var data = new byte[
+                header.Length + 16 + 2 + CredentialId.Length + cose.Length];
+            header.CopyTo(data, 0);
+            BinaryPrimitives.WriteUInt16BigEndian(
+                data.AsSpan(header.Length + 16),
+                (ushort)CredentialId.Length);
+            CredentialId.CopyTo(data, header.Length + 18);
+            cose.CopyTo(data, header.Length + 18 + CredentialId.Length);
+            return data;
+        }
+
+        private byte[] CoseKey()
+        {
+            var parameters = key.ExportParameters(false);
+            var writer = new System.Formats.Cbor.CborWriter(
+                System.Formats.Cbor.CborConformanceMode.Ctap2Canonical);
+            writer.WriteStartMap(5);
+            writer.WriteInt32(1);
+            writer.WriteInt32(2);
+            writer.WriteInt32(3);
+            writer.WriteInt32(-7);
+            writer.WriteInt32(-1);
+            writer.WriteInt32(1);
+            writer.WriteInt32(-2);
+            writer.WriteByteString(parameters.Q.X!);
+            writer.WriteInt32(-3);
+            writer.WriteByteString(parameters.Q.Y!);
+            writer.WriteEndMap();
+            return writer.Encode();
+        }
+    }
     private static async Task<LoginResult> LoginAsync(
         HttpClient client,
         string login = "alice@example.test",
@@ -4983,7 +5254,8 @@ public sealed class AuthenticationFlowTests
             Action<SkopkaHelloUiOptions>? configureUi = null,
             Action<SkopkaHelloAdminOptions>? configureAdmin = null,
             Action<SkopkaHelloOptions>? configureHello = null,
-            bool crossDeviceEnabled = false)
+            bool crossDeviceEnabled = false,
+            bool passkeysEnabled = false)
         {
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions
@@ -5029,6 +5301,15 @@ public sealed class AuthenticationFlowTests
                 })
                 .UseDataProtectionActionTokens()
                 .UseDataProtectionTotp();
+            if (passkeysEnabled)
+            {
+                identity.UseWebAuthn(options =>
+                {
+                    options.RelyingPartyId = "integration.skopka.test";
+                    options.Origins.Add("https://integration.skopka.test");
+                });
+            }
+
             var jwtKeys = new Dictionary<string, byte[]>
             {
                 ["v1"] = RandomNumberGenerator.GetBytes(32),

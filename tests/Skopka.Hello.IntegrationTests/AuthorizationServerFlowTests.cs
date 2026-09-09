@@ -34,6 +34,9 @@ public sealed class AuthorizationServerFlowTests
     private const string BrowserScheme = "Test.Browser";
     private const string ClientId = "native-test";
     private const string RedirectUri = "com.example.test:/callback";
+    private const string TrustedClientId = "trusted-webui";
+    private const string TrustedRedirectUri =
+        "https://trusted.example.test/oauth/callback";
     private const string PortalClientId = "home-portal";
     private const string PortalClientSecret = "home-portal-test-secret";
     private const string PortalRedirectUri =
@@ -221,6 +224,70 @@ public sealed class AuthorizationServerFlowTests
         // page from that; this handler has no page and answers plainly.
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Null(response.Headers.Location);
+    }
+
+    [Fact]
+    public async Task PromptLoginReauthenticatesAClientThatHonorsIt()
+    {
+        // The default: prompt=login means fresh credentials, so an existing
+        // session is signed out and the request returns to the sign-in form
+        // rather than issuing a code.
+        await using var host = await TestAuthorizationHost.CreateAsync();
+        const string verifier =
+            "prompt-login-honored-abcdefghijklmnopqrstuvwxyz-0123456789";
+        var authorizeUri = QueryHelpers.AddQueryString(
+            "/connect/authorize",
+            new Dictionary<string, string?>
+            {
+                [Parameters.ClientId] = ClientId,
+                [Parameters.RedirectUri] = RedirectUri,
+                [Parameters.ResponseType] = ResponseTypes.Code,
+                [Parameters.Scope] = "openid profile",
+                [Parameters.CodeChallenge] = CreateChallenge(verifier),
+                [Parameters.CodeChallengeMethod] =
+                    CodeChallengeMethods.Sha256,
+                [Parameters.Prompt] = "login",
+            });
+
+        using var response = await host.Client.GetAsync(authorizeUri);
+
+        // The browser scheme is signed out and challenged; the real cookie
+        // scheme would render the sign-in page, this stand-in answers 401.
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(response.Headers.Location);
+    }
+
+    [Fact]
+    public async Task PromptLoginIsIgnoredForAClientThatDoesNotHonorIt()
+    {
+        // A trusted first-party client whose sign-in code sends prompt=login
+        // on every attempt is met with the existing session instead of being
+        // signed out, so opening it does not demand the password again.
+        await using var host = await TestAuthorizationHost.CreateAsync();
+        const string verifier =
+            "prompt-login-ignored-abcdefghijklmnopqrstuvwxyz-0123456789";
+        var authorizeUri = QueryHelpers.AddQueryString(
+            "/connect/authorize",
+            new Dictionary<string, string?>
+            {
+                [Parameters.ClientId] = TrustedClientId,
+                [Parameters.RedirectUri] = TrustedRedirectUri,
+                [Parameters.ResponseType] = ResponseTypes.Code,
+                [Parameters.Scope] = "openid profile",
+                [Parameters.CodeChallenge] = CreateChallenge(verifier),
+                [Parameters.CodeChallengeMethod] =
+                    CodeChallengeMethods.Sha256,
+                [Parameters.Prompt] = "login",
+            });
+
+        using var response = await host.Client.GetAsync(authorizeUri);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var location = Assert.IsType<Uri>(response.Headers.Location);
+        Assert.Equal("trusted.example.test", location.Host);
+        var query = QueryHelpers.ParseQuery(location.Query);
+        Assert.False(query.ContainsKey(Parameters.Error));
+        Assert.False(string.IsNullOrEmpty(query[Parameters.Code]));
     }
 
     [Fact]
@@ -935,6 +1002,20 @@ public sealed class AuthorizationServerFlowTests
                                 MailScope,
                             ],
                         });
+                    options.Clients.Add(
+                        new HelloAuthorizationClientOptions
+                        {
+                            ClientId = TrustedClientId,
+                            DisplayName = "Trusted web interface",
+                            Type = HelloAuthorizationClientType.Public,
+                            RedirectUris = [TrustedRedirectUri],
+                            HonorReauthenticationPrompts = false,
+                            Scopes =
+                            [
+                                Scopes.OpenId,
+                                Scopes.Profile,
+                            ],
+                        });
                 },
                 server =>
                 {
@@ -1064,8 +1145,15 @@ public sealed class AuthorizationServerFlowTests
         : AuthenticationHandler<AuthenticationSchemeOptions>(
             options,
             logger,
-            encoder)
+            encoder),
+            IAuthenticationSignOutHandler
     {
+        // A forced sign-in signs the browser scheme out before challenging;
+        // the real scheme is a cookie, and this stand-in only has to accept
+        // the call so that path can be exercised.
+        public Task SignOutAsync(AuthenticationProperties? properties)
+            => Task.CompletedTask;
+
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
             if (!session.IsSignedIn)

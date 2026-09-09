@@ -190,6 +190,21 @@ client configuration change. That command applies the schema and makes the
 stored client set exactly match configuration; removing a client deletes its
 OpenIddict registration and grants.
 
+## Re-authentication prompts
+
+By default a `prompt=login` or `max_age` on the authorization request forces a
+fresh sign-in: the browser session is signed out and the request returns to the
+sign-in form, which is what OpenID Connect asks for. Set a client's
+`HonorReauthenticationPrompts` to `false` when its sign-in code sends one of
+those on every attempt regardless of intent. The request is then met with the
+existing single sign-on session instead of tearing it down, so opening that
+client does not sign the browser out of every other client or demand the
+password again. This is a per-client property; it changes nothing for a request
+that carries neither value, and nothing for any other client. It is read live
+from configuration and is not stored in the OpenIddict registration, so it does
+not need `--migrate`. Reserve it for trusted first-party clients: a client that
+genuinely wants step-up re-authentication must keep the default.
+
 ## Composite bearer validation
 
 The composed bearer policy supports the existing Skopka.Identity JWT, OAuth

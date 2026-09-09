@@ -28,3 +28,10 @@ clients never have secrets and always require PKCE. Confidential clients must
 authenticate at the token endpoint and also require PKCE. Consent is implicit
 only for these pre-registered first-party clients; there is no third-party
 consent or authorization UI in this module.
+
+A `prompt=login` or `max_age` on the authorization request forces a fresh
+sign-in by default. A client may opt out with
+`HonorReauthenticationPrompts = false`, which reuses the existing session for a
+trusted first-party client whose sign-in code sends one of those unconditionally.
+The flag is read live from configured options at the authorization endpoint, not
+persisted in the OpenIddict registration, so it needs no synchronization.

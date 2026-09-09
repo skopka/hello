@@ -77,7 +77,7 @@ public static class
         if (!TryGetClientResource(
                 request,
                 options,
-                out _,
+                out var client,
                 out var resource))
         {
             return Forbid(
@@ -107,8 +107,15 @@ public static class
                 "Account selection is not supported.");
         }
 
-        var forceLogin = HasPrompt(request, "login")
-            || httpContext.Request.Query.ContainsKey("max_age");
+        // A client that does not honor re-authentication never forces a fresh
+        // sign-in, even when its request asks for one. Stalwart's bundled web
+        // interface sends prompt=login on every attempt, which would sign the
+        // shared session out and demand the password each time the mail admin
+        // is opened; treating that client's request as ordinary keeps single
+        // sign-on intact.
+        var forceLogin = client.HonorReauthenticationPrompts
+            && (HasPrompt(request, "login")
+                || httpContext.Request.Query.ContainsKey("max_age"));
 
         // Account selection is decided after the sign-in is known, below.
         // Choosing an account is a question about the accounts this browser

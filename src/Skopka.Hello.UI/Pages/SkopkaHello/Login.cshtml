@@ -97,10 +97,90 @@
             }
         </div>
         <div class="hello-divider" role="separator">
-            <span>@Text["Login.OrUsePassword"]</span>
+            <span>@(Model.PasswordEnabled
+                ? Text["Login.OrUsePassword"]
+                : Text["Phone.OrUsePhone"])</span>
         </div>
     }
 
+    @if (Model.PhoneEnabled)
+    {
+        <div class="hello-phone-login">
+            <div asp-validation-summary="ModelOnly"
+                 class="hello-validation" role="alert"></div>
+            @if (!string.IsNullOrEmpty(Model.Phone.RegistrationToken))
+            {
+                <form method="post" asp-page-handler="PhoneRegister"
+                      class="hello-form">
+                    <input asp-for="ReturnUrl" type="hidden" />
+                    <input asp-for="Phone.RegistrationToken" type="hidden" />
+                    <p>@Text["Phone.RegistrationPrompt"]</p>
+                    <label asp-for="Phone.DisplayName">@Text["Field.DisplayName"]</label>
+                    <input asp-for="Phone.DisplayName" autocomplete="name" />
+                    <label asp-for="Phone.Locale">@Text["Field.Locale"]</label>
+                    <input asp-for="Phone.Locale" />
+                    @if (UiOptions.TermsOfServiceUrl is not null)
+                    {
+                        <label>
+                            <input asp-for="Phone.AcceptTermsOfService" />
+                            @Text["Legal.AcceptTermsOfServicePrefix"]
+                            <a href="@UiOptions.TermsOfServiceUrl">
+                                @Text["Legal.TermsOfService"]</a>
+                        </label>
+                    }
+                    @if (UiOptions.PrivacyPolicyUrl is not null)
+                    {
+                        <label>
+                            <input asp-for="Phone.AcceptPrivacyPolicy" />
+                            @Text["Legal.AcceptPrivacyPolicyPrefix"]
+                            <a href="@UiOptions.PrivacyPolicyUrl">
+                                @Text["Legal.PrivacyPolicy"]</a>
+                        </label>
+                    }
+                    <button class="hello-button" type="submit">
+                        @Text["Phone.CompleteRegistration"]
+                    </button>
+                </form>
+            }
+            else
+            {
+                <form method="post" asp-page-handler="PhoneRequest"
+                      class="hello-form">
+                    <input asp-for="ReturnUrl" type="hidden" />
+                    <label asp-for="Phone.PhoneNumber">@Text["Phone.Number"]</label>
+                    <input asp-for="Phone.PhoneNumber" type="tel"
+                           autocomplete="tel" placeholder="+79991234567" />
+                    <button class="hello-button hello-button-secondary"
+                            type="submit"
+                            data-phone-resend
+                            data-countdown-label="@Text["Phone.ResendIn"]"
+                            data-retry-seconds="@Model.Phone.RetryAfterSeconds">
+                        @(Model.Phone.RequestId == Guid.Empty
+                            ? Text["Phone.RequestCode"]
+                            : Text["Phone.ResendCode"])
+                    </button>
+                </form>
+                @if (Model.Phone.RequestId != Guid.Empty)
+                {
+                    <form method="post" asp-page-handler="PhoneVerify"
+                          class="hello-form">
+                        <input asp-for="ReturnUrl" type="hidden" />
+                        <input asp-for="Phone.RequestId" type="hidden" />
+                        <input asp-for="Phone.PhoneNumber" type="hidden" />
+                        <label asp-for="Phone.Code">@Text["Phone.Code"]</label>
+                        <input asp-for="Phone.Code" inputmode="numeric"
+                               autocomplete="one-time-code" />
+                        <button class="hello-button" type="submit">
+                            @Text["Phone.VerifyCode"]
+                        </button>
+                    </form>
+                }
+            }
+        </div>
+    }
+
+    @if (Model.PasswordEnabled)
+    {
     <form method="post" class="hello-form">
         <input asp-for="ReturnUrl" type="hidden" />
         <div asp-validation-summary="ModelOnly"
@@ -133,6 +213,7 @@
             @Text["Layout.SignIn"]
         </button>
     </form>
+    }
 
     @if (Model.PasskeysEnabled)
     {
@@ -192,14 +273,16 @@
         </form>
     }
 
-    @if ((HelloOptions.SelfRegistrationEnabled
+    @if ((HelloOptions.PasswordSignInEnabled
+            && HelloOptions.SelfRegistrationEnabled
             && (UiOptions.EnabledPages & HelloUiPages.Registration) != 0)
         || (UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0
             && (UiOptions.ContactConfirmation.EmailEnabled
                 || UiOptions.ContactConfirmation.PhoneEnabled))
     {
         <p class="hello-card-footer">
-            @if (HelloOptions.SelfRegistrationEnabled
+            @if (HelloOptions.PasswordSignInEnabled
+                && HelloOptions.SelfRegistrationEnabled
                 && (UiOptions.EnabledPages & HelloUiPages.Registration) != 0)
             {
                 <span>@Text["Login.NeedAccount"]</span>
@@ -231,6 +314,11 @@
         </p>
     }
 </section>
+
+@if (Model.PhoneEnabled)
+{
+    <script src="/_content/Skopka.Hello.UI/js/phone-otp.js" defer></script>
+}
 
 @if (Model.PasskeysEnabled)
 {

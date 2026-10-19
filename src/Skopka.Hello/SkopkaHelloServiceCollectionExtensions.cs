@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Skopka.Identity;
 using Skopka.Identity.SecurityEvents;
+using Skopka.Identity.Authentication;
+using Skopka.Identity.Credentials;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -48,6 +50,7 @@ public static class SkopkaHelloServiceCollectionExtensions
             Skopka.Hello.IHelloSecurityEventSink,
             Skopka.Hello.NullHelloSecurityEventSink>();
         services.AddSkopkaHelloDelivery();
+        services.TryAddSingleton<Skopka.Hello.HelloPhoneSmsTemplates>();
         services.TryAddSingleton<
             Skopka.Hello.IHelloAnonymousAccountMessageInbox,
             Skopka.Hello.InMemoryHelloAnonymousAccountMessageInbox>();
@@ -67,6 +70,22 @@ public static class SkopkaHelloServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.IHelloIdentityApplication<TProfile>,
             Skopka.Hello.HelloIdentityApplication<TProfile>>();
+        if (!options.PasswordSignInEnabled)
+        {
+            services.TryAddScoped<
+                Skopka.Hello.UnavailablePasswordServices<TProfile>>();
+            services.TryAddScoped<
+                IPasswordAuthenticationService<TProfile>>(provider =>
+                    provider.GetRequiredService<
+                        Skopka.Hello.UnavailablePasswordServices<TProfile>>());
+            services.TryAddScoped<
+                IPasswordCredentialService<TProfile>>(provider =>
+                    provider.GetRequiredService<
+                        Skopka.Hello.UnavailablePasswordServices<TProfile>>());
+        }
+        services.TryAddScoped<
+            Skopka.Hello.IHelloPhoneOtpApplication<TProfile>,
+            Skopka.Hello.HelloPhoneOtpApplication<TProfile>>();
         services.TryAddEnumerable(
             ServiceDescriptor.Scoped<
                 Skopka.Hello.IHelloAccessTokenValidator<TProfile>,
@@ -80,7 +99,7 @@ public static class SkopkaHelloServiceCollectionExtensions
         services.TryAddSingleton<Skopka.Hello.WebAuthn.HelloWebAuthnTickets>();
         services.TryAddSingleton<
             Skopka.Hello.WebAuthn.InMemoryHelloWebAuthnFlowStore>();
-        services.TryAddSingleton<
+        services.TryAddScoped<
             Skopka.Hello.WebAuthn.IHelloWebAuthnFlowStore,
             Skopka.Hello.WebAuthn.HelloWebAuthnFlowStore<TProfile>>();
         services.TryAddScoped<

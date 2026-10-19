@@ -10,9 +10,10 @@ provider integration, host composition and policy-separated administration.
 Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
-The current `0.10.2` vertical slice contains:
+The current `0.23.0` vertical slice contains:
 
 - atomic password registration;
+- passwordless SMS sign-in and atomic registration by verified phone;
 - automatic email, phone or user-name password login without user
   enumeration;
 - authorization-code OIDC sign-in with PKCE through configured external providers;
@@ -90,6 +91,9 @@ The same client is covered by real Chromium tests.
 | --- | --- | --- |
 | `POST` | `/auth/register` | Anonymous, when self-registration is enabled |
 | `POST` | `/auth/login` | Anonymous |
+| `POST` | `/auth/phone/request` | Anonymous; returns the same 202 shape for registered and unknown numbers when phone OTP is enabled |
+| `POST` | `/auth/phone/verify` | Anonymous; returns a session or protected registration token |
+| `POST` | `/auth/phone/register` | Anonymous; registration token, profile and legal consent, when self-registration is enabled |
 | `POST` | `/auth/cross-device` | Anonymous, when cross-device sign-in is enabled |
 | `GET` | `/auth/cross-device/{deviceCode}/status` | New-device verifier cookie |
 | `POST` | `/auth/cross-device/{deviceCode}/complete` | New-device verifier cookie |
@@ -150,15 +154,23 @@ The same client is covered by real Chromium tests.
 | `POST` | `/admin/roles/actions/{action}/challenge` | Bearer + current delete-role membership for CRUD, or role-assignment membership for assign/remove |
 | `POST` | `/admin/roles/actions/{action}` | Same live role policy + one-time code |
 
-When `SkopkaHelloOptions.SelfRegistrationEnabled` is false, password and
+When `SkopkaHelloOptions.SelfRegistrationEnabled` is false, password, phone and
 external self-registration operations return the shared
 `hello.registration.disabled` result and the built-in registration API and UI
 routes are not mapped. Existing password and external sign-in, recovery and
-account linking remain available. Registration calls
+account linking remain available. Password registration calls
 `IIdentityRegistrationService<TProfile>.RegisterPasswordAsync`; it is never
 implemented as separate user creation and password mutation. Login calls
 `IPasswordAuthenticationService<TProfile>`, then creates a session through
 `IIdentitySessionService<TProfile>`.
+
+`PhoneOtpEnabled` maps the three phone routes and adds the phone flow to the
+Razor login page. `PasswordSignInEnabled = false` removes password registration,
+login, reset and account password routes while leaving external OIDC available.
+Phone request responses never reveal whether a number belongs to an account;
+the code is sent through `HelloDeliveryChannel.Sms`. See the
+[SQLite Blazor sample](samples/Skopka.Hello.PhoneSqliteBlazor/README.md) and
+[security guidance](docs/security.md#phone-otp-sign-in).
 
 The optional [cross-device sign-in flow](docs/cross-device-sign-in.md) also
 creates the approved browser's independent session through the same session

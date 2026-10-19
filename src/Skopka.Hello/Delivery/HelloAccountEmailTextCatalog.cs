@@ -195,6 +195,11 @@ internal sealed class HelloAccountEmailTextCatalog
     {
         foreach (var kind in Enum.GetValues<HelloAccountMessageKind>())
         {
+            if (kind == HelloAccountMessageKind.PhoneSignInVerification)
+            {
+                continue;
+            }
+
             var keys = HelloAccountEmailTemplateRenderer.GetKeys(kind);
             _ = GetRequiredString(keys.Subject);
             _ = GetRequiredString(keys.Introduction);

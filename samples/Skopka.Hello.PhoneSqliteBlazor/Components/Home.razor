@@ -1,0 +1,13 @@
+@page "/"
+
+<h1>Четыре коня: пример входа</h1>
+<AuthorizeView>
+    <Authorized>
+        <p data-auth-state="signed-in">Вы вошли как @context.User.FindFirst(HelloUiDefaults.DisplayNameClaimType)?.Value.</p>
+        <a href="/private">Закрытая страница</a>
+    </Authorized>
+    <NotAuthorized>
+        <p data-auth-state="anonymous">Войдите по номеру телефона.</p>
+        <a href="/hello/login">Войти</a>
+    </NotAuthorized>
+</AuthorizeView>

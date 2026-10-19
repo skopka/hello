@@ -279,7 +279,9 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
             return OperationResultFactory.Fail<bool>(methods.Errors);
         }
 
-        if (methods.Value.HasPassword || methods.Value.ExternalLogins.Count > 0)
+        if (methods.Value.HasPassword
+            || (options.PhoneOtpEnabled && methods.Value.HasPhoneOtp)
+            || methods.Value.ExternalLogins.Count > 0)
         {
             return OperationResultFactory.Success(false);
         }

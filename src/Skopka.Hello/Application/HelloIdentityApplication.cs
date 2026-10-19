@@ -56,7 +56,8 @@ internal sealed class HelloIdentityApplication<TProfile>(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        if (!options.SelfRegistrationEnabled)
+        if (!options.SelfRegistrationEnabled
+            || !options.PasswordSignInEnabled)
         {
             return OperationResultFactory.Fail<
                 HelloAccount<TProfile>>(
@@ -133,6 +134,15 @@ internal sealed class HelloIdentityApplication<TProfile>(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
+
+        if (!options.PasswordSignInEnabled)
+        {
+            return OperationResultFactory.Fail<HelloSignIn<TProfile>>(
+                new Error(
+                    IdentityErrorCodes.InvalidCredentials,
+                    "Sign-in method is unavailable.",
+                    ErrorType.Unauthorized));
+        }
 
         var authenticated = await authentication.AuthenticateAsync(
             new AuthenticatePasswordCommand(
@@ -357,7 +367,9 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 new HelloCredentialState(
                     snapshot.Value.HasPassword,
                     snapshot.Value.HasPassword
-                    && snapshot.Value.ExternalLogins.Count > 0))
+                    && (snapshot.Value.ExternalLogins.Count > 0
+                        || options.PhoneOtpEnabled
+                            && snapshot.Value.HasPhoneOtp)))
             : OperationResultFactory.Fail<HelloCredentialState>(
                 snapshot.Errors);
     }
@@ -1148,6 +1160,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
         }
 
         return snapshot.Value.ExternalLogins.Count > 0
+            || options.PhoneOtpEnabled && snapshot.Value.HasPhoneOtp
             ? OperationResultFactory.Success()
             : OperationResultFactory.Fail(
                 new Error(

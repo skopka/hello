@@ -59,7 +59,8 @@ internal static class HelloAccountMessageValidator
             or HelloAccountMessageKind.ExternalLoginLinkVerification
             or HelloAccountMessageKind.ExternalLoginUnlinkVerification
             or HelloAccountMessageKind.AccountSecurityVerification
-            or HelloAccountMessageKind.AdminActionVerification;
+            or HelloAccountMessageKind.AdminActionVerification
+            or HelloAccountMessageKind.PhoneSignInVerification;
         if (isVerificationMessage
             && (message.ActionUrl is not null
                 || string.IsNullOrWhiteSpace(
@@ -80,6 +81,12 @@ internal static class HelloAccountMessageValidator
         }
 
         if (message.Kind == HelloAccountMessageKind.PhoneConfirmation
+            && message.Channel != HelloDeliveryChannel.Sms)
+        {
+            return ChannelMismatch();
+        }
+
+        if (message.Kind == HelloAccountMessageKind.PhoneSignInVerification
             && message.Channel != HelloDeliveryChannel.Sms)
         {
             return ChannelMismatch();

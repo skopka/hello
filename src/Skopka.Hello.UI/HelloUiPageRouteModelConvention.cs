@@ -5,6 +5,7 @@ namespace Skopka.Hello.UI;
 internal sealed class HelloUiPageRouteModelConvention(
     HelloUiRoutePaths routes,
     bool selfRegistrationEnabled,
+    bool passwordSignInEnabled,
     bool crossDeviceEnabled,
     bool accountSwitchingEnabled,
     HelloUiPages enabledPages,
@@ -31,19 +32,20 @@ internal sealed class HelloUiPageRouteModelConvention(
                     : null,
             ["/Pages/SkopkaHello/Register.cshtml"] =
                 selfRegistrationEnabled
+                && passwordSignInEnabled
                 && IsEnabled(
                     enabledPages,
                     HelloUiPages.Registration)
                 ? routes.RegisterPath
                 : null,
             ["/Pages/SkopkaHello/ForgotPassword.cshtml"] =
-                IsEnabled(
+                passwordSignInEnabled && IsEnabled(
                     enabledPages,
                     HelloUiPages.PasswordRecovery)
                     ? routes.ForgotPasswordPath
                     : null,
             ["/Pages/SkopkaHello/ResetPassword.cshtml"] =
-                IsEnabled(
+                passwordSignInEnabled && IsEnabled(
                     enabledPages,
                     HelloUiPages.PasswordRecovery)
                     ? routes.ResetPasswordPath
@@ -98,7 +100,7 @@ internal sealed class HelloUiPageRouteModelConvention(
                     ? routes.SessionsPath
                     : null,
             ["/Pages/SkopkaHello/Account/ChangePassword.cshtml"] =
-                IsEnabled(
+                passwordSignInEnabled && IsEnabled(
                     enabledPages,
                     HelloUiPages.AccountSecurity)
                     ? routes.ChangePasswordPath

@@ -10,6 +10,9 @@ public static class HelloUiDefaults
     public const string AuthorizationPolicy =
         "Skopka.Hello.UI.Authenticated";
 
+    public const string DisplayNameClaimType =
+        "skopka_hello_display_name";
+
     public const string AccessTokenName = "access_token";
 
     public const string BuiltInStylesheetPath =

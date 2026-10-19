@@ -57,6 +57,70 @@ public sealed class AuthenticationFlowTests
         "Test stand: <data> may be \"deleted\".";
 
     [Fact]
+    public async Task PhoneOtpApiRegistersWithPostgreSqlAndRejectsTicketReplay()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine")
+            .Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            configureHello: options => options.PhoneOtpEnabled = true);
+        using var client = app.CreateClient(allowAutoRedirect: false);
+
+        using var requested = await client.PostAsJsonAsync(
+            "/auth/phone/request", new { phone = "+79991234572" });
+        Assert.Equal(HttpStatusCode.Accepted, requested.StatusCode);
+        var challenge = await requested.Content.ReadFromJsonAsync<
+            PhoneCodeRequestResponse>();
+        Assert.NotNull(challenge);
+        Assert.NotEqual(Guid.Empty, challenge.RequestId);
+        Assert.True(challenge.RetryAfterSeconds > 0);
+        var message = await app.WaitForMessageAsync(
+            HelloAccountMessageKind.PhoneSignInVerification);
+        Assert.Equal(HelloDeliveryChannel.Sms, message.Channel);
+        Assert.NotNull(message.VerificationCode);
+
+        using var verified = await client.PostAsJsonAsync(
+            "/auth/phone/verify",
+            new
+            {
+                requestId = challenge.RequestId,
+                code = message.VerificationCode
+            });
+        Assert.Equal(HttpStatusCode.OK, verified.StatusCode);
+        var verification = await verified.Content.ReadFromJsonAsync<
+            PhoneCodeVerifyResponse>();
+        Assert.NotNull(verification);
+        Assert.Equal("registration_required", verification.Status);
+        Assert.NotNull(verification.RegistrationToken);
+
+        var registration = new
+        {
+            registrationToken = verification.RegistrationToken,
+            profile = new { displayName = "Phone member", locale = "ru" },
+            acceptTermsOfService = false,
+            acceptPrivacyPolicy = false,
+        };
+        using var completed = await client.PostAsJsonAsync(
+            "/auth/phone/register", registration);
+        Assert.Equal(HttpStatusCode.OK, completed.StatusCode);
+        var session = await completed.Content.ReadFromJsonAsync<
+            SessionResponse>();
+        Assert.NotNull(session);
+
+        using var accountRequest = new HttpRequestMessage(
+            HttpMethod.Get, "/account/me");
+        accountRequest.Headers.Authorization = new AuthenticationHeaderValue(
+            "Bearer", session.AccessToken);
+        using var account = await client.SendAsync(accountRequest);
+        Assert.Equal(HttpStatusCode.OK, account.StatusCode);
+
+        using var replay = await client.PostAsJsonAsync(
+            "/auth/phone/register", registration);
+        Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
+    }
+
+    [Fact]
     public async Task CrossDeviceApprovalCreatesIndependentSessionAndKeepsActor()
     {
         await using var postgres = new PostgreSqlBuilder(

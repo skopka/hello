@@ -7,7 +7,7 @@ internal static class HelloUiPrincipalFactory
 {
     public const string SessionIdClaim = "sid";
     public const string DisplayNameClaim =
-        "skopka_hello_display_name";
+        HelloUiDefaults.DisplayNameClaimType;
     public const string EmailConfirmedClaim =
         "email_confirmed";
     public const string PhoneConfirmedClaim =

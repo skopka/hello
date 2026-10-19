@@ -5,7 +5,12 @@
 - .NET SDK 10.0.101 or a compatible patch;
 - PostgreSQL;
 - Docker Engine for integration tests;
-- published Skopka.Identity `0.11.0` packages.
+- published Skopka.Identity `0.15.0` packages for the phone OTP release.
+
+For a SQLite host with static Blazor rendering, follow the
+[phone sample](../samples/Skopka.Hello.PhoneSqliteBlazor/README.md). It uses
+Hello Razor Pages for sign-in and the same online-validated UI cookie for
+Blazor `AuthenticationState`, `[Authorize]` and `AuthorizeView`.
 
 ## Configure the server
 

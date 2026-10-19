@@ -195,7 +195,8 @@
                         <span class="hello-nav-label">@Text["Layout.SignIn"]</span>
                     </a>
                 }
-                @if (HelloOptions.SelfRegistrationEnabled
+                @if (HelloOptions.PasswordSignInEnabled
+                    && HelloOptions.SelfRegistrationEnabled
                     && (UiOptions.EnabledPages & HelloUiPages.Registration) != 0)
                 {
                     <a class="hello-nav-item"

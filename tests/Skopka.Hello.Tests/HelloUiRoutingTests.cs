@@ -129,6 +129,55 @@ public sealed class HelloUiRoutingTests
     }
 
     [Fact]
+    public async Task PhoneOnlyHostMapsPhoneFlowAndOmitsPasswordRoutes()
+    {
+        await using var application = CreateApplication(
+            "/identity",
+            selfRegistrationEnabled: true,
+            configureHello: options =>
+            {
+                options.PhoneOtpEnabled = true;
+                options.PasswordSignInEnabled = false;
+            });
+
+        var routes = GetRoutes(application);
+        Assert.Contains("/auth/phone/request", routes);
+        Assert.Contains("/auth/phone/verify", routes);
+        Assert.Contains("/auth/phone/register", routes);
+        Assert.Contains("/identity/login", routes);
+        Assert.DoesNotContain("/auth/login", routes);
+        Assert.DoesNotContain("/auth/register", routes);
+        Assert.DoesNotContain("/auth/password-reset/request", routes);
+        Assert.DoesNotContain("/identity/register", routes);
+        Assert.DoesNotContain("/identity/forgot-password", routes);
+        Assert.DoesNotContain("/identity/reset-password", routes);
+        Assert.DoesNotContain("/identity/account/change-password", routes);
+    }
+
+    [Fact]
+    public void PhoneRegistrationOnLoginRequiresConfiguredLegalUrl()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => CreateApplication(
+                "/identity",
+                selfRegistrationEnabled: true,
+                ui =>
+                {
+                    ui.EnabledPages = HelloUiPages.Login;
+                    ui.AuthenticatedRedirectPath = "/private";
+                },
+                options =>
+                {
+                    options.PhoneOtpEnabled = true;
+                    options.PasswordSignInEnabled = false;
+                    options.RegistrationConsent.TermsOfServiceRequired = true;
+                }));
+
+        Assert.Contains(nameof(SkopkaHelloUiOptions.TermsOfServiceUrl),
+            exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task EnabledCrossDeviceSignInPublishesApiAndUiRoutes()
     {
         await using var application = CreateApplication(
@@ -239,6 +288,7 @@ public sealed class HelloUiRoutingTests
         var convention = new HelloUiPageRouteModelConvention(
             new HelloUiRoutePaths("/identity"),
             selfRegistrationEnabled: true,
+            passwordSignInEnabled: true,
             crossDeviceEnabled: false,
             accountSwitchingEnabled: true,
             enabledPages: HelloUiPages.All,

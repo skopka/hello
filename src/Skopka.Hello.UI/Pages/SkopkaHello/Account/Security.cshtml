@@ -114,6 +114,8 @@
             }
         }
 
+        @if (HelloOptions.PasswordSignInEnabled)
+        {
         <h2>@Text["Field.Password"]</h2>
         @if (credentials.HasPassword)
         {
@@ -149,6 +151,8 @@
                     @Text["Security.RequestPasswordSetup"]
                 </button>
             </form>
+        }
+
         }
 
         <h2>@Text["Security.DeleteAccount"]</h2>

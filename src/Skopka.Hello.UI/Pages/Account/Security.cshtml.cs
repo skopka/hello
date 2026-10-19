@@ -12,7 +12,8 @@ public sealed class AccountSecurityModel(
     IHelloSessionCookieManager sessionCookies,
     HelloUiPrgStateStore prgState,
     IHelloUiLocalizer text,
-    IHelloUiWebAuthnApplication? passkeys = null)
+    IHelloUiWebAuthnApplication? passkeys = null,
+    SkopkaHelloOptions? helloOptions = null)
     : PageModel
 {
 
@@ -171,7 +172,9 @@ public sealed class AccountSecurityModel(
 
     public Task<IActionResult> OnPostBeginSetAsync(
         CancellationToken cancellationToken)
-        => BeginAsync(
+        => helloOptions?.PasswordSignInEnabled == false
+            ? Task.FromResult<IActionResult>(NotFound())
+            : BeginAsync(
             "set",
             application.BeginPasswordSetAsync(
                 HttpContext,
@@ -180,7 +183,9 @@ public sealed class AccountSecurityModel(
 
     public Task<IActionResult> OnPostBeginRemoveAsync(
         CancellationToken cancellationToken)
-        => BeginAsync(
+        => helloOptions?.PasswordSignInEnabled == false
+            ? Task.FromResult<IActionResult>(NotFound())
+            : BeginAsync(
             "remove",
             application.BeginPasswordRemovalAsync(
                 HttpContext,
@@ -298,6 +303,11 @@ public sealed class AccountSecurityModel(
         [Bind(Prefix = "SetInput")] PasswordSetInput input,
         CancellationToken cancellationToken)
     {
+        if (helloOptions?.PasswordSignInEnabled == false)
+        {
+            return NotFound();
+        }
+
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
         if (!ModelState.IsValid)
         {
@@ -330,6 +340,11 @@ public sealed class AccountSecurityModel(
         [Bind(Prefix = "ActionInput")] SecurityActionInput input,
         CancellationToken cancellationToken)
     {
+        if (helloOptions?.PasswordSignInEnabled == false)
+        {
+            return NotFound();
+        }
+
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
         if (!ModelState.IsValid)
         {

@@ -365,6 +365,13 @@ public sealed class HelloRegistrationPolicyTests
                 CancellationToken cancellationToken)
             => throw new InvalidOperationException(
                 "External registration must not be called.");
+
+        public Task<OperationResult<IdentityUser<TestProfile>>>
+            RegisterVerifiedPhoneAsync(
+                RegisterVerifiedPhoneUserCommand<TestProfile> command,
+                CancellationToken cancellationToken)
+            => throw new InvalidOperationException(
+                "Phone registration must not be called.");
     }
 
     private sealed class RecordingConsentProfileEnricher

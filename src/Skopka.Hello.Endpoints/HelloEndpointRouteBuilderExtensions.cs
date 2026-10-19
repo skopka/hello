@@ -24,7 +24,8 @@ public static class HelloEndpointRouteBuilderExtensions
 
         var helloOptions = endpoints.ServiceProvider
             .GetRequiredService<SkopkaHelloOptions>();
-        if (helloOptions.SelfRegistrationEnabled)
+        if (helloOptions.SelfRegistrationEnabled
+            && helloOptions.PasswordSignInEnabled)
         {
             endpoints.MapPost(
                     "/auth/register",
@@ -32,10 +33,35 @@ public static class HelloEndpointRouteBuilderExtensions
                 .WithName("SkopkaHelloRegister");
         }
 
-        endpoints.MapPost(
-                "/auth/login",
-                LoginAsync<TProfile>)
-            .WithName("SkopkaHelloLogin");
+        if (helloOptions.PasswordSignInEnabled)
+        {
+            endpoints.MapPost(
+                    "/auth/login",
+                    LoginAsync<TProfile>)
+                .WithName("SkopkaHelloLogin");
+        }
+
+        if (helloOptions.PhoneOtpEnabled)
+        {
+            endpoints.MapPost(
+                    "/auth/phone/request",
+                    RequestPhoneCodeAsync<TProfile>)
+                .AllowAnonymous()
+                .WithName("SkopkaHelloRequestPhoneCode");
+            endpoints.MapPost(
+                    "/auth/phone/verify",
+                    VerifyPhoneCodeAsync<TProfile>)
+                .AllowAnonymous()
+                .WithName("SkopkaHelloVerifyPhoneCode");
+            if (helloOptions.SelfRegistrationEnabled)
+            {
+                endpoints.MapPost(
+                        "/auth/phone/register",
+                        RegisterPhoneAsync<TProfile>)
+                    .AllowAnonymous()
+                    .WithName("SkopkaHelloRegisterPhone");
+            }
+        }
 
         var crossDeviceOptions = endpoints.ServiceProvider
             .GetRequiredService<HelloCrossDeviceSignInOptions>();
@@ -150,15 +176,18 @@ public static class HelloEndpointRouteBuilderExtensions
             .RequireAuthorization()
             .WithName("SkopkaHelloLogoutAll");
 
-        endpoints.MapPost(
-                "/auth/password-reset/request",
-                RequestPasswordResetAsync<TProfile>)
-            .WithName("SkopkaHelloRequestPasswordReset");
+        if (helloOptions.PasswordSignInEnabled)
+        {
+            endpoints.MapPost(
+                    "/auth/password-reset/request",
+                    RequestPasswordResetAsync<TProfile>)
+                .WithName("SkopkaHelloRequestPasswordReset");
 
-        endpoints.MapPost(
-                "/auth/password-reset/confirm",
-                ResetPasswordAsync<TProfile>)
-            .WithName("SkopkaHelloResetPassword");
+            endpoints.MapPost(
+                    "/auth/password-reset/confirm",
+                    ResetPasswordAsync<TProfile>)
+                .WithName("SkopkaHelloResetPassword");
+        }
 
         endpoints.MapPost(
                 "/auth/email-confirmation/request",
@@ -339,41 +368,44 @@ public static class HelloEndpointRouteBuilderExtensions
                 .WithName("SkopkaHelloCompleteAuthenticatorRemoval");
         }
 
-        endpoints.MapPost(
-                "/account/password/change/challenge",
-                BeginPasswordChangeAsync<TProfile>)
-            .RequireAuthorization()
-            .WithName("SkopkaHelloBeginPasswordChange");
+        if (helloOptions.PasswordSignInEnabled)
+        {
+            endpoints.MapPost(
+                    "/account/password/change/challenge",
+                    BeginPasswordChangeAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloBeginPasswordChange");
 
-        endpoints.MapPost(
-                "/account/password/change",
-                CompletePasswordChangeAsync<TProfile>)
-            .RequireAuthorization()
-            .WithName("SkopkaHelloCompletePasswordChange");
+            endpoints.MapPost(
+                    "/account/password/change",
+                    CompletePasswordChangeAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloCompletePasswordChange");
 
-        endpoints.MapPost(
-                "/account/password/set/challenge",
-                BeginPasswordSetAsync<TProfile>)
-            .RequireAuthorization()
-            .WithName("SkopkaHelloBeginPasswordSet");
+            endpoints.MapPost(
+                    "/account/password/set/challenge",
+                    BeginPasswordSetAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloBeginPasswordSet");
 
-        endpoints.MapPut(
-                "/account/password",
-                CompletePasswordSetAsync<TProfile>)
-            .RequireAuthorization()
-            .WithName("SkopkaHelloCompletePasswordSet");
+            endpoints.MapPut(
+                    "/account/password",
+                    CompletePasswordSetAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloCompletePasswordSet");
 
-        endpoints.MapPost(
-                "/account/password/remove/challenge",
-                BeginPasswordRemovalAsync<TProfile>)
-            .RequireAuthorization()
-            .WithName("SkopkaHelloBeginPasswordRemoval");
+            endpoints.MapPost(
+                    "/account/password/remove/challenge",
+                    BeginPasswordRemovalAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloBeginPasswordRemoval");
 
-        endpoints.MapDelete(
-                "/account/password",
-                CompletePasswordRemovalAsync<TProfile>)
-            .RequireAuthorization()
-            .WithName("SkopkaHelloCompletePasswordRemoval");
+            endpoints.MapDelete(
+                    "/account/password",
+                    CompletePasswordRemovalAsync<TProfile>)
+                .RequireAuthorization()
+                .WithName("SkopkaHelloCompletePasswordRemoval");
+        }
 
         endpoints.MapPost(
                 "/account/delete/challenge",
@@ -388,6 +420,101 @@ public static class HelloEndpointRouteBuilderExtensions
             .WithName("SkopkaHelloCompleteAccountDeletion");
 
         return endpoints;
+    }
+
+    private static async Task<IResult> RequestPhoneCodeAsync<TProfile>(
+        PhoneCodeRequest request,
+        IHelloPhoneOtpApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var result = await application.RequestCodeAsync(
+            request.Phone,
+            requestContext.CreateClientKey(httpContext),
+            request.CaptchaResponse,
+            cancellationToken);
+        return result.IsSuccess
+            ? TypedResults.Accepted(
+                "/auth/phone/verify",
+                new PhoneCodeRequestResponse(
+                    result.Value.RequestId,
+                    (int)Math.Ceiling(result.Value.RetryAfter.TotalSeconds)))
+            : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    private static async Task<IResult> VerifyPhoneCodeAsync<TProfile>(
+        PhoneCodeVerifyRequest request,
+        IHelloPhoneOtpApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        IHelloSessionCookieManager cookies,
+        SkopkaHelloOptions options,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var transport = cookies.ValidateTransport(httpContext);
+        if (!transport.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(transport, httpContext);
+        }
+
+        var result = await application.VerifyCodeAsync(
+            request.RequestId,
+            request.Code,
+            requestContext.CreateClientKey(httpContext),
+            requestContext.CreateSessionMetadata(
+                httpContext, options.ClientName),
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(result, httpContext);
+        }
+
+        if (result.Value.SignIn is { } signIn)
+        {
+            cookies.WriteSessionCookies(httpContext, signIn.Session);
+            return TypedResults.Ok(new PhoneCodeVerifyResponse(
+                "signed_in", ToSessionResponse(signIn.Session), null));
+        }
+
+        return TypedResults.Ok(new PhoneCodeVerifyResponse(
+            "registration_required", null, result.Value.RegistrationToken));
+    }
+
+    private static async Task<IResult> RegisterPhoneAsync<TProfile>(
+        PhoneRegistrationRequest<TProfile> request,
+        IHelloPhoneOtpApplication<TProfile> application,
+        IHelloRequestContext requestContext,
+        IHelloSessionCookieManager cookies,
+        SkopkaHelloOptions options,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var transport = cookies.ValidateTransport(httpContext);
+        if (!transport.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(transport, httpContext);
+        }
+
+        var result = await application.CompleteRegistrationAsync(
+            new HelloPhoneRegistrationCommand<TProfile>(
+                request.RegistrationToken,
+                request.Profile,
+                request.AcceptTermsOfService,
+                request.AcceptPrivacyPolicy,
+                requestContext.CreateSessionMetadata(
+                    httpContext, options.ClientName)),
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return OperationResultProblemMapper.ToResult(result, httpContext);
+        }
+
+        cookies.WriteSessionCookies(httpContext, result.Value.Session);
+        return TypedResults.Ok(ToSessionResponse(result.Value.Session));
     }
 
     private static async Task<IResult> RegisterAsync<TProfile>(

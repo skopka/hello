@@ -16,6 +16,7 @@ artifacts/
 coverage*/
 *.nupkg
 *.snupkg
+samples/Skopka.Hello.PhoneSqliteBlazor/*.db*
 
 # Local configuration and secrets
 .env

@@ -10,6 +10,7 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Skopka.Hello.Sample/Skopka.Hello.Sample.csproj" />
+    <Project Path="samples/Skopka.Hello.PhoneSqliteBlazor/Skopka.Hello.PhoneSqliteBlazor.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Skopka.Hello.BrowserTests/Skopka.Hello.BrowserTests.csproj" />

@@ -14,6 +14,20 @@ public sealed class SkopkaHelloOptions
 
     public bool SelfRegistrationEnabled { get; set; } = true;
 
+    public bool PasswordSignInEnabled { get; set; } = true;
+
+    public bool PhoneOtpEnabled { get; set; }
+
+    public int DailySmsBudget { get; set; } = 1000;
+
+    public string SmsApplicationName { get; set; } = "Skopka.Hello";
+
+    public string RussianPhoneCodeTemplate { get; set; } =
+        "Код входа в {application}: {code}";
+
+    public string EnglishPhoneCodeTemplate { get; set; } =
+        "Sign-in code for {application}: {code}";
+
     public PasswordLoginHandle PasswordLoginHandle { get; set; } =
         Skopka.Identity.Authentication.PasswordLoginHandle.Automatic;
 
@@ -55,6 +69,14 @@ public sealed class SkopkaHelloOptions
     {
         Totp.Validate();
         WebAuthn.Validate();
+        if (DailySmsBudget <= 0
+            || string.IsNullOrWhiteSpace(SmsApplicationName)
+            || !RussianPhoneCodeTemplate.Contains("{code}", StringComparison.Ordinal)
+            || !EnglishPhoneCodeTemplate.Contains("{code}", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Phone OTP SMS budget and templates are invalid.");
+        }
         if (!Enum.IsDefined(PasswordLoginHandle))
         {
             throw new InvalidOperationException(

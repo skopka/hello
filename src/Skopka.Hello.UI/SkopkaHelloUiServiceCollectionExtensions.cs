@@ -72,6 +72,15 @@ public static class SkopkaHelloUiServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.UI.IHelloUiApplication,
             Skopka.Hello.UI.HelloUiApplication<TProfile>>();
+        if (services.LastOrDefault(descriptor =>
+                descriptor.ServiceType == typeof(Skopka.Hello.SkopkaHelloOptions))
+            ?.ImplementationInstance is Skopka.Hello.SkopkaHelloOptions
+            { PhoneOtpEnabled: true })
+        {
+            services.TryAddScoped<
+                Skopka.Hello.UI.IHelloUiPhoneApplication,
+                Skopka.Hello.UI.HelloUiPhoneApplication<TProfile>>();
+        }
         services.TryAddScoped<
             Skopka.Hello.UI.IHelloUiExternalApplication,
             Skopka.Hello.UI.HelloUiExternalApplication<TProfile>>();

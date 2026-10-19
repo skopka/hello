@@ -1132,6 +1132,12 @@ public sealed class HelloExternalIdentityApplicationTests
                 RegisterExternalUserCommand<TestProfile> command,
                 CancellationToken ct)
             => throw new NotSupportedException();
+
+        public Task<OperationResult<IdentityUser<TestProfile>>>
+            RegisterVerifiedPhoneAsync(
+                RegisterVerifiedPhoneUserCommand<TestProfile> command,
+                CancellationToken ct)
+            => throw new NotSupportedException();
     }
 
     private sealed class UnexpectedSignInMethodQueryService

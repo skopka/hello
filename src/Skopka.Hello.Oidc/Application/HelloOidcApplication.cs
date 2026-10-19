@@ -824,7 +824,10 @@ internal sealed class HelloOidcApplication<TProfile>(
     private bool HasAlternateMethod(
         SignInMethodSnapshot snapshot,
         ExternalLoginKey target)
-        => (options.PasswordSignInEnabled && snapshot.HasPassword)
+        => (options.PasswordSignInEnabled
+                && helloOptions.PasswordSignInEnabled
+                && snapshot.HasPassword)
+            || (helloOptions.PhoneOtpEnabled && snapshot.HasPhoneOtp)
             || snapshot.ExternalLogins.Any(login =>
                 login.Login != target
                 && providers.IsEnabled(login.Login.Provider));

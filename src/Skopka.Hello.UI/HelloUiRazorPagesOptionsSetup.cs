@@ -22,6 +22,7 @@ internal sealed class HelloUiRazorPagesOptionsSetup(
             new HelloUiPageRouteModelConvention(
                 routes,
                 helloOptions.SelfRegistrationEnabled,
+                helloOptions.PasswordSignInEnabled,
                 crossDeviceOptions.Enabled,
                 uiOptions.AccountSwitching.Enabled,
                 uiOptions.EnabledPages,
@@ -34,7 +35,10 @@ internal sealed class HelloUiRazorPagesOptionsSetup(
     private void ValidateRegistrationConsentConfiguration()
     {
         if (!helloOptions.SelfRegistrationEnabled
-            || !uiOptions.IsEnabled(HelloUiPages.Registration))
+            || !(helloOptions.PhoneOtpEnabled
+                && uiOptions.IsEnabled(HelloUiPages.Login))
+                && !(helloOptions.PasswordSignInEnabled
+                    && uiOptions.IsEnabled(HelloUiPages.Registration)))
         {
             return;
         }

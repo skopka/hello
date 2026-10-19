@@ -16,6 +16,24 @@ headers only with explicit trusted proxies; the ready server refuses forwarded
 headers without a configured proxy IP. Session metadata contains bounded
 client and user-agent display labels and never the remote IP address.
 
+## Phone OTP sign-in
+
+Phone requests normalize an E.164 number and return the same accepted response
+shape regardless of account existence. Lookup happens only after a valid code.
+The code is purpose-bound, HMAC-protected in Identity's Verification store,
+limited by age and attempts, and its proof is consumed once on sign-in or
+atomically with registration. A verified number is not used to auto-link an
+OIDC account. A confirmed phone counts as a sign-in method when checking
+whether an external login or passkey can be removed.
+
+Identity enforces per-phone and per-client daily limits plus a resend cooldown.
+Hello adds a host-wide daily SMS budget and runs registered
+`IHelloPhonePreSendPolicy` implementations before issuing a code, so hosts can
+require CAPTCHA. Supply a trusted request-context client key, keep the rate
+limiter persistent across instances, and monitor send volume. The sample's SMS
+logger runs only in Development; production requires a real SMS provider and
+durable Data Protection keys for registration tickets and UI cookies.
+
 ## Access and refresh tokens
 
 Access tokens are returned in JSON and sent with the `Bearer` scheme. Refresh

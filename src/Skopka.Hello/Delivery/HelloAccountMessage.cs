@@ -19,6 +19,7 @@ public enum HelloAccountMessageKind
     AccountSecurityVerification = 6,
 
     AdminActionVerification = 7,
+    PhoneSignInVerification = 8,
 }
 
 public sealed record HelloAccountMessage(

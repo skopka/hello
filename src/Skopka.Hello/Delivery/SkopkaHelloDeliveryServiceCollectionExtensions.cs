@@ -65,4 +65,18 @@ public static class SkopkaHelloDeliveryServiceCollectionExtensions
                 Skopka.Hello.HelloSmsProviderRegistration<TProvider>>());
         return services;
     }
+
+    public static IServiceCollection AddDevelopmentLoggingHelloSmsProvider(
+        this IServiceCollection services,
+        IHostEnvironment environment)
+    {
+        if (!environment.IsDevelopment())
+        {
+            throw new InvalidOperationException(
+                "The logging SMS provider is available only in Development.");
+        }
+
+        return services.AddSkopkaHelloSmsProvider<
+            Skopka.Hello.DevelopmentLoggingHelloSmsProvider>();
+    }
 }

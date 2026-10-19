@@ -14,7 +14,9 @@ public sealed class LoginModel(
     HelloUiRoutePaths routes,
     IHelloUiLocalizer text,
     IHelloUiCrossDeviceApplication? crossDevice = null,
-    IHelloUiWebAuthnApplication? passkeys = null)
+    IHelloUiWebAuthnApplication? passkeys = null,
+    IHelloUiPhoneApplication? phoneApplication = null,
+    SkopkaHelloOptions? helloOptions = null)
     : PageModel
 {
     [BindProperty]
@@ -65,6 +67,26 @@ public sealed class LoginModel(
     /// than no button.
     /// </summary>
     public bool PasskeysEnabled => passkeys is not null;
+
+    public bool PhoneEnabled => phoneApplication is not null;
+
+    public bool PasswordEnabled => helloOptions?.PasswordSignInEnabled ?? true;
+
+    [BindProperty]
+    public PhoneInput Phone { get; set; } = new();
+
+    public sealed class PhoneInput
+    {
+        public string PhoneNumber { get; set; } = string.Empty;
+        public Guid RequestId { get; set; }
+        public string Code { get; set; } = string.Empty;
+        public string RegistrationToken { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public string? Locale { get; set; }
+        public bool AcceptTermsOfService { get; set; }
+        public bool AcceptPrivacyPolicy { get; set; }
+        public int RetryAfterSeconds { get; set; }
+    }
 
     [BindProperty]
     public PasskeyInput Passkey { get; set; } = new();
@@ -167,6 +189,11 @@ public sealed class LoginModel(
     public async Task<IActionResult> OnPostAsync(
         CancellationToken cancellationToken)
     {
+        if (!PasswordEnabled)
+        {
+            return NotFound();
+        }
+
         var transport = sessionCookies.ValidateTransport(HttpContext);
         if (!transport.IsSuccess)
         {
@@ -201,6 +228,105 @@ public sealed class LoginModel(
             sessionCookies,
             result.Value);
 
+        return Url.IsLocalUrl(ReturnUrl)
+            ? LocalRedirect(ReturnUrl)
+            : LocalRedirect(
+                uiOptions.GetAuthenticatedRedirectPath(routes));
+    }
+
+    public async Task<IActionResult> OnPostPhoneRequestAsync(
+        CancellationToken cancellationToken)
+    {
+        ModelState.Clear();
+        if (phoneApplication is null)
+        {
+            return NotFound();
+        }
+
+        var result = await phoneApplication.RequestAsync(
+            Phone.PhoneNumber, HttpContext, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
+            return Page();
+        }
+
+        Phone.RequestId = result.Value.RequestId;
+        Phone.RetryAfterSeconds = (int)Math.Ceiling(
+            result.Value.RetryAfter.TotalSeconds);
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostPhoneVerifyAsync(
+        CancellationToken cancellationToken)
+    {
+        ModelState.Clear();
+        if (phoneApplication is null)
+        {
+            return NotFound();
+        }
+
+        var transport = sessionCookies.ValidateTransport(HttpContext);
+        if (!transport.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, transport.Errors, text);
+            return Page();
+        }
+
+        var result = await phoneApplication.VerifyAsync(
+            Phone.RequestId, Phone.Code, HttpContext, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
+            return Page();
+        }
+
+        if (result.Value.SignIn is { } signIn)
+        {
+            await HelloUiSession.EstablishAsync(
+                HttpContext, sessionCookies, signIn);
+            return Url.IsLocalUrl(ReturnUrl)
+                ? LocalRedirect(ReturnUrl)
+                : LocalRedirect(
+                    uiOptions.GetAuthenticatedRedirectPath(routes));
+        }
+
+        Phone.RegistrationToken = result.Value.RegistrationToken ?? string.Empty;
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostPhoneRegisterAsync(
+        CancellationToken cancellationToken)
+    {
+        ModelState.Clear();
+        if (phoneApplication is null)
+        {
+            return NotFound();
+        }
+
+        var transport = sessionCookies.ValidateTransport(HttpContext);
+        if (!transport.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, transport.Errors, text);
+            return Page();
+        }
+
+        var result = await phoneApplication.RegisterAsync(
+            Phone.RegistrationToken,
+            Phone.DisplayName,
+            Phone.Locale,
+            Phone.AcceptTermsOfService,
+            Phone.AcceptPrivacyPolicy,
+            HttpContext,
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
+            return Page();
+        }
+
+        await HelloUiSession.EstablishAsync(
+            HttpContext, sessionCookies, result.Value);
         return Url.IsLocalUrl(ReturnUrl)
             ? LocalRedirect(ReturnUrl)
             : LocalRedirect(

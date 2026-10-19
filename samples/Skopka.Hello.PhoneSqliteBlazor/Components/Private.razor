@@ -1,0 +1,18 @@
+@page "/private"
+@attribute [Authorize]
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h1>Закрытая страница</h1>
+<p data-private-user="@userName">AuthenticationState: @userName</p>
+
+@code {
+    private string? userName;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationStateProvider
+            .GetAuthenticationStateAsync();
+        userName = state.User.FindFirst(
+            HelloUiDefaults.DisplayNameClaimType)?.Value;
+    }
+}

@@ -66,7 +66,8 @@ public sealed class HelloExternalIdentityApplicationTests
             {
                 VerificationChannel = expectedChannel,
             },
-            new SkopkaHelloOptions());
+            new SkopkaHelloOptions(),
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
         var command = new HelloBeginExternalLoginMutationCommand(
             "old-access-token",
             new ExternalLoginKey("github", "subject-1"),
@@ -126,7 +127,8 @@ public sealed class HelloExternalIdentityApplicationTests
                 new HelloDeliveryOptions(),
                 []),
             new HelloDeliveryOptions(),
-            new SkopkaHelloOptions());
+            new SkopkaHelloOptions(),
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var result = await application.BeginLinkAsync(
             new HelloBeginExternalLoginMutationCommand(
@@ -185,7 +187,8 @@ public sealed class HelloExternalIdentityApplicationTests
                 new HelloDeliveryOptions(),
                 []),
             new HelloDeliveryOptions(),
-            new SkopkaHelloOptions());
+            new SkopkaHelloOptions(),
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
         var metadata = new IdentitySessionMetadata(
             "Browser",
             "Trusted device");
@@ -323,7 +326,8 @@ public sealed class HelloExternalIdentityApplicationTests
             new FakeVerificationService(proof, calls),
             new RecordingMessageSender(),
             new HelloDeliveryOptions(),
-            new SkopkaHelloOptions());
+            new SkopkaHelloOptions(),
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var begun = await application.BeginLinkAsync(
             new HelloBeginExternalLoginMutationCommand(
@@ -405,7 +409,8 @@ public sealed class HelloExternalIdentityApplicationTests
             new FakeVerificationService(proof, calls),
             new RecordingMessageSender(),
             new HelloDeliveryOptions(),
-            new SkopkaHelloOptions());
+            new SkopkaHelloOptions(),
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var begun = await application.BeginLinkAsync(
             new HelloBeginExternalLoginMutationCommand(
@@ -468,7 +473,8 @@ public sealed class HelloExternalIdentityApplicationTests
                 calls),
             new RecordingMessageSender(),
             new HelloDeliveryOptions(),
-            new SkopkaHelloOptions());
+            new SkopkaHelloOptions(),
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var completed = await application.CompleteLinkAsync(
             new HelloCompleteExternalLoginMutationCommand(
@@ -528,7 +534,8 @@ public sealed class HelloExternalIdentityApplicationTests
                 calls),
             new RecordingMessageSender(),
             new HelloDeliveryOptions(),
-            new SkopkaHelloOptions());
+            new SkopkaHelloOptions(),
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var completed = await application.CompleteLinkAsync(
             new HelloCompleteExternalLoginMutationCommand(
@@ -618,7 +625,8 @@ public sealed class HelloExternalIdentityApplicationTests
             verification,
             new RecordingMessageSender(),
             new HelloDeliveryOptions(),
-            new SkopkaHelloOptions());
+            new SkopkaHelloOptions(),
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var completed = await application.CompleteLinkAsync(
             new HelloCompleteExternalLoginMutationCommand(
@@ -696,7 +704,8 @@ public sealed class HelloExternalIdentityApplicationTests
                 calls),
             new RecordingMessageSender(),
             new HelloDeliveryOptions(),
-            new SkopkaHelloOptions());
+            new SkopkaHelloOptions(),
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var completed = await application.CompleteLinkAsync(
             new HelloCompleteExternalLoginMutationCommand(
@@ -782,7 +791,8 @@ public sealed class HelloExternalIdentityApplicationTests
                 calls),
             new RecordingMessageSender(),
             new HelloDeliveryOptions(),
-            new SkopkaHelloOptions());
+            new SkopkaHelloOptions(),
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var completed = await application.CompleteLinkAsync(
             new HelloCompleteExternalLoginMutationCommand(

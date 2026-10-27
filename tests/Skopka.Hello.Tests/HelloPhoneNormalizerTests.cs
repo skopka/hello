@@ -20,6 +20,13 @@ public sealed class HelloPhoneNormalizerTests
         => Assert.Equal(expected, HelloPhoneNormalizer.Normalize(input, "ru"));
 
     [Fact]
+    public void OversizedOriginalInputIsNotCompacted()
+    {
+        var input = "+7" + new string(' ', 600) + "9991234567";
+        Assert.Equal(input, HelloPhoneNormalizer.Normalize(input, "RU"));
+    }
+
+    [Fact]
     public void DisabledPreservesInput()
         => Assert.Equal("8 999 123-45-67", HelloPhoneNormalizer.Normalize("8 999 123-45-67", null));
 

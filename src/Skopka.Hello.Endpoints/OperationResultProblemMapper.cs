@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Localization;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Identity.Errors;
 using Skopka.Identity.RateLimiting;
@@ -68,7 +69,7 @@ public static class OperationResultProblemMapper
         IReadOnlyCollection<Error> errors,
         HttpContext httpContext)
     {
-        var mapping = Map(errors);
+        var mapping = LocalizePhoneError(Map(errors), errors, httpContext);
         if (mapping.RetryAfter is { } retryAfter)
         {
             var seconds = Math.Max(
@@ -97,6 +98,46 @@ public static class OperationResultProblemMapper
 
         return TypedResults.Problem(problem);
     }
+
+    private static ProblemMapping LocalizePhoneError(
+        ProblemMapping mapping, IReadOnlyCollection<Error> errors, HttpContext context)
+    {
+        if (mapping.Code is not IdentityErrorCodes.PhoneInvalidFormat
+            and not IdentityErrorCodes.PhoneCountryNotAllowed) return mapping;
+
+        var culture = context.Features.Get<IRequestCultureFeature>()?.RequestCulture.UICulture.Name;
+        if (culture is null)
+        {
+            try
+            {
+                culture = context.Request.GetTypedHeaders().AcceptLanguage?
+                    .OrderByDescending(value => value.Quality ?? 1)
+                    .Where(value => (value.Quality ?? 1) > 0)
+                    .Select(value => value.Value.ToString())
+                    .FirstOrDefault(value => IsLanguage(value, "ru") || IsLanguage(value, "en"));
+            }
+            catch (FormatException)
+            {
+                // Malformed negotiation headers do not change the operation result.
+            }
+        }
+        culture ??= System.Globalization.CultureInfo.CurrentUICulture.Name;
+        var russian = IsLanguage(culture, "ru");
+        var codes = (errors.FirstOrDefault()?.Details as ValidationDetails)?.AllowedPhoneCountryCodes;
+        var message = mapping.Code == IdentityErrorCodes.PhoneInvalidFormat
+            ? (russian ? "Введите корректный номер телефона." : "Enter a valid phone number.")
+            : codes is { Count: > 0 }
+                ? (russian ? $"Допускаются только номера с кодом {string.Join(", ", codes)}."
+                    : $"Only phone numbers with the code {string.Join(", ", codes)} are allowed.")
+                : (russian ? "Этот код страны не разрешён." : "This phone country code is not allowed.");
+        var fields = new Dictionary<string, string[]>(mapping.ValidationErrors, StringComparer.Ordinal);
+        if (fields.ContainsKey("phone")) fields["phone"] = [message];
+        return mapping with { Detail = message, ValidationErrors = fields };
+    }
+
+    private static bool IsLanguage(string value, string language)
+        => value.Equals(language, StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith(language + "-", StringComparison.OrdinalIgnoreCase);
 
     private static int GetStatus(Error error)
     {

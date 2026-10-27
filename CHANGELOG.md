@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.1
+
+- Apply the shared phone policy to phone changes and registration as well as OTP requests; distinguish invalid numbers from disallowed country codes in localized UI and API errors.
+- Correct and localize consent labels and client validation.
+- Existing incorrectly stored phone numbers are not migrated automatically; operators must correct them separately.
+
 ## 0.24.0
 
 - Phone registration respects the existing Locale field mode, derives hidden locale from the request culture, and uses the shared legal-consent markup and field errors. The locale field now defaults to hidden; select Optional or Required to retain it.

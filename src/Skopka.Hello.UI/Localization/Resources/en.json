@@ -32,6 +32,7 @@
     "Legal.AcceptTermsOfServicePrefix": "I have read and accept the",
     "Legal.AcceptPrivacyPolicyPrefix": "I have read and accept the",
     "Legal.TermsOfService": "Terms of Service",
+    "Legal.AcceptPrivacyPolicyDocument": "Privacy Policy",
     "Legal.PrivacyPolicy": "Privacy Policy",
 
     "Field.Login": "Email, phone, or user name",
@@ -42,6 +43,8 @@
     "Field.EmailAddress": "email address",
     "Field.UserName": "User name",
     "Field.Phone": "Phone",
+    "Field.AcceptTermsOfService": "acceptance of the Terms of Service",
+    "Field.AcceptPrivacyPolicy": "acceptance of the Privacy Policy",
     "Field.PhoneNumber": "phone number",
     "Field.Locale": "Locale",
     "Field.NewPassword": "New password",
@@ -311,6 +314,9 @@
     "ExternalLogins.RemoveProvider": "Remove provider",
     "ExternalLogins.CancelChange": "Cancel this change",
 
+    "Errors.identity.phone.invalid_format.phone": "Enter a valid phone number.",
+    "Errors.identity.phone.country_not_allowed": "This phone country code is not allowed.",
+    "Errors.identity.phone.country_not_allowed.phone": "Only phone numbers with the code {0} are allowed.",
     "Errors.identity.validation.failed.phone": "Enter a valid phone number in international format.",
     "Validation.Required": "The {0} field is required.",
     "Validation.StringLength": "The {0} field must be a string with a maximum length of {1}.",

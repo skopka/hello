@@ -18,7 +18,7 @@ public sealed class SkopkaHelloOptions
 
     public bool PhoneOtpEnabled { get; set; }
 
-    /// <summary>Optional default region for phone OTP input. Only RU is supported.</summary>
+    /// <summary>Optional default region for phone input parsing. Only RU is supported.</summary>
     public string? DefaultPhoneRegion { get; set; }
 
     public int DailySmsBudget { get; set; } = 1000;

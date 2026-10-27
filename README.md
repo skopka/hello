@@ -10,7 +10,7 @@ provider integration, host composition and policy-separated administration.
 Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
-The current `0.24.0` vertical slice contains:
+The current `0.24.1` vertical slice contains:
 
 - atomic password registration;
 - passwordless SMS sign-in and atomic registration by verified phone;
@@ -164,12 +164,12 @@ implemented as separate user creation and password mutation. Login calls
 `IPasswordAuthenticationService<TProfile>`, then creates a session through
 `IIdentitySessionService<TProfile>`.
 
-Phone OTP accepts strict E.164 by default. Set `SkopkaHelloOptions.DefaultPhoneRegion = "RU"` to also accept Russian national numbers: 10 ASCII digits or 11 starting with 7 or 8 become `+7…`. Spaces, parentheses and hyphens are removed for recognized input, including explicitly international numbers. Other regions are not supported; malformed numbers and extensions are left for Identity validation. The option affects phone OTP requests, not other phone registration, account-change or confirmation operations.
+Phone OTP accepts strict E.164 by default. Set `SkopkaHelloOptions.DefaultPhoneRegion = "RU"` to also accept Russian national numbers: 10 ASCII digits or 11 starting with 7 or 8 become `+7…`. Spaces, parentheses and hyphens are removed for recognized input, including explicitly international numbers. Other regions are not supported; malformed numbers and extensions are left for Identity validation. RU parsing applies to phone OTP requests, new registration and account-change values, explicit phone password login, and new phone-confirmation requests.
 
 For example, add these settings to the host’s existing service registrations:
 
 ```csharp
-builder.Services.AddSkopkaHello<MyProfile>(options =>
+var identity = builder.Services.AddSkopkaHello<MyProfile>(options =>
 {
     options.PhoneOtpEnabled = true;
     options.DefaultPhoneRegion = "RU";
@@ -177,6 +177,14 @@ builder.Services.AddSkopkaHello<MyProfile>(options =>
 ```
 
 Locale remains hidden by default. To show it, set `options.Registration.Locale = HelloUiRegistrationFieldMode.Optional` in the existing `AddSkopkaHelloUi` options; use `Required` when the visitor must provide it.
+
+Country restrictions are independent from RU parsing. To accept only +7, configure the Identity builder returned by `AddSkopkaHello`:
+
+```csharp
+identity.ConfigurePhoneOtp(options => options.AllowedCountryCodes = ["+7"]);
+```
+
+Leave the list empty to permit other international codes. API errors use `identity.phone.invalid_format` and `identity.phone.country_not_allowed`. With phone OTP, a default region, or an allowlist enabled, new phone values in registration and account changes use the shared Identity policy. Changed numbers remain unconfirmed; complete phone confirmation before using OTP to sign in to the existing account. Existing stored numbers are not migrated; correct incorrectly stored numbers separately. Explicit phone password login and new confirmation requests use RU parsing, while automatic password login and previously issued proof/token bindings are unchanged. API phone error messages use the request localization feature when present, otherwise the highest-quality supported ru/en Accept-Language preference, then CurrentUICulture.
 
 On the phone registration step `UiOptions.Registration.Locale` controls `Phone_Locale` just as on registration: hidden by default (the server uses the request culture), optional, or required. Legal controls use `.hello-legal-consents`, `.hello-legal-consent` and `.hello-legal-consent-error`; checkbox IDs remain `Phone_AcceptTermsOfService` and `Phone_AcceptPrivacyPolicy`. Hosts can remove CSS that hid the locale and restyled nested consent labels, and JavaScript that filled the locale or normalized Russian numbers for OTP. Existing hosts that relied on the locale field being visible should set it to Optional or Required; normalization remains opt-in.
 

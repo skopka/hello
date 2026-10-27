@@ -201,8 +201,12 @@ public sealed class ExternalRegisterModel(
         [StringLength(32, ErrorMessage = "Validation.StringLength")]
         public string? Locale { get; set; }
 
+        [Required(ErrorMessage = "Validation.Required")]
+        [Display(Name = "Field.AcceptTermsOfService")]
         public bool AcceptTermsOfService { get; set; }
 
+        [Required(ErrorMessage = "Validation.Required")]
+        [Display(Name = "Field.AcceptPrivacyPolicy")]
         public bool AcceptPrivacyPolicy { get; set; }
     }
 }

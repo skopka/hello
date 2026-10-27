@@ -220,7 +220,7 @@ jobs:
     name: Publish coordinated NuGet set
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     environment: release
 
     steps:
@@ -307,7 +307,7 @@ jobs:
             "skopka.hello.ui"
           )
 
-          for ATTEMPT in {1..60}; do
+          for ATTEMPT in {1..180}; do
             MISSING=()
             for PACKAGE_ID in "${PACKAGE_IDS[@]}"; do
               PACKAGE_URL="https://api.nuget.org/v3-flatcontainer/${PACKAGE_ID}/${VERSION_LOWER}/${PACKAGE_ID}.${VERSION_LOWER}.nupkg"

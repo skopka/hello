@@ -50,7 +50,7 @@
         @if (Model.Registration.IsVisible(HelloUiRegistrationField.Phone))
         {
             <label asp-for="Input.Phone">@Text["Field.Phone"]</label>
-            <input asp-for="Input.Phone"
+            <input asp-for="Input.Phone" type="tel"
                    autocomplete="tel"
                    required="@Model.Registration.IsRequired(HelloUiRegistrationField.Phone)" />
             <span asp-validation-for="Input.Phone"
@@ -89,10 +89,7 @@
                         <input asp-for="Input.AcceptTermsOfService"
                                required />
                         <label asp-for="Input.AcceptTermsOfService">
-                            @Text["Legal.AcceptTermsOfServicePrefix"]
-                            <a href="@UiOptions.TermsOfServiceUrl">
-                                @Text["Legal.TermsOfService"]
-                            </a>.
+                            @Text["Legal.AcceptTermsOfServicePrefix"] <a href="@UiOptions.TermsOfServiceUrl">@Text["Legal.TermsOfService"]</a>.
                         </label>
                         <span asp-validation-for="Input.AcceptTermsOfService"
                               class="hello-field-error hello-legal-consent-error"></span>
@@ -104,10 +101,7 @@
                         <input asp-for="Input.AcceptPrivacyPolicy"
                                required />
                         <label asp-for="Input.AcceptPrivacyPolicy">
-                            @Text["Legal.AcceptPrivacyPolicyPrefix"]
-                            <a href="@UiOptions.PrivacyPolicyUrl">
-                                @Text["Legal.PrivacyPolicy"]
-                            </a>.
+                            @Text["Legal.AcceptPrivacyPolicyPrefix"] <a href="@UiOptions.PrivacyPolicyUrl">@Text["Legal.AcceptPrivacyPolicyDocument"]</a>.
                         </label>
                         <span asp-validation-for="Input.AcceptPrivacyPolicy"
                               class="hello-field-error hello-legal-consent-error"></span>

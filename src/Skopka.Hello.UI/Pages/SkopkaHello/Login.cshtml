@@ -135,10 +135,7 @@
                                     <input asp-for="Phone.AcceptTermsOfService"
                                            required />
                                     <label asp-for="Phone.AcceptTermsOfService">
-                                        @Text["Legal.AcceptTermsOfServicePrefix"]
-                                        <a href="@UiOptions.TermsOfServiceUrl">
-                                            @Text["Legal.TermsOfService"]
-                                        </a>.
+                                        @Text["Legal.AcceptTermsOfServicePrefix"] <a href="@UiOptions.TermsOfServiceUrl">@Text["Legal.TermsOfService"]</a>.
                                     </label>
                                     <span asp-validation-for="Phone.AcceptTermsOfService"
                                           class="hello-field-error hello-legal-consent-error"></span>
@@ -150,10 +147,7 @@
                                     <input asp-for="Phone.AcceptPrivacyPolicy"
                                            required />
                                     <label asp-for="Phone.AcceptPrivacyPolicy">
-                                        @Text["Legal.AcceptPrivacyPolicyPrefix"]
-                                        <a href="@UiOptions.PrivacyPolicyUrl">
-                                            @Text["Legal.PrivacyPolicy"]
-                                        </a>.
+                                        @Text["Legal.AcceptPrivacyPolicyPrefix"] <a href="@UiOptions.PrivacyPolicyUrl">@Text["Legal.AcceptPrivacyPolicyDocument"]</a>.
                                     </label>
                                     <span asp-validation-for="Phone.AcceptPrivacyPolicy"
                                           class="hello-field-error hello-legal-consent-error"></span>

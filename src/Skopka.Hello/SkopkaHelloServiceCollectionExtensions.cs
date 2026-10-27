@@ -51,6 +51,7 @@ public static class SkopkaHelloServiceCollectionExtensions
             Skopka.Hello.NullHelloSecurityEventSink>();
         services.AddSkopkaHelloDelivery();
         services.TryAddSingleton<Skopka.Hello.HelloPhoneSmsTemplates>();
+        services.TryAddSingleton<Skopka.Hello.HelloPhoneInputPolicy>();
         services.TryAddSingleton<
             Skopka.Hello.IHelloAnonymousAccountMessageInbox,
             Skopka.Hello.InMemoryHelloAnonymousAccountMessageInbox>();

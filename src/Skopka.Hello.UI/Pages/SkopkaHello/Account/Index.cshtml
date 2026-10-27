@@ -151,7 +151,7 @@
           class="hello-form">
         <input asp-for="PhoneInput.ExpectedVersion" type="hidden" />
         <label asp-for="PhoneInput.Phone">@Text["Field.Phone"]</label>
-        <input asp-for="PhoneInput.Phone" autocomplete="tel" />
+        <input asp-for="PhoneInput.Phone" type="tel" autocomplete="tel" />
         <span asp-validation-for="PhoneInput.Phone"
               class="hello-field-error"></span>
         <button class="hello-button hello-button-secondary"

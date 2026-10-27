@@ -32,6 +32,7 @@
     "Legal.AcceptTermsOfServicePrefix": "Я ознакомился(-ась) и принимаю",
     "Legal.AcceptPrivacyPolicyPrefix": "Я ознакомился(-ась) и принимаю",
     "Legal.TermsOfService": "Пользовательское соглашение",
+    "Legal.AcceptPrivacyPolicyDocument": "Политику конфиденциальности",
     "Legal.PrivacyPolicy": "Политика конфиденциальности",
 
     "Field.Login": "Email, телефон или имя пользователя",
@@ -42,6 +43,8 @@
     "Field.EmailAddress": "email",
     "Field.UserName": "Имя пользователя",
     "Field.Phone": "Телефон",
+    "Field.AcceptTermsOfService": "согласие с пользовательским соглашением",
+    "Field.AcceptPrivacyPolicy": "согласие с политикой конфиденциальности",
     "Field.PhoneNumber": "номер телефона",
     "Field.Locale": "Локаль",
     "Field.NewPassword": "Новый пароль",
@@ -311,6 +314,9 @@
     "ExternalLogins.RemoveProvider": "Удалить провайдера",
     "ExternalLogins.CancelChange": "Отменить изменение",
 
+    "Errors.identity.phone.invalid_format.phone": "Введите корректный номер телефона.",
+    "Errors.identity.phone.country_not_allowed": "Этот код страны не разрешён.",
+    "Errors.identity.phone.country_not_allowed.phone": "Допускаются только номера с кодом {0}.",
     "Errors.identity.validation.failed.phone": "Введите корректный номер телефона в международном формате.",
     "Validation.Required": "Поле «{0}» обязательно.",
     "Validation.StringLength": "Длина поля «{0}» не должна превышать {1} символов.",

@@ -150,7 +150,8 @@ public sealed class AccountModel(
                 PhoneInput.Phone),
             HttpContext,
             cancellationToken);
-        return await FinishMutationAsync(result, cancellationToken);
+        return await FinishMutationAsync(result, cancellationToken,
+            field => $"PhoneInput.{field}");
     }
 
     public async Task<IActionResult> OnPostUpdateProfileAsync(

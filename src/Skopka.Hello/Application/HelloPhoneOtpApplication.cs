@@ -23,6 +23,7 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
     IDataProtectionProvider protectionProvider,
     IHelloRegistrationConsentPolicy consentPolicy,
     SkopkaHelloOptions options,
+    HelloPhoneInputPolicy phoneInputPolicy,
     TimeProvider timeProvider,
     HelloRegistrationAdmission<TProfile>? registrationAdmission = null,
     IHelloRegistrationConsentProfileEnricher<TProfile>? profileEnricher = null)
@@ -44,7 +45,12 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
             return Disabled<HelloPhoneCodeRequest>();
         }
 
-        phone = HelloPhoneNormalizer.Normalize(phone, options.DefaultPhoneRegion);
+        var normalized = phoneInputPolicy.Normalize(phone, otpRequest: true);
+        if (!normalized.IsSuccess)
+        {
+            return OperationResultFactory.Fail<HelloPhoneCodeRequest>(normalized.Errors);
+        }
+        phone = normalized.Value;
 
         var availability = messageSender.CheckAvailability(
             HelloDeliveryChannel.Sms);

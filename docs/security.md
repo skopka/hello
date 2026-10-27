@@ -24,7 +24,7 @@ The code is purpose-bound, HMAC-protected in Identity's Verification store,
 limited by age and attempts, and its proof is consumed once on sign-in or
 atomically with registration. A verified number is not used to auto-link an
 OIDC account. A confirmed phone counts as a sign-in method when checking
-whether an external login or passkey can be removed.
+whether an external login or passkey can be removed. A newly changed phone stays unconfirmed and must be confirmed through the phone-confirmation flow before OTP can sign in to the existing account. An unconfirmed number is never linked to an account merely because the SMS code was verified.
 
 Identity enforces per-phone and per-client daily limits plus a resend cooldown.
 Hello adds a host-wide daily SMS budget and runs registered

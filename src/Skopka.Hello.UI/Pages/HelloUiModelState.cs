@@ -75,6 +75,12 @@ internal static class HelloUiModelState
                 $"Errors.{error.Code}.{NormalizeField(field)}",
                 out var fieldMessage))
         {
+            if (error.Code == IdentityErrorCodes.PhoneCountryNotAllowed)
+            {
+                if (error.Details is ValidationDetails { AllowedPhoneCountryCodes: { Count: > 0 } codes })
+                    return string.Format(CultureInfo.CurrentCulture, fieldMessage, string.Join(", ", codes));
+                return localizer["Errors.identity.phone.country_not_allowed"].Value;
+            }
             return fieldMessage;
         }
 

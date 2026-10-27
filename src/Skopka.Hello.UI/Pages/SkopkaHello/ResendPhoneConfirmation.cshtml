@@ -22,7 +22,7 @@
                  role="alert"></div>
 
             <label asp-for="Input.Phone">@Text["Field.Phone"]</label>
-            <input asp-for="Input.Phone"
+            <input asp-for="Input.Phone" type="tel"
                    autocomplete="tel"
                    inputmode="tel" />
             <span asp-validation-for="Input.Phone"

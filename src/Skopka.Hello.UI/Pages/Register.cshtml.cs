@@ -119,8 +119,12 @@ public sealed class RegisterModel(
         [Display(Name = "Field.ConfirmPassword")]
         public string ConfirmPassword { get; set; } = string.Empty;
 
+        [Required(ErrorMessage = "Validation.Required")]
+        [Display(Name = "Field.AcceptTermsOfService")]
         public bool AcceptTermsOfService { get; set; }
 
+        [Required(ErrorMessage = "Validation.Required")]
+        [Display(Name = "Field.AcceptPrivacyPolicy")]
         public bool AcceptPrivacyPolicy { get; set; }
     }
 }

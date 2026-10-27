@@ -47,7 +47,8 @@ public sealed class HelloRegistrationPolicyTests
             anonymousMessageRequester: null!,
             messageSender: CreateMessageSender(),
             deliveryOptions: new HelloDeliveryOptions(),
-            options: options);
+            options: options,
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var result = await application.RegisterAsync(
             new HelloRegisterCommand<TestProfile>(
@@ -80,7 +81,8 @@ public sealed class HelloRegistrationPolicyTests
                 null!,
                 CreateMessageSender(),
                 new HelloDeliveryOptions(),
-                options);
+                options,
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var result = await application.RegisterAsync(
             new HelloExternalRegistrationCommand<TestProfile>(
@@ -117,7 +119,8 @@ public sealed class HelloRegistrationPolicyTests
             anonymousMessageRequester: null!,
             messageSender: CreateMessageSender(),
             deliveryOptions: new HelloDeliveryOptions(),
-            options: options);
+            options: options,
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var result = await application.RegisterAsync(
             new HelloRegisterCommand<TestProfile>(
@@ -153,7 +156,8 @@ public sealed class HelloRegistrationPolicyTests
                 null!,
                 CreateMessageSender(),
                 new HelloDeliveryOptions(),
-                options);
+                options,
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var result = await application.RegisterAsync(
             new HelloExternalRegistrationCommand<TestProfile>(
@@ -188,7 +192,8 @@ public sealed class HelloRegistrationPolicyTests
             anonymousMessageRequester: null!,
             messageSender: CreateMessageSender(),
             deliveryOptions: new HelloDeliveryOptions(),
-            options: options);
+            options: options,
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var result = await application.RegisterAsync(
             new HelloRegisterCommand<TestProfile>(
@@ -228,7 +233,8 @@ public sealed class HelloRegistrationPolicyTests
             messageSender: CreateMessageSender(),
             deliveryOptions: new HelloDeliveryOptions(),
             options: options,
-            registrationConsentProfileEnricher: enricher);
+            registrationConsentProfileEnricher: enricher,
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
         var consent = new HelloRegistrationConsent(
             true,
             true,
@@ -267,7 +273,8 @@ public sealed class HelloRegistrationPolicyTests
             anonymousMessageRequester: null!,
             messageSender: CreateMessageSender(),
             deliveryOptions: new HelloDeliveryOptions(),
-            options: options);
+            options: options,
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var result = await application.RegisterAsync(
             new HelloRegisterCommand<TestProfile>(
@@ -308,7 +315,8 @@ public sealed class HelloRegistrationPolicyTests
             anonymousMessageRequester: null!,
             messageSender: CreateMessageSender(),
             deliveryOptions: new HelloDeliveryOptions(),
-            options: options);
+            options: options,
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
 
         var result = await application.RegisterAsync(
             new HelloRegisterCommand<TestProfile>(

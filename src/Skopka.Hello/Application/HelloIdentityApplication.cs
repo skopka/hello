@@ -29,6 +29,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
     IHelloAccountMessageSender messageSender,
     HelloDeliveryOptions deliveryOptions,
     SkopkaHelloOptions options,
+    HelloPhoneInputPolicy phoneInputPolicy,
     HelloRegistrationAdmission<TProfile>? registrationAdmission = null,
     IIdentitySignInMethodQueryService<TProfile>? signInMethods = null,
     IEnumerable<IHelloAccessTokenValidator<TProfile>>?
@@ -113,12 +114,21 @@ internal sealed class HelloIdentityApplication<TProfile>(
             profile = enriched.Value;
         }
 
+        var phone = command.Phone;
+        if (phone is not null)
+        {
+            var normalized = phoneInputPolicy.Normalize(phone);
+            if (!normalized.IsSuccess)
+                return OperationResultFactory.Fail<HelloAccount<TProfile>>(normalized.Errors);
+            phone = normalized.Value;
+        }
+
         var result = await registration.RegisterPasswordAsync(
             new RegisterPasswordUserCommand<TProfile>(
                 new CreateUserCommand<TProfile>(
                     command.UserName,
                     command.Email,
-                    command.Phone,
+                    phone,
                     profile),
                 command.Password),
             cancellationToken);
@@ -147,7 +157,9 @@ internal sealed class HelloIdentityApplication<TProfile>(
         var authenticated = await authentication.AuthenticateAsync(
             new AuthenticatePasswordCommand(
                 options.PasswordLoginHandle,
-                command.Login,
+                options.PasswordLoginHandle == PasswordLoginHandle.Phone
+                    ? HelloPhoneNormalizer.Normalize(command.Login, options.DefaultPhoneRegion)
+                    : command.Login,
                 command.Password,
                 command.ClientKey),
             cancellationToken);
@@ -292,11 +304,20 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 validated.Errors);
         }
 
+        var phone = command.Phone;
+        if (phone is not null)
+        {
+            var normalized = phoneInputPolicy.Normalize(phone);
+            if (!normalized.IsSuccess)
+                return OperationResultFactory.Fail<HelloAccount<TProfile>>(normalized.Errors);
+            phone = normalized.Value;
+        }
+
         var handleAllowed = await EnsureLocalHandleChangeAllowedAsync(
             validated.Value,
             validated.Value.UserName,
             validated.Value.Email,
-            command.Phone,
+            phone,
             cancellationToken);
         if (!handleAllowed.IsSuccess)
         {
@@ -308,7 +329,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
             new ChangePhoneCommand(
                 validated.Value.Id,
                 command.ExpectedVersion,
-                command.Phone),
+                phone),
             cancellationToken);
         return ToAccountResult(changed);
     }
@@ -608,7 +629,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
         CancellationToken cancellationToken)
         => anonymousMessageRequester.EnqueueAsync(
             HelloAccountMessageKind.PhoneConfirmation,
-            phone,
+            HelloPhoneNormalizer.Normalize(phone, options.DefaultPhoneRegion),
             clientKey,
             cancellationToken);
 

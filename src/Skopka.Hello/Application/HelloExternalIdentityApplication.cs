@@ -22,6 +22,7 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
     IHelloAccountMessageSender messageSender,
     HelloDeliveryOptions deliveryOptions,
     SkopkaHelloOptions options,
+    HelloPhoneInputPolicy phoneInputPolicy,
     HelloRegistrationAdmission<TProfile>? registrationAdmission = null,
     IEnumerable<IHelloAccessTokenValidator<TProfile>>?
         accessTokenValidators = null,
@@ -111,12 +112,21 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
             profile = enriched.Value;
         }
 
+        var phone = command.Phone;
+        if (phone is not null)
+        {
+            var normalized = phoneInputPolicy.Normalize(phone);
+            if (!normalized.IsSuccess)
+                return OperationResultFactory.Fail<HelloSignIn<TProfile>>(normalized.Errors);
+            phone = normalized.Value;
+        }
+
         var registered = await registration.RegisterExternalAsync(
             new RegisterExternalUserCommand<TProfile>(
                 new CreateUserCommand<TProfile>(
                     command.UserName,
                     command.Email,
-                    command.Phone,
+                    phone,
                     profile),
                 command.Login),
             cancellationToken);

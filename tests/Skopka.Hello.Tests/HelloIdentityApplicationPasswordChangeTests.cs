@@ -247,7 +247,8 @@ public sealed class HelloIdentityApplicationPasswordChangeTests
             null!,
             null!,
             new HelloDeliveryOptions(),
-            new SkopkaHelloOptions());
+            new SkopkaHelloOptions(),
+            phoneInputPolicy: TestHelloPhoneInputPolicy.Create());
         return new Fixture(
             application,
             challengeId,

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Skopka.Identity.Authentication;
 
 namespace Skopka.Hello;
 
@@ -7,7 +8,7 @@ internal static class HelloPhoneNormalizer
     internal static string Normalize(string? phone, string? region)
     {
         if (phone is null) return string.Empty;
-        if (region is null) return phone;
+        if (region is null || phone.Length > IdentityLoginLimits.MaximumLoginLength) return phone;
         var compact = new string(phone.Where(c => char.GetUnicodeCategory(c) != UnicodeCategory.SpaceSeparator
             && c is not '(' and not ')' and not '-').ToArray());
         var digits = compact.StartsWith('+') ? compact[1..] : compact;

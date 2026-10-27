@@ -86,7 +86,11 @@ public sealed class LoginModel(
         public string RegistrationToken { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
         public string? Locale { get; set; }
+        [Required(ErrorMessage = "Validation.Required")]
+        [Display(Name = "Field.AcceptTermsOfService")]
         public bool AcceptTermsOfService { get; set; }
+        [Required(ErrorMessage = "Validation.Required")]
+        [Display(Name = "Field.AcceptPrivacyPolicy")]
         public bool AcceptPrivacyPolicy { get; set; }
         public int RetryAfterSeconds { get; set; }
     }

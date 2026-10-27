@@ -56,6 +56,127 @@ public sealed class AuthenticationFlowTests
     private const string UiNoticeText =
         "Test stand: <data> may be \"deleted\".";
 
+    [Theory]
+    [InlineData(HelloUiRegistrationFieldMode.Hidden)]
+    [InlineData(HelloUiRegistrationFieldMode.Optional)]
+    [InlineData(HelloUiRegistrationFieldMode.Required)]
+    public async Task PhoneUiNormalizesAndUsesRequestCultureAndConsentFields(
+        HelloUiRegistrationFieldMode localeMode)
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(),
+            configureHello: options =>
+            {
+                options.PhoneOtpEnabled = true;
+                options.DefaultPhoneRegion = "ru";
+            },
+            configureUi: options =>
+            {
+                options.TermsOfServiceUrl = "/terms";
+                options.PrivacyPolicyUrl = "/privacy";
+                options.Registration.Locale = localeMode;
+                options.Localization.Enabled = true;
+                options.Localization.AddCulture("ru-RU", "Русский");
+                options.Localization.DefaultCulture = "ru-RU";
+            });
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        Dictionary<string, string> cookies = new(StringComparer.Ordinal);
+        using var page = await SendAsync(client, HttpMethod.Get, "/hello/login", cookies);
+        MergeCookies(cookies, page);
+        var html = await page.Content.ReadAsStringAsync();
+        var phoneInput = Regex.Match(html, "<input[^>]*id=\"Phone_PhoneNumber\"[^>]*>").Value;
+        Assert.Contains("data-val-required=", phoneInput);
+        Assert.Equal("Поле «номер телефона» обязательно.", WebUtility.HtmlDecode(Regex.Match(phoneInput, "data-val-required=\"([^\"]*)\"").Groups[1].Value));
+        var token = ReadInputValue(html, "__RequestVerificationToken");
+        using var empty = await SendFormAsync(client, "/hello/login?handler=PhoneRequest", cookies,
+            new Dictionary<string, string> { ["Phone.PhoneNumber"] = "", ["__RequestVerificationToken"] = token });
+        var emptyHtml = WebUtility.HtmlDecode(await empty.Content.ReadAsStringAsync());
+        Assert.Contains("Поле «номер телефона» обязательно.", emptyHtml);
+        token = ReadInputValue(emptyHtml, "__RequestVerificationToken");
+        using var invalid = await SendFormAsync(client, "/hello/login?handler=PhoneRequest", cookies,
+            new Dictionary<string, string> { ["Phone.PhoneNumber"] = "not-a-phone", ["__RequestVerificationToken"] = token });
+        var invalidHtml = WebUtility.HtmlDecode(await invalid.Content.ReadAsStringAsync());
+        Assert.Contains("Введите корректный номер телефона", invalidHtml);
+        Assert.Contains("data-valmsg-for=\"Phone.PhoneNumber\"", invalidHtml);
+        token = ReadInputValue(invalidHtml, "__RequestVerificationToken");
+        using var requested = await SendFormAsync(client, "/hello/login?handler=PhoneRequest", cookies,
+            new Dictionary<string, string> { ["Phone.PhoneNumber"] = "8 999 123-45-73", ["__RequestVerificationToken"] = token });
+        html = await requested.Content.ReadAsStringAsync();
+        var requestId = ReadInputValue(html, "Phone.RequestId");
+        token = ReadInputValue(html, "__RequestVerificationToken");
+        var message = await app.WaitForMessageAsync(HelloAccountMessageKind.PhoneSignInVerification);
+        Assert.Equal("+79991234573", message.RecipientAddress);
+        Assert.NotNull(message.VerificationCode);
+        using var verified = await SendFormAsync(client, "/hello/login?handler=PhoneVerify", cookies,
+            new Dictionary<string, string> { ["Phone.RequestId"] = requestId, ["Phone.Code"] = message.VerificationCode, ["__RequestVerificationToken"] = token });
+        html = await verified.Content.ReadAsStringAsync();
+        if (localeMode == HelloUiRegistrationFieldMode.Hidden)
+        {
+            Assert.DoesNotContain("id=\"Phone_Locale\"", html);
+            Assert.DoesNotContain("for=\"Phone_Locale\"", html);
+        }
+        else
+        {
+            var localeInput = Regex.Match(html, "<input[^>]*id=\"Phone_Locale\"[^>]*>").Value;
+            Assert.Contains("name=\"Phone.Locale\"", localeInput);
+            Assert.Equal(localeMode == HelloUiRegistrationFieldMode.Required, localeInput.Contains("required", StringComparison.Ordinal));
+            Assert.Contains("for=\"Phone_Locale\"", html);
+        }
+        Assert.Matches("(?s)<fieldset class=\"hello-legal-consents\">.*?<div class=\"hello-legal-consent\">.*?</div>.*?<div class=\"hello-legal-consent\">", html);
+        Assert.Contains("for=\"Phone_AcceptTermsOfService\"", html);
+        Assert.Contains("for=\"Phone_AcceptPrivacyPolicy\"", html);
+        var registrationToken = ReadInputValue(html, "Phone.RegistrationToken");
+        token = ReadInputValue(html, "__RequestVerificationToken");
+        var form = new Dictionary<string, string> { ["Phone.RegistrationToken"] = registrationToken, ["Phone.DisplayName"] = "Phone member", ["Phone.Locale"] = "en-US", ["__RequestVerificationToken"] = token };
+        if (localeMode == HelloUiRegistrationFieldMode.Required)
+        {
+            form["Phone.Locale"] = "";
+            using var missingLocale = await SendFormAsync(client, "/hello/login?handler=PhoneRegister", cookies, form);
+            var missingLocaleHtml = await missingLocale.Content.ReadAsStringAsync();
+            Assert.Contains("data-valmsg-for=\"Phone.Locale\"", missingLocaleHtml);
+            Assert.Contains("field-validation-error", missingLocaleHtml);
+            form["Phone.Locale"] = "en-US";
+            form["__RequestVerificationToken"] = ReadInputValue(missingLocaleHtml, "__RequestVerificationToken");
+        }
+        using var missing = await SendFormAsync(client, "/hello/login?handler=PhoneRegister", cookies, form);
+        html = await missing.Content.ReadAsStringAsync();
+        Assert.Contains("data-valmsg-for=\"Phone.AcceptTermsOfService\"", html);
+        Assert.Contains("data-valmsg-for=\"Phone.AcceptPrivacyPolicy\"", html);
+        foreach (var field in new[] { "AcceptTermsOfService", "AcceptPrivacyPolicy" })
+        {
+            var error = Regex.Match(html, $"(?s)<span[^>]*class=\"[^\"]*hello-legal-consent-error[^\"]*field-validation-error[^\"]*\"[^>]*data-valmsg-for=\"Phone.{field}\"[^>]*>.*?</span>").Value;
+            Assert.NotEmpty(error);
+            Assert.NotEmpty(Regex.Replace(error, "<[^>]*>", string.Empty).Trim());
+        }
+        form["Phone.AcceptTermsOfService"] = "true";
+        form["Phone.AcceptPrivacyPolicy"] = "true";
+        form["__RequestVerificationToken"] = ReadInputValue(html, "__RequestVerificationToken");
+        using var registered = await SendFormAsync(client, "/hello/login?handler=PhoneRegister", cookies, form);
+        Assert.Equal(HttpStatusCode.Redirect, registered.StatusCode);
+        MergeCookies(cookies, registered);
+        using var account = await SendAsync(client, HttpMethod.Get, "/hello/account", cookies);
+        var expectedLocale = localeMode == HelloUiRegistrationFieldMode.Hidden ? "ru-RU" : "en-US";
+        Assert.Contains($"value=\"{expectedLocale}\"", await account.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task PhoneApiWithoutRegionKeepsStrictE164()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(), configureHello: options => options.PhoneOtpEnabled = true);
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        using var invalid = await client.PostAsJsonAsync("/auth/phone/request", new { phone = "8 999 123-45-75" });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using var valid = await client.PostAsJsonAsync("/auth/phone/request", new { phone = "+79991234575" });
+        Assert.Equal(HttpStatusCode.Accepted, valid.StatusCode);
+        var message = await app.WaitForMessageAsync(HelloAccountMessageKind.PhoneSignInVerification);
+        Assert.Equal("+79991234575", message.RecipientAddress);
+    }
+
     [Fact]
     public async Task PhoneOtpApiRegistersWithPostgreSqlAndRejectsTicketReplay()
     {
@@ -64,11 +185,18 @@ public sealed class AuthenticationFlowTests
         await postgres.StartAsync();
         await using var app = await TestApplication.CreateAsync(
             postgres.GetConnectionString(),
-            configureHello: options => options.PhoneOtpEnabled = true);
+            configureHello: options =>
+            {
+                options.PhoneOtpEnabled = true;
+                options.DefaultPhoneRegion = "RU";
+            });
         using var client = app.CreateClient(allowAutoRedirect: false);
 
+        using var nullPhone = await client.PostAsJsonAsync(
+            "/auth/phone/request", new { phone = (string?)null });
+        Assert.Equal(HttpStatusCode.BadRequest, nullPhone.StatusCode);
         using var requested = await client.PostAsJsonAsync(
-            "/auth/phone/request", new { phone = "+79991234572" });
+            "/auth/phone/request", new { phone = "8 999 123-45-72" });
         Assert.Equal(HttpStatusCode.Accepted, requested.StatusCode);
         var challenge = await requested.Content.ReadFromJsonAsync<
             PhoneCodeRequestResponse>();
@@ -78,6 +206,7 @@ public sealed class AuthenticationFlowTests
         var message = await app.WaitForMessageAsync(
             HelloAccountMessageKind.PhoneSignInVerification);
         Assert.Equal(HelloDeliveryChannel.Sms, message.Channel);
+        Assert.Equal("+79991234572", message.RecipientAddress);
         Assert.NotNull(message.VerificationCode);
 
         using var verified = await client.PostAsJsonAsync(

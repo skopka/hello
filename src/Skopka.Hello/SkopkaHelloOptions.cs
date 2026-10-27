@@ -18,6 +18,9 @@ public sealed class SkopkaHelloOptions
 
     public bool PhoneOtpEnabled { get; set; }
 
+    /// <summary>Optional default region for phone OTP input. Only RU is supported.</summary>
+    public string? DefaultPhoneRegion { get; set; }
+
     public int DailySmsBudget { get; set; } = 1000;
 
     public string SmsApplicationName { get; set; } = "Skopka.Hello";
@@ -67,6 +70,12 @@ public sealed class SkopkaHelloOptions
 
     public void Validate()
     {
+        if (DefaultPhoneRegion is not null
+            && !string.Equals(DefaultPhoneRegion, "RU", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("DefaultPhoneRegion supports only RU or null.");
+        }
+
         Totp.Validate();
         WebAuthn.Validate();
         if (DailySmsBudget <= 0

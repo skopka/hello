@@ -311,6 +311,7 @@
     "ExternalLogins.RemoveProvider": "Удалить провайдера",
     "ExternalLogins.CancelChange": "Отменить изменение",
 
+    "Errors.identity.validation.failed.phone": "Введите корректный номер телефона в международном формате.",
     "Validation.Required": "Поле «{0}» обязательно.",
     "Validation.StringLength": "Длина поля «{0}» не должна превышать {1} символов.",
     "Validation.StringLengthRange": "Длина поля «{0}» должна быть от {2} до {1} символов.",

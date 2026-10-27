@@ -1,12 +1,14 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Skopka.Hello;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.PhoneSqliteBlazor;
 using Skopka.Hello.PhoneSqliteBlazor.Components;
 using Skopka.Hello.UI;
 using Skopka.Identity.Ef.Sqlite;
+using Skopka.Identity.PhoneOtp;
 
 var builder = WebApplication.CreateBuilder(args);
 var development = builder.Environment.IsDevelopment();
@@ -26,7 +28,6 @@ var identity = builder.Services.AddSkopkaHello<SampleProfile>(options =>
         options.AntiforgeryRequestCookieName = "Skopka.Hello.XSRF-TOKEN";
     }
 })
-    .ConfigurePhoneOtp(options => options.AllowedCountryCodes = ["+7"])
     .UseSqlite(identityDatabase)
     .UseHmacOneTimeCodes("sample", ReadKey("VerificationKey"))
     .UseHmacRateLimiting(ReadKey("RateLimitKey"))
@@ -35,6 +36,9 @@ var identity = builder.Services.AddSkopkaHello<SampleProfile>(options =>
         options.Issuer = "https://phone-sample.local";
         options.Audience = "phone-sample";
     });
+
+identity.Services.Replace(ServiceDescriptor.Singleton(
+    new PhoneOtpOptions { AllowedCountryCodes = ["+7"] }));
 
 identity.UseJwtBearerAuthentication(options =>
     options.SetAsDefaultScheme = false);

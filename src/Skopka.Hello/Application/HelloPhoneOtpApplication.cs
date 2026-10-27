@@ -44,6 +44,8 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
             return Disabled<HelloPhoneCodeRequest>();
         }
 
+        phone = HelloPhoneNormalizer.Normalize(phone, options.DefaultPhoneRegion);
+
         var availability = messageSender.CheckAvailability(
             HelloDeliveryChannel.Sms);
         if (!availability.IsSuccess)

@@ -311,6 +311,7 @@
     "ExternalLogins.RemoveProvider": "Remove provider",
     "ExternalLogins.CancelChange": "Cancel this change",
 
+    "Errors.identity.validation.failed.phone": "Enter a valid phone number in international format.",
     "Validation.Required": "The {0} field is required.",
     "Validation.StringLength": "The {0} field must be a string with a maximum length of {1}.",
     "Validation.StringLengthRange": "The {0} field must be a string with a minimum length of {2} and a maximum length of {1}.",

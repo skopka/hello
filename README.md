@@ -10,7 +10,7 @@ provider integration, host composition and policy-separated administration.
 Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
-The current `0.23.0` vertical slice contains:
+The current `0.24.0` vertical slice contains:
 
 - atomic password registration;
 - passwordless SMS sign-in and atomic registration by verified phone;
@@ -163,6 +163,22 @@ account linking remain available. Password registration calls
 implemented as separate user creation and password mutation. Login calls
 `IPasswordAuthenticationService<TProfile>`, then creates a session through
 `IIdentitySessionService<TProfile>`.
+
+Phone OTP accepts strict E.164 by default. Set `SkopkaHelloOptions.DefaultPhoneRegion = "RU"` to also accept Russian national numbers: 10 ASCII digits or 11 starting with 7 or 8 become `+7…`. Spaces, parentheses and hyphens are removed for recognized input, including explicitly international numbers. Other regions are not supported; malformed numbers and extensions are left for Identity validation. The option affects phone OTP requests, not other phone registration, account-change or confirmation operations.
+
+For example, add these settings to the host’s existing service registrations:
+
+```csharp
+builder.Services.AddSkopkaHello<MyProfile>(options =>
+{
+    options.PhoneOtpEnabled = true;
+    options.DefaultPhoneRegion = "RU";
+});
+```
+
+Locale remains hidden by default. To show it, set `options.Registration.Locale = HelloUiRegistrationFieldMode.Optional` in the existing `AddSkopkaHelloUi` options; use `Required` when the visitor must provide it.
+
+On the phone registration step `UiOptions.Registration.Locale` controls `Phone_Locale` just as on registration: hidden by default (the server uses the request culture), optional, or required. Legal controls use `.hello-legal-consents`, `.hello-legal-consent` and `.hello-legal-consent-error`; checkbox IDs remain `Phone_AcceptTermsOfService` and `Phone_AcceptPrivacyPolicy`. Hosts can remove CSS that hid the locale and restyled nested consent labels, and JavaScript that filled the locale or normalized Russian numbers for OTP. Existing hosts that relied on the locale field being visible should set it to Optional or Required; normalization remains opt-in.
 
 `PhoneOtpEnabled` maps the three phone routes and adds the phone flow to the
 Razor login page. `PasswordSignInEnabled = false` removes password registration,

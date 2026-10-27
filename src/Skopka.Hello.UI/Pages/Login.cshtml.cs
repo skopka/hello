@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
@@ -77,6 +78,8 @@ public sealed class LoginModel(
 
     public sealed class PhoneInput
     {
+        [Required(ErrorMessage = "Validation.Required")]
+        [Display(Name = "Field.PhoneNumber")]
         public string PhoneNumber { get; set; } = string.Empty;
         public Guid RequestId { get; set; }
         public string Code { get; set; } = string.Empty;
@@ -189,6 +192,15 @@ public sealed class LoginModel(
     public async Task<IActionResult> OnPostAsync(
         CancellationToken cancellationToken)
     {
+        foreach (var key in ModelState.Keys
+            .Where(key => key.Equals("Phone", StringComparison.OrdinalIgnoreCase)
+                || key.Equals(nameof(PhoneInput.PhoneNumber), StringComparison.OrdinalIgnoreCase)
+                || key.StartsWith("Phone.", StringComparison.OrdinalIgnoreCase))
+            .ToArray())
+        {
+            ModelState.Remove(key);
+        }
+
         if (!PasswordEnabled)
         {
             return NotFound();
@@ -243,11 +255,20 @@ public sealed class LoginModel(
             return NotFound();
         }
 
+        if (string.IsNullOrWhiteSpace(Phone.PhoneNumber))
+        {
+            ModelState.AddModelError("Phone.PhoneNumber",
+                text["Validation.Required", text["Field.PhoneNumber"].Value].Value);
+            return Page();
+        }
+        ModelState.SetModelValue("Phone.PhoneNumber", Phone.PhoneNumber, Phone.PhoneNumber);
         var result = await phoneApplication.RequestAsync(
             Phone.PhoneNumber, HttpContext, cancellationToken);
         if (!result.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text,
+                field => string.Equals(field, "phone", StringComparison.OrdinalIgnoreCase)
+                    ? "Phone.PhoneNumber" : $"Phone.{field}");
             return Page();
         }
 
@@ -311,6 +332,21 @@ public sealed class LoginModel(
             return Page();
         }
 
+        if (!uiOptions.Registration.IsVisible(HelloUiRegistrationField.Locale))
+        {
+            Phone.Locale = CultureInfo.CurrentCulture.Name;
+        }
+        else if (uiOptions.Registration.IsRequired(HelloUiRegistrationField.Locale)
+            && string.IsNullOrWhiteSpace(Phone.Locale))
+        {
+            ModelState.AddModelError("Phone.Locale",
+                text["Validation.Required", text["Field.Locale"].Value].Value);
+            return Page();
+        }
+
+        ModelState.SetModelValue("Phone.AcceptTermsOfService", Phone.AcceptTermsOfService.ToString(), Phone.AcceptTermsOfService.ToString());
+        ModelState.SetModelValue("Phone.AcceptPrivacyPolicy", Phone.AcceptPrivacyPolicy.ToString(), Phone.AcceptPrivacyPolicy.ToString());
+        ModelState.SetModelValue("Phone.Locale", Phone.Locale, Phone.Locale);
         var result = await phoneApplication.RegisterAsync(
             Phone.RegistrationToken,
             Phone.DisplayName,
@@ -321,7 +357,8 @@ public sealed class LoginModel(
             cancellationToken);
         if (!result.IsSuccess)
         {
-            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text,
+                field => $"Phone.{field}");
             return Page();
         }
 

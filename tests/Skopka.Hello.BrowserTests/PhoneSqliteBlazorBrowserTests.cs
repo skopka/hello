@@ -90,6 +90,14 @@ public sealed class PhoneSqliteBlazorBrowserTests(BrowserFixture browser)
                 "form:has(input[name='Phone.DisplayName']) button[type='submit']")
                 .ClickAsync();
             await page.WaitForURLAsync("**/hello/account");
+            var displayNameInput = page.GetByLabel(
+                "Display name", new() { Exact = true });
+            await Assertions.Expect(displayNameInput)
+                .ToHaveAccessibleDescriptionAsync(
+                    "Shown on the private page after sign-in.");
+            await Assertions.Expect(page.Locator(
+                "#hello-profile-displayName-hint.hello-field-hint"))
+                .ToBeVisibleAsync();
             await page.GotoAsync($"{address}/private");
             Assert.Equal($"{address}/private", page.Url);
             Assert.Contains("Закрытая страница",

@@ -3587,6 +3587,11 @@ public sealed class AuthenticationFlowTests
             "value=\"ru\"",
             localeInput,
             StringComparison.Ordinal);
+        AssertProfileFieldHint(
+            accountHtml,
+            "locale",
+            "Leave empty to use the browser language.");
+        AssertProfileFieldWithoutHint(accountHtml, "displayName");
         var headerEnd = accountHtml.IndexOf(
             "</header>",
             StringComparison.Ordinal);
@@ -3633,6 +3638,10 @@ public sealed class AuthenticationFlowTests
             "Unmatched profile error.",
             invalidProfileHtml,
             StringComparison.Ordinal);
+        AssertProfileFieldHint(
+            invalidProfileHtml,
+            "locale",
+            "Leave empty to use the browser language.");
         MergeCookies(cookies, invalidProfile);
 
         profileVersion = ReadInputValue(
@@ -4785,6 +4794,54 @@ public sealed class AuthenticationFlowTests
         return WebUtility.HtmlDecode(match.Groups[1].Value);
     }
 
+    private static string ReadProfileInput(
+        string html,
+        string name)
+    {
+        var input = Regex.Match(
+            html,
+            $"<input[^>]*name=\"ProfileValues\\[{Regex.Escape(name)}\\]\"[^>]*>",
+            RegexOptions.CultureInvariant).Value;
+        Assert.NotEmpty(input);
+        return input;
+    }
+
+    private static void AssertProfileFieldHint(
+        string html,
+        string name,
+        string hint)
+    {
+        var hintId = $"hello-profile-{name}-hint";
+        Assert.Contains(
+            $"aria-describedby=\"{hintId}\"",
+            ReadProfileInput(html, name),
+            StringComparison.Ordinal);
+        var hintElement = Regex.Match(
+            html,
+            $"<span id=\"{Regex.Escape(hintId)}\" class=\"hello-field-hint\">([^<]*)</span>",
+            RegexOptions.CultureInvariant);
+        Assert.True(
+            hintElement.Success,
+            $"Hint for profile field '{name}' was not rendered.");
+        Assert.Equal(
+            hint,
+            WebUtility.HtmlDecode(hintElement.Groups[1].Value));
+    }
+
+    private static void AssertProfileFieldWithoutHint(
+        string html,
+        string name)
+    {
+        Assert.DoesNotContain(
+            "aria-describedby",
+            ReadProfileInput(html, name),
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            $"hello-profile-{name}-hint",
+            html,
+            StringComparison.Ordinal);
+    }
+
     private static async Task<HttpResponseMessage> SendAuthorizedJsonAsync(
         HttpClient client,
         HttpMethod method,
@@ -5544,7 +5601,10 @@ public sealed class AuthenticationFlowTests
                 new HelloUiProfileField(
                     "locale",
                     "Locale",
-                    profile.Locale),
+                    profile.Locale)
+                {
+                    Hint = "Leave empty to use the browser language.",
+                },
             ];
 
         public OperationResult<IntegrationProfile> Update(

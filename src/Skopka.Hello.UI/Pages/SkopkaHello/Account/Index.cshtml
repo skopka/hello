@@ -172,6 +172,9 @@
             {
                 var fieldId = $"hello-profile-{field.Name}";
                 var fieldKey = $"ProfileValues[{field.Name}]";
+                var hintId = string.IsNullOrWhiteSpace(field.Hint)
+                    ? null
+                    : $"{fieldId}-hint";
                 <label for="@fieldId">@field.Label</label>
                 <input id="@fieldId"
                        name="@fieldKey"
@@ -179,7 +182,12 @@
                        type="@field.InputType"
                        autocomplete="@field.AutoComplete"
                        maxlength="@field.MaximumLength"
-                       required="@field.Required" />
+                       required="@field.Required"
+                       aria-describedby="@hintId" />
+                @if (hintId is not null)
+                {
+                    <span id="@hintId" class="hello-field-hint">@field.Hint</span>
+                }
                 @if (ViewData.ModelState.TryGetValue(
                     fieldKey,
                     out var fieldState))

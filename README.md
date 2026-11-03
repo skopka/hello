@@ -10,10 +10,12 @@ provider integration, host composition and policy-separated administration.
 Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
-Version `0.25.0` adds step-up-protected management of
-OAuth clients; see the [authorization-server guide](docs/authorization-server.md).
+Version `0.26.0` adds optional hints under host-defined account profile
+fields; see [customization](docs/customization.md). Version `0.25.0` added
+step-up-protected management of OAuth clients; see the
+[authorization-server guide](docs/authorization-server.md).
 
-The current `0.25.0` vertical slice contains:
+The current `0.26.0` vertical slice contains:
 
 - atomic password registration;
 - passwordless SMS sign-in and atomic registration by verified phone;

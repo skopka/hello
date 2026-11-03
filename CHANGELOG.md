@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.26.0
+
+- Add optional `HelloUiProfileField.Hint`. The account page renders it under the profile input as `.hello-field-hint` and links it with `aria-describedby`, so screen readers announce it as the field description. Fields without a hint render unchanged markup.
+- The hint is host-owned text like `Label`; Hello does not localize it. It is an init-only property, so existing positional `HelloUiProfileField` construction keeps compiling and binding.
+- The phone-only SQLite Blazor sample now implements `IHelloUiProfileEditor<TProfile>` and shows a display-name hint.
+
 ## 0.25.0
 
 - Add OTP-protected OAuth client administration through Admin API and Razor. Client IDs are immutable; scopes and audiences are chosen from the configured server catalog. Confidential client secrets are returned once on creation, rotation, or conversion from public; conversion to public removes the secret.

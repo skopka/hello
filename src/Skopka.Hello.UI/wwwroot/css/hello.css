@@ -288,6 +288,12 @@ select {
   cursor: pointer;
 }
 
+.hello-field-hint {
+  margin-top: -0.25rem;
+  color: var(--skopka-hello-color-muted);
+  font-size: 0.9rem;
+}
+
 .hello-validation:not(:empty),
 .hello-field-error,
 .hello-status {

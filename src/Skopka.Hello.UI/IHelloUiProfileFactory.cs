@@ -24,7 +24,14 @@ public sealed record HelloUiProfileField(
     string InputType = "text",
     string? AutoComplete = null,
     bool Required = false,
-    int? MaximumLength = null);
+    int? MaximumLength = null)
+{
+    /// <summary>
+    /// Optional host-owned text rendered under the input and announced as
+    /// its accessible description. It is not localized by Hello.
+    /// </summary>
+    public string? Hint { get; init; }
+}
 
 public interface IHelloUiProfileEditor<TProfile>
 {

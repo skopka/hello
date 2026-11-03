@@ -410,7 +410,10 @@ public sealed class MyProfileUiFactory
     [
         new("displayName", "Display name", profile.DisplayName,
             AutoComplete: "name", Required: true, MaximumLength: 200),
-        new("locale", "Locale", profile.Locale, MaximumLength: 32),
+        new("locale", "Locale", profile.Locale, MaximumLength: 32)
+        {
+            Hint = "Leave empty to use the browser language.",
+        },
     ];
 
     public OperationResult<MyProfile> Update(
@@ -438,7 +441,11 @@ public sealed class MyProfileUiFactory
 ```
 
 Hello renders the declared fields, but the host owns their schema, validation
-and mapping. The update is sent to Skopka.Identity with the user's current
+and mapping. An optional `Hint` is rendered under the input as
+`<span id="hello-profile-<name>-hint" class="hello-field-hint">` and referenced
+from the input's `aria-describedby`, so assistive technology reads it as the
+field description. Like `Label`, it is host text and is not looked up in Hello
+dictionaries; fields without a hint have no description element or attribute. The update is sent to Skopka.Identity with the user's current
 optimistic version. If the factory does not implement the editor, generic
 profile editing is simply omitted from the built-in UI; the typed
 `PUT /account/profile` API remains available.
@@ -584,6 +591,7 @@ variables. Stable selectors and customization hooks include:
 .hello-step-up
 .hello-status-error
 .hello-notice
+.hello-field-hint
 [data-hello-provider="google"]
 [data-hello-linked-providers]
 [data-hello-available-providers]

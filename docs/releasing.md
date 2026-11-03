@@ -7,9 +7,12 @@ as one coordinated release.
 ## Repository setup
 
 Create a protected GitHub Actions environment named `release`, restrict it to
-version tags and require a reviewer. Create a NuGet.org API key that can
-publish every package listed below and store it as the environment secret
-named `NUGET_API_KEY`:
+version tags and require a reviewer. Configure a NuGet.org Trusted Publishing
+policy for the `Skopka` account with repository owner `skopka`, repository
+`hello`, workflow `release.yml`, environment `release`, and package ID pattern
+`Skopka.Hello*`. The workflow exchanges its GitHub OIDC token for a short-lived
+NuGet API key; no long-lived `NUGET_API_KEY` secret is needed. The policy must
+cover all six packages:
 
 - `Skopka.Hello`
 - `Skopka.Hello.Admin`
@@ -37,8 +40,8 @@ semantic-version tag:
 ```shell
 git switch main
 git pull --ff-only
-git tag -a v0.23.0 -m "Skopka.Hello 0.23.0"
-git push origin v0.23.0
+git tag -a v0.25.0 -m "Skopka.Hello 0.25.0"
+git push origin v0.25.0
 ```
 
 The workflow removes the leading `v` and uses the remainder as the assembly and
@@ -59,8 +62,11 @@ package IDs already has that version. It then submits the packages in dependency
 order without `--skip-duplicate`. This prevents an unrelated or stale package
 from being silently accepted as part of the coordinated release. NuGet.org does
 not provide a transaction spanning multiple package IDs, so a network failure
-can still leave a partially visible release. Never reuse such a version: fix the
-cause, increment the patch version and create a new tag.
+can still leave a partially visible release. Published or partially published
+versions are permanently immutable: fix the cause, increment the patch version
+and create a new tag. If a run fails before
+any package is accepted, verify all six IDs remain unpublished before retrying
+the same version.
 
 After the push, the workflow waits until the exact version of all six package
 IDs is readable from NuGet.org's public flat-container endpoint. A separate
@@ -72,7 +78,8 @@ contains SBOM and maximum provenance attestations. The GitHub Release is
 created only after both the complete package set and the exact container tag
 are visible.
 
-The generated GitHub Release contains the same `.nupkg` and `.snupkg` files.
+The GitHub Release includes the matching `CHANGELOG.md` section, generated
+release notes, and the same `.nupkg` and `.snupkg` files.
 Normal branch pushes and pull requests never publish; their package artifacts
 are retained by CI for 14 days, and CI builds the Server image without pushing
 it. Both CI and the release integration suite require Docker Engine for

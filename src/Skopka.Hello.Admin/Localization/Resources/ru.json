@@ -18,6 +18,7 @@
     "Admin.Common.ActionCompleted": "Действие «{0}» выполнено.",
     "Admin.Common.Version": "Версия {0}",
     "Admin.Common.NextPage": "Следующая страница",
+    "Admin.Common.Close": "Закрыть",
     "Admin.Common.Manage": "Управление",
     "Admin.Roles.PageTitle": "Администрирование ролей",
     "Admin.Roles.Title": "Роли",

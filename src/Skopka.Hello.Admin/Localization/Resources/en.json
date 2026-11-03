@@ -18,6 +18,7 @@
     "Admin.Common.ActionCompleted": "{0} completed.",
     "Admin.Common.Version": "Version {0}",
     "Admin.Common.NextPage": "Next page",
+    "Admin.Common.Close": "Close",
     "Admin.Common.Manage": "Manage",
     "Admin.Roles.PageTitle": "Role administration",
     "Admin.Roles.Title": "Roles",

@@ -168,6 +168,7 @@ body. Stable public paths are available instead of duplicating RCL literals:
 {
     <link rel="stylesheet"
           href="@HelloUiDefaults.BuiltInStylesheetPath" />
+    <link rel="stylesheet" href="@HelloAdminDefaults.BootstrapStylesheetPath" />
     <link rel="stylesheet"
           href="@HelloAdminDefaults.BuiltInStylesheetPath" />
 }
@@ -177,10 +178,19 @@ body. Stable public paths are available instead of duplicating RCL literals:
 }
 ```
 
-Admin's packaged Bootstrap paths are also exposed as
-`HelloAdminDefaults.BootstrapStylesheetPath` and
-`HelloAdminDefaults.BootstrapScriptPath`. A host already using Bootstrap may
-prefer its own compatible assets. `NoticeText` remains available for hosts
+After `@RenderBody()`, load the Bootstrap bundle and Admin script, in that order,
+when the Admin Razor pages are enabled:
+
+```cshtml
+<script src="@HelloAdminDefaults.BootstrapScriptPath"></script>
+<script src="@HelloAdminDefaults.AdminScriptPath"></script>
+```
+
+These scripts are required for Admin dialogs and their verification flow even
+when `BuiltInStylesEnabled` is false. A host already using Bootstrap may use its
+own compatible assets instead of the packaged Bootstrap stylesheet and bundle.
+When supplying all styles, include compatible Bootstrap modal and backdrop styles
+as well as styles for the Admin markup. `NoticeText` remains available for hosts
 that keep the packaged shell.
 
 ### Registration fields
@@ -561,6 +571,15 @@ win at equal specificity. The primary theme variables are:
 }
 ```
 
+The Admin Users and Roles lists use compact, left-aligned rows with details and
+actions in dialogs. The default Admin shell spans the available width; the
+list container (`.admin-directory`) is left-aligned and bounded in width. Rows
+use `.admin-list-row` within `.admin-list`, with `.admin-user-card` and
+`.admin-role-card` retained on the corresponding rows. When upgrading, review
+custom selectors targeting the former
+card, grid or collapse markup; those selectors may no longer match. Keep dialog
+text, controls and focus indicators legible in every host theme, and check keyboard
+navigation and narrow screens when overriding the packaged styles.
 Set `BuiltInStylesEnabled = false` in `AddSkopkaHelloUi` to retain the
 page markup and custom stylesheet without loading the packaged CSS. The ready
 server also accepts

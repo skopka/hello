@@ -1,13 +1,14 @@
 # Changelog
 
-## 0.26.0
+## 0.25.0
+
+- Publish NuGet packages through Trusted Publishing using short-lived credentials.
 
 - Add optional `HelloUiProfileField.Hint`. The account page renders it under the profile input as `.hello-field-hint` and links it with `aria-describedby`, so screen readers announce it as the field description. Fields without a hint render unchanged markup.
 - The hint is host-owned text like `Label`; Hello does not localize it. It is an init-only property, so existing positional `HelloUiProfileField` construction keeps compiling and binding.
 - The phone-only SQLite Blazor sample now implements `IHelloUiProfileEditor<TProfile>` and shows a display-name hint.
 
-## 0.25.0
-
+- Show Admin Users and Roles as compact, left-aligned rows; details and actions open in dialogs. Hosts with custom Admin CSS should review selectors that targeted the former cards, grid or collapsed panels.
 - Add OTP-protected OAuth client administration through Admin API and Razor. Client IDs are immutable; scopes and audiences are chosen from the configured server catalog. Confidential client secrets are returned once on creation, rotation, or conversion from public; conversion to public removes the secret.
 - Synchronization preserves administrator-owned and unmatched legacy registrations, adopts legacy IDs matching configuration, and rejects collisions with administrator-owned clients before modifying registrations. Removing a configuration-owned client still removes its grants.
 - Persist client scopes, resource and reauthentication policy in OpenIddict so administrator-created clients work after restart. Authorization code with mandatory PKCE and the existing refresh flow remain the only supported grants.

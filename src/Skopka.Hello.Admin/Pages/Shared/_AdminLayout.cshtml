@@ -148,6 +148,9 @@
     <script src="@(Context.Request.PathBase
         + HelloAdminDefaults.BootstrapScriptPath)"
             asp-append-version="true"></script>
+    <script src="@(Context.Request.PathBase
+        + HelloAdminDefaults.AdminScriptPath)"
+            asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

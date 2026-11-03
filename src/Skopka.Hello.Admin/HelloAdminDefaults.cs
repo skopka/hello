@@ -26,6 +26,9 @@ public static class HelloAdminDefaults
     public const string BootstrapScriptPath =
         "/_content/Skopka.Hello.Admin/lib/bootstrap/js/bootstrap.bundle.min.js";
 
+    public const string AdminScriptPath =
+        "/_content/Skopka.Hello.Admin/js/admin.js";
+
     public const string DefaultLayoutPath =
         "/Pages/Shared/_AdminLayout.cshtml";
 }

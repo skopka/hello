@@ -182,7 +182,7 @@
   padding: 0.65rem 0.75rem;
   border: 1px solid #edf0f4;
   border-radius: 0.55rem;
-  background: #fafbfc;
+  background: var(--skopka-admin-surface);
 }
 
 .admin-meta-label {
@@ -210,7 +210,7 @@
   padding: 1rem;
   border: 1px solid var(--skopka-admin-border);
   border-radius: 0.65rem;
-  background: #fcfcfd;
+  background: var(--skopka-admin-surface);
 }
 
 .admin-panel-title {
@@ -277,7 +277,7 @@
 
 .admin-danger-panel {
   border-color: #f2c7c7;
-  background: #fffafa;
+  background: var(--skopka-admin-surface);
 }
 
 .admin-role-grid {
@@ -383,5 +383,145 @@
 
   .admin-language-form .form-select {
     width: 100%;
+  }
+}
+
+/* Compact, left-aligned directory rows. */
+.admin-directory {
+  max-width: 80rem;
+}
+
+.admin-list {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.admin-list-row {
+  display: flex;
+  min-height: 3.75rem;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--skopka-admin-border);
+  border-radius: 0.5rem;
+  background: var(--skopka-admin-surface);
+}
+
+.admin-row-content {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.admin-row-content h2 {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-row-summary {
+  min-width: 0;
+  max-width: 20rem;
+  overflow: hidden;
+  color: var(--skopka-admin-muted);
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-list-row > button {
+  min-height: 2.75rem;
+  flex: none;
+  margin-inline-start: auto;
+}
+
+.admin-body .modal-content {
+  border-color: var(--skopka-admin-border);
+  background: var(--skopka-admin-surface);
+  color: var(--skopka-admin-text);
+}
+
+.admin-body .modal-header,
+.admin-body .modal-footer {
+  border-color: var(--skopka-admin-border);
+}
+
+.admin-body .modal-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-body .modal .form-control,
+.admin-body .modal .form-select,
+.admin-body .modal .list-group-item,
+.admin-body .modal .alert {
+  border-color: var(--skopka-admin-border);
+  background-color: var(--skopka-admin-surface);
+  color: var(--skopka-admin-text);
+}
+
+.admin-body .modal .form-control::placeholder {
+  color: var(--skopka-admin-muted);
+  opacity: 1;
+}
+
+.admin-body .modal .form-select {
+  appearance: auto;
+  background-image: none;
+}
+
+.admin-body .modal .text-body-secondary {
+  color: var(--skopka-admin-muted) !important;
+}
+
+.admin-body .modal .btn-close {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  background: none;
+  color: var(--skopka-admin-text);
+  font-size: 1.75rem;
+  opacity: 1;
+}
+
+.admin-body .modal .btn-close::before {
+  content: "×";
+}
+
+.admin-body .modal :focus-visible,
+.admin-list-row > button:focus-visible {
+  outline: 2px solid var(--skopka-admin-primary);
+  outline-offset: 2px;
+}
+
+@media (max-width: 48rem) {
+  .admin-row-content {
+    flex: 1;
+  }
+
+  .admin-row-summary {
+    display: none;
+  }
+
+  .admin-list-row {
+    gap: 0.5rem;
+  }
+}
+
+@media (min-width: 48rem) {
+  .admin-filter-form > div:first-child {
+    flex: 0 1 28rem;
+  }
+
+  .admin-filter-form > div:nth-child(2):not(:last-child) {
+    flex: 0 1 12rem;
+  }
+
+  .admin-filter-form > div:last-child {
+    width: auto;
+    flex: 0 0 auto;
   }
 }

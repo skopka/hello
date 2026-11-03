@@ -39,6 +39,67 @@ namespace Skopka.Hello.IntegrationTests;
 
 public sealed class AuthenticationFlowTests
 {
+    public sealed class AdminBrowserHost : IAsyncDisposable
+    {
+        private readonly PostgreSqlContainer postgres;
+        private readonly TestApplication app;
+        private AdminBrowserHost(PostgreSqlContainer postgres, TestApplication app, Uri origin, Guid targetId, Guid roleId)
+        {
+            this.postgres = postgres;
+            this.app = app;
+            Origin = origin;
+            TargetId = targetId;
+            RoleId = roleId;
+        }
+
+        public Uri Origin { get; }
+        public Guid TargetId { get; }
+        public Guid RoleId { get; }
+        public string? VerificationCode => app.Messages.LastOrDefault(x => x.Kind == HelloAccountMessageKind.AdminActionVerification)?.VerificationCode;
+
+        public static async Task<AdminBrowserHost> CreateAsync()
+        {
+            var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+            TestApplication? app = null;
+            try
+            {
+                await postgres.StartAsync();
+                app = await TestApplication.CreateAsync(postgres.GetConnectionString());
+                using var client = app.CreateClient();
+                var actor = await RegisterUiAccountAsync(client, "browser-admin", "browser-admin@example.test", "Browser Admin");
+                var target = await RegisterUiAccountAsync(client, "browser-target", "browser-target@example.test", "Browser Target");
+                using var request = await client.PostAsJsonAsync("/auth/email-confirmation/request", new { email = "browser-admin@example.test" });
+                Assert.Equal(HttpStatusCode.Accepted, request.StatusCode);
+                var message = await app.WaitForMessageAsync(HelloAccountMessageKind.EmailConfirmation);
+                var query = QueryHelpers.ParseQuery(Assert.IsType<Uri>(message.ActionUrl).Query);
+                using var confirmation = await client.PostAsJsonAsync("/auth/email-confirmation/confirm", new
+                {
+                    userId = Guid.Parse(query["userId"].Single()!),
+                    email = query["email"].Single(),
+                    token = query["token"].Single(),
+                });
+                Assert.Equal(HttpStatusCode.NoContent, confirmation.StatusCode);
+                await app.GrantAdministratorAsync(actor);
+                await RegisterUiAccountAsync(client, "browser-another-long-user-name", "browser-another-long-contact@example.test", "Another Browser User");
+                var role = await app.CreateRoleAsync("browser-reviewer");
+                await app.CreateRoleAsync("browser-operator");
+                await app.CreateRoleAsync("browser-observer");
+                return new AdminBrowserHost(postgres, app, client.BaseAddress!, target, role.Id);
+            }
+            catch
+            {
+                if (app is not null) await app.DisposeAsync();
+                await postgres.DisposeAsync();
+                throw;
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await app.DisposeAsync();
+            await postgres.DisposeAsync();
+        }
+    }
     private static readonly JsonSerializerOptions WebJsonOptions =
         new(JsonSerializerDefaults.Web);
 
@@ -4756,16 +4817,20 @@ public sealed class AuthenticationFlowTests
         Assert.True(
             markerIndex >= 0,
             $"Admin card for user '{userId:D}' was not found.");
-        var start = html.LastIndexOf(
-            "<article",
-            markerIndex,
-            StringComparison.Ordinal);
-        var end = html.IndexOf(
-            "</article>",
-            markerIndex,
-            StringComparison.Ordinal);
-        Assert.True(start >= 0 && end > start);
-        return html[start..(end + "</article>".Length)];
+        var start = html.LastIndexOf("<div", markerIndex, StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        var depth = 0;
+        foreach (Match tag in Regex.Matches(html[start..], @"</?div\b[^>]*>",
+                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            depth += tag.Value.StartsWith("</", StringComparison.Ordinal) ? -1 : 1;
+            if (depth == 0)
+            {
+                return html.Substring(start, tag.Index + tag.Length);
+            }
+        }
+
+        throw new InvalidOperationException($"Admin dialog for user '{userId:D}' was not closed.");
     }
 
     private static string ReadRoleAssignmentSelect(string userCard)
@@ -5864,6 +5929,7 @@ public sealed class AuthenticationFlowTests
                 options.Listen(
                     IPAddress.Loopback,
                     0));
+            builder.WebHost.UseStaticWebAssets();
             var messageSender =
                 new RecordingAccountMessageSender();
             builder.Services.AddSingleton<
@@ -6020,6 +6086,7 @@ public sealed class AuthenticationFlowTests
                 HelloUiDefaults.AuthenticationScheme);
 
             var application = builder.Build();
+            application.UseStaticFiles();
             application.UseSkopkaHelloUiErrorPages();
             application.Use(
                 static (context, next) =>

@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Skopka.Hello.IntegrationTests\Skopka.Hello.IntegrationTests.csproj" />
     <Content Include="..\..\samples\Skopka.Hello.Sample\wwwroot\app\**\*">
       <Link>SampleSpa\app\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

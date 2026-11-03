@@ -23,7 +23,7 @@ and keep Hello API validation audience-bound plus online-session-bound. An
 offline external validator can observe revocation only when the short-lived JWT
 expires.
 
-Client ids, exact redirect URIs and scopes are operator configuration. Public
+Client ids, exact redirect URIs and scopes are operator configuration or explicitly administered first-party registrations. Public
 clients never have secrets and always require PKCE. Confidential clients must
 authenticate at the token endpoint and also require PKCE. Consent is implicit
 only for these pre-registered first-party clients; there is no third-party
@@ -33,5 +33,4 @@ A `prompt=login` or `max_age` on the authorization request forces a fresh
 sign-in by default. A client may opt out with
 `HonorReauthenticationPrompts = false`, which reuses the existing session for a
 trusted first-party client whose sign-in code sends one of those unconditionally.
-The flag is read live from configured options at the authorization endpoint, not
-persisted in the OpenIddict registration, so it needs no synchronization.
+The flag is persisted with the OpenIddict registration and read at the authorization endpoint.

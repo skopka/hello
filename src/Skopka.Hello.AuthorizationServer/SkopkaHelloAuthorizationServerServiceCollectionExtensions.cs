@@ -22,6 +22,12 @@ public static class SkopkaHelloAuthorizationServerServiceCollectionExtensions
 
         var options = CreateOptions(configure);
         AddClientServices(services, options);
+        // Administrative edits must be visible across server instances.
+        services.Configure<OpenIddict.Core.OpenIddictCoreOptions>(
+            core => core.DisableEntityCaching = true);
+        services.TryAddScoped<
+            Skopka.Hello.AuthorizationServer.IHelloAuthorizationClientManagement,
+            Skopka.Hello.AuthorizationServer.HelloAuthorizationClientManagement>();
         services.TryAddScoped<
             Skopka.Hello.AuthorizationServer
                 .IHelloAuthorizationApplication<TProfile>,
@@ -189,6 +195,12 @@ public static class SkopkaHelloAuthorizationServerServiceCollectionExtensions
 
         var options = CreateOptions(configure);
         AddClientServices(services, options);
+        // Administrative edits must be visible across server instances.
+        services.Configure<OpenIddict.Core.OpenIddictCoreOptions>(
+            core => core.DisableEntityCaching = true);
+        services.TryAddScoped<
+            Skopka.Hello.AuthorizationServer.IHelloAuthorizationClientManagement,
+            Skopka.Hello.AuthorizationServer.HelloAuthorizationClientManagement>();
 
         return services;
     }

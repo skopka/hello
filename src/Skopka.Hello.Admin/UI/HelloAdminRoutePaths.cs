@@ -19,6 +19,7 @@ public sealed class HelloAdminRoutePaths
             + options.ApiPathPrefix;
         UsersPath = RootPath + "/users";
         RolesPath = RootPath + "/roles";
+        ClientsPath = RootPath + "/clients";
     }
 
     public string RootPath { get; }
@@ -26,6 +27,8 @@ public sealed class HelloAdminRoutePaths
     public string UsersPath { get; }
 
     public string RolesPath { get; }
+
+    public string ClientsPath { get; }
 
     private static bool Overlaps(string left, string right)
         => string.Equals(left, right, StringComparison.OrdinalIgnoreCase)

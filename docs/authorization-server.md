@@ -187,8 +187,12 @@ registered address supplied with a valid OpenID Connect logout request.
 The ready Server stores OpenIddict applications, authorizations and tokens in
 the dedicated `skopka_hello_oauth` PostgreSQL schema. Run `--migrate` after any
 client configuration change. That command applies the schema and makes the
-stored client set exactly match configuration; removing a client deletes its
-OpenIddict registration and grants.
+configuration-owned registrations match configuration. Removing a configured
+client deletes its registration and grants. Administrator-owned registrations
+and unmatched legacy registrations survive synchronization. A legacy client
+whose ID matches configuration is adopted by configuration; a collision with an
+administrator-owned client fails synchronization before any client is changed.
+Back up the authorization database before upgrading or changing ownership.
 
 ## Re-authentication prompts
 
@@ -200,10 +204,47 @@ those on every attempt regardless of intent. The request is then met with the
 existing single sign-on session instead of tearing it down, so opening that
 client does not sign the browser out of every other client or demand the
 password again. This is a per-client property; it changes nothing for a request
-that carries neither value, and nothing for any other client. It is read live
-from configuration and is not stored in the OpenIddict registration, so it does
-not need `--migrate`. Reserve it for trusted first-party clients: a client that
+that carries neither value, and nothing for any other client. The selected policy is stored with the OpenIddict registration. Run `--migrate`
+after changing it for a configuration-owned client; administration updates take
+effect through the management operation. Reserve it for trusted first-party clients: a client that
 genuinely wants step-up re-authentication must keep the default.
+
+## Managing clients through Hello Admin
+
+When the authorization server and Admin are registered in the same host, Admin
+exposes client management alongside its existing user and role administration.
+The ready Server composes both when the authorization server is enabled. An
+administrator can create public or confidential registrations, edit their exact
+redirects and policy, rotate a confidential secret, and delete registrations.
+Configuration-owned and unmatched legacy clients are visible but read-only in
+Admin. A client ID is immutable. Removing a registration also removes its grants.
+
+The available scopes and resources are a server-owned catalog. Add custom scope
+names to `AdditionalScopes` and additional audiences to `AdditionalResources`
+before assigning them to an administered client; restart all replicas with the
+same catalog. The default resource and resources used by configured clients are
+also available. A client receives only its selected scopes and one selected
+resource. Changing the catalog does not add a grant or enable another OAuth flow.
+
+Client creation and secret rotation generate a secret for a confidential client.
+Copy it at that time into the client's secret manager: it is returned only in the
+mutation response, and later reads cannot retrieve it. Rotation invalidates the
+previous secret. Public clients have no secret and still require PKCE. Changes
+require an online administrator session, the configured administration policy,
+and confirmed-contact OTP step-up. Treat a secret-bearing response as sensitive.
+
+The Razor page is at `<Hello UI prefix>/admin/clients`. The bearer API uses
+`GET /admin/clients` and `GET /admin/clients/catalog`; mutations start at
+`POST /admin/clients/actions/challenge` with `{ action, input,
+expectedRevision }` and finish at `POST /admin/clients/actions` with `{ action:
+{ action, input, expectedRevision }, challengeId, verificationCode }`. The
+action is `create`, `update`, `rotate` or `delete`; create has no expected
+revision. Other operations use the current revision from the list. A stale
+revision requires a fresh read and challenge. API mutations use bearer tokens;
+the cookie-based Razor form uses antiforgery validation.
+
+For the inspected SkopiClub.Auth composition and upgrade steps, see the
+[SkopiClub.Auth integration guide](skopiclub-auth-integration.md).
 
 ## Composite bearer validation
 

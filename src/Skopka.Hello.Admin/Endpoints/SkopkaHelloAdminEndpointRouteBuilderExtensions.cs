@@ -13,7 +13,7 @@ using Skopka.Identity.Users.Queries;
 
 namespace Skopka.Hello.Admin;
 
-public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
+public static partial class SkopkaHelloAdminEndpointRouteBuilderExtensions
 {
     public static IEndpointRouteBuilder MapSkopkaHelloAdmin<TProfile>(
         this IEndpointRouteBuilder endpoints)
@@ -25,7 +25,9 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
         var userQueryPath = options.ApiPathPrefix + "/users";
         var roleQueryPath = options.ApiPathPrefix + "/roles";
         if (HasRouteCollision(endpoints, userQueryPath)
-            || HasRouteCollision(endpoints, roleQueryPath))
+            || HasRouteCollision(endpoints, roleQueryPath)
+            || (endpoints.ServiceProvider.GetRequiredService<IServiceProviderIsService>().IsService(typeof(Skopka.Hello.AuthorizationServer.IHelloAuthorizationClientManagement))
+                && HasRouteCollision(endpoints, options.ApiPathPrefix + "/clients")))
         {
             throw new InvalidOperationException(
                 "An admin API query route collides with an existing endpoint.");
@@ -78,6 +80,11 @@ public static class SkopkaHelloAdminEndpointRouteBuilderExtensions
                 "/roles/actions/{action}",
                 CompleteRoleActionAsync<TProfile>)
             .WithName("SkopkaHelloAdminCompleteRoleAction");
+
+        if (endpoints.ServiceProvider.GetRequiredService<IServiceProviderIsService>().IsService(typeof(Skopka.Hello.AuthorizationServer.IHelloAuthorizationClientManagement)))
+        {
+            MapClientEndpoints(group);
+        }
 
         return endpoints;
     }

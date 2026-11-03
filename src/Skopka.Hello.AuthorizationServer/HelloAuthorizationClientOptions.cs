@@ -2,6 +2,8 @@ namespace Skopka.Hello.AuthorizationServer;
 
 public sealed class HelloAuthorizationClientOptions
 {
+    internal long Revision { get; set; }
+
     public string ClientId { get; set; } = string.Empty;
 
     public string DisplayName { get; set; } = string.Empty;

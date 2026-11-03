@@ -18,6 +18,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Hello.Admin;
+using Skopka.Hello.AuthorizationServer;
+using Skopka.Hello.Server;
 using Skopka.Hello.Endpoints;
 using Skopka.Hello.UI;
 using Skopka.Identity;
@@ -4889,6 +4891,122 @@ public sealed class AuthenticationFlowTests
             CultureInfo.InvariantCulture);
     }
 
+    [Fact]
+    public async Task AdminClientRazorFormsRequirePolicyAntiforgeryAndStepUp()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(postgres.GetConnectionString(), authorizationClientsEnabled: true);
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        const string email = "client-admin@example.test";
+        var userId = await RegisterUiAccountAsync(client, "client-admin", email, "Client Admin");
+        using (var requested = await client.PostAsJsonAsync("/auth/email-confirmation/request", new { email }))
+            Assert.Equal(HttpStatusCode.Accepted, requested.StatusCode);
+        var message = await app.WaitForMessageAsync(HelloAccountMessageKind.EmailConfirmation);
+        var query = QueryHelpers.ParseQuery(Assert.IsType<Uri>(message.ActionUrl).Query);
+        using (var confirmation = await client.PostAsJsonAsync("/auth/email-confirmation/confirm", new
+        {
+            userId = Guid.Parse(query["userId"].Single()!),
+            email = query["email"].Single(),
+            token = query["token"].Single(),
+        })) Assert.Equal(HttpStatusCode.NoContent, confirmation.StatusCode);
+        Dictionary<string, string> cookies = new(StringComparer.Ordinal);
+        await LoginUiAsync(client, cookies, email);
+        using (var denied = await SendAsync(client, HttpMethod.Get, "/hello/admin/clients", cookies))
+            Assert.NotEqual(HttpStatusCode.OK, denied.StatusCode);
+        using (var anonymousApi = await client.GetAsync("/admin/clients"))
+            Assert.Equal(HttpStatusCode.Unauthorized, anonymousApi.StatusCode);
+        var unprivileged = await LoginAsync(client, email, "correct horse battery staple");
+        using (var deniedApi = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/admin/clients/actions/challenge", unprivileged.AccessToken, new { }))
+            Assert.Equal(HttpStatusCode.Forbidden, deniedApi.StatusCode);
+        using (var accountPage = await SendAsync(client, HttpMethod.Get, "/hello/account", cookies))
+        {
+            Assert.Equal(HttpStatusCode.OK, accountPage.StatusCode);
+            MergeCookies(cookies, accountPage);
+            var csrfToken = ReadInputValue(await accountPage.Content.ReadAsStringAsync(), "__RequestVerificationToken");
+            using var deniedWrite = await SendFormAsync(client, "/hello/admin/clients?handler=Begin", cookies,
+                new Dictionary<string, string> { ["__RequestVerificationToken"] = csrfToken, ["ActionName"] = "create" });
+            Assert.NotEqual(HttpStatusCode.OK, deniedWrite.StatusCode);
+        }
+        Assert.DoesNotContain(app.Messages, x => x.Kind == HelloAccountMessageKind.AdminActionVerification);
+        await app.GrantAdministratorAsync(userId);
+        using var initial = await SendAsync(client, HttpMethod.Get, "/hello/admin/clients", cookies);
+        Assert.Equal(HttpStatusCode.OK, initial.StatusCode);
+        MergeCookies(cookies, initial);
+        var html = await initial.Content.ReadAsStringAsync();
+        var token = ReadInputValue(html, "__RequestVerificationToken");
+        var form = new Dictionary<string, string>
+        {
+            ["ActionName"] = "create",
+            ["ClientId"] = "razor-client",
+            ["DisplayName"] = "Razor Client",
+            ["Type"] = "1",
+            ["Resource"] = "skopka-hello-api",
+            ["RedirectUris"] = "https://client.example.test/callback",
+            ["PostLogoutRedirectUris"] = "",
+            ["Scopes"] = "openid\nprofile",
+            ["HonorReauthenticationPrompts"] = "true",
+        };
+        using (var csrf = await SendFormAsync(client, "/hello/admin/clients?handler=Begin", cookies, form))
+            Assert.Equal(HttpStatusCode.BadRequest, csrf.StatusCode);
+        Assert.DoesNotContain(app.Messages, x => x.Kind == HelloAccountMessageKind.AdminActionVerification);
+        form["__RequestVerificationToken"] = token;
+        form["Type"] = "not-an-enum";
+        using (var invalid = await SendFormAsync(client, "/hello/admin/clients?handler=Begin", cookies, form))
+            Assert.Equal(HttpStatusCode.OK, invalid.StatusCode);
+        Assert.DoesNotContain(app.Messages, x => x.Kind == HelloAccountMessageKind.AdminActionVerification);
+        form["Type"] = "1";
+        form["ExpectedRevision"] = "invalid";
+        using (var invalid = await SendFormAsync(client, "/hello/admin/clients?handler=Begin", cookies, form))
+            Assert.Equal(HttpStatusCode.OK, invalid.StatusCode);
+        Assert.DoesNotContain(app.Messages, x => x.Kind == HelloAccountMessageKind.AdminActionVerification);
+        form.Remove("ExpectedRevision");
+
+        async Task<string> CompleteAsync(string action, long? revision)
+        {
+            form["ActionName"] = action;
+            if (revision.HasValue) form["ExpectedRevision"] = revision.Value.ToString(CultureInfo.InvariantCulture);
+            else form.Remove("ExpectedRevision");
+            var count = app.Messages.Count(x => x.Kind == HelloAccountMessageKind.AdminActionVerification);
+            using var begin = await SendFormAsync(client, "/hello/admin/clients?handler=Begin", cookies, form);
+            Assert.Equal(HttpStatusCode.OK, begin.StatusCode);
+            var beginHtml = await begin.Content.ReadAsStringAsync();
+            var challenge = ReadInputValue(beginHtml, "challengeId");
+            form["__RequestVerificationToken"] = ReadInputValue(beginHtml, "__RequestVerificationToken");
+            var issued = app.Messages.Where(x => x.Kind == HelloAccountMessageKind.AdminActionVerification).ToArray();
+            Assert.Equal(count + 1, issued.Length);
+            form["challengeId"] = challenge;
+            form["VerificationCode"] = Assert.IsType<string>(issued[^1].VerificationCode);
+            using var complete = await SendFormAsync(client, "/hello/admin/clients?handler=Complete", cookies, form);
+            Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
+            var completeHtml = await complete.Content.ReadAsStringAsync();
+            form["__RequestVerificationToken"] = ReadInputValue(completeHtml, "__RequestVerificationToken");
+            form.Remove("challengeId"); form.Remove("VerificationCode");
+            return completeHtml;
+        }
+        var created = await CompleteAsync("create", null);
+        Assert.Contains("razor-client", created, StringComparison.Ordinal);
+        var secret = Regex.Match(created, "<pre>([^<]+)</pre>").Groups[1].Value;
+        Assert.False(string.IsNullOrWhiteSpace(secret));
+        using (var reload = await SendAsync(client, HttpMethod.Get, "/hello/admin/clients?edit=razor-client", cookies))
+        {
+            Assert.Equal(HttpStatusCode.OK, reload.StatusCode);
+            Assert.DoesNotContain(secret, await reload.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
+        form["DisplayName"] = "Renamed Razor Client";
+        var updated = await CompleteAsync("update", 1);
+        Assert.Contains("Renamed Razor Client", updated, StringComparison.Ordinal);
+        var rotated = await CompleteAsync("rotate", 2);
+        var newSecret = Regex.Match(rotated, "<pre>([^<]+)</pre>").Groups[1].Value;
+        Assert.False(string.IsNullOrWhiteSpace(newSecret));
+        Assert.NotEqual(secret, newSecret);
+        var deleted = await CompleteAsync("delete", 3);
+        Assert.DoesNotContain("Renamed Razor Client (razor-client)", deleted, StringComparison.Ordinal);
+        Assert.Equal("create", ReadInputValue(deleted, "ActionName"));
+        Assert.Equal(string.Empty, ReadInputValue(deleted, "ExpectedRevision"));
+    }
+
     private static async Task<Guid> RegisterUiAccountAsync(
         HttpClient client,
         string userName,
@@ -5672,7 +5790,8 @@ public sealed class AuthenticationFlowTests
             Action<SkopkaHelloOptions>? configureHello = null,
             bool crossDeviceEnabled = false,
             bool passkeysEnabled = false,
-            Action<PhoneOtpOptions>? configurePhoneOtp = null)
+            Action<PhoneOtpOptions>? configurePhoneOtp = null,
+            bool authorizationClientsEnabled = false)
         {
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions
@@ -5817,6 +5936,20 @@ public sealed class AuthenticationFlowTests
             builder.Services.AddSkopkaHelloUi<
                 IntegrationProfile,
                 IntegrationProfileUiFactory>(configureUi);
+            if (authorizationClientsEnabled)
+            {
+                builder.Services.AddDbContext<HelloAuthorizationDbContext>(options =>
+                {
+                    options.UseNpgsql(connectionString, HelloAuthorizationDbContext.ConfigureNpgsql);
+                    options.UseOpenIddict();
+                });
+                builder.Services.AddOpenIddict().AddCore(options => options.UseEntityFrameworkCore()
+                    .UseDbContext<HelloAuthorizationDbContext>());
+                builder.Services.AddSkopkaHelloAuthorizationClients(options =>
+                {
+                    options.Issuer = new Uri("https://integration.skopka.test");
+                });
+            }
             builder.Services.AddSkopkaHelloAdmin<
                 IntegrationProfile,
                 IntegrationAdminProfileProjector>(configureAdmin);
@@ -5874,6 +6007,11 @@ public sealed class AuthenticationFlowTests
                         PostgreSqlIdentityDbContext<
                             IntegrationProfile>>();
                 await database.Database.MigrateAsync();
+                if (authorizationClientsEnabled)
+                {
+                    var authorizationDatabase = scope.ServiceProvider.GetRequiredService<HelloAuthorizationDbContext>();
+                    await authorizationDatabase.Database.MigrateAsync();
+                }
             }
 
             await application.StartAsync();

@@ -105,7 +105,11 @@ and asks for none. Removing a key preserves at least one enabled sign-in method.
 
 The optional authorization server uses OpenIddict authorization code with
 mandatory PKCE for pre-registered native and BFF clients. Authorization codes
-and rotating refresh tokens remain reference tokens. Access tokens are opaque
+and rotating refresh tokens remain reference tokens. Authorization clients may be
+configuration-owned or administered with online-session and OTP step-up; secret
+values are returned only on creation or rotation. Migration synchronizes only
+configuration-owned clients, preserves administrator-owned and unmatched legacy
+clients, and preflights ownership collisions. Access tokens are opaque
 reference tokens by default or explicitly configured signed, unencrypted JWTs
 for offline resource-server validation. Code redemption creates a distinct
 Identity logical session; Hello access/refresh authentication validates its

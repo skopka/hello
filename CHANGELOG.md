@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.25.0
+
+- Add OTP-protected OAuth client administration through Admin API and Razor. Client IDs are immutable; scopes and audiences are chosen from the configured server catalog. Confidential client secrets are returned once on creation, rotation, or conversion from public; conversion to public removes the secret.
+- Synchronization preserves administrator-owned and unmatched legacy registrations, adopts legacy IDs matching configuration, and rejects collisions with administrator-owned clients before modifying registrations. Removing a configuration-owned client still removes its grants.
+- Persist client scopes, resource and reauthentication policy in OpenIddict so administrator-created clients work after restart. Authorization code with mandatory PKCE and the existing refresh flow remain the only supported grants.
+- Protect changes with live administrative policies, antiforgery on Razor forms, action-bound step-up, optimistic concurrency and audit events without secrets. Configuration-owned and unmatched legacy clients are read-only in Admin.
+- Existing authorization codes and refresh grants issued before client revision tracking lack the required revision and will be rejected after upgrade; affected users must sign in again. Client changes invalidate existing grants.
+- Publish all six Hello packages and the Server image together as 0.25.0. See `docs/skopiclub-auth-integration.md` for the verified host upgrade steps; package publication does not deploy production.
+
 ## 0.24.1
 
 - Apply the shared phone policy to phone changes and registration as well as OTP requests; distinguish invalid numbers from disallowed country codes in localized UI and API errors.

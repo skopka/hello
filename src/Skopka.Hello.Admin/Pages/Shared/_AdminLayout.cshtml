@@ -2,6 +2,7 @@
 @inject HelloUiRoutePaths HelloRoutes
 @inject Microsoft.AspNetCore.Authorization.IAuthorizationService Authorization
 @inject SkopkaHelloAdminOptions AdminOptions
+@inject Microsoft.Extensions.DependencyInjection.IServiceProviderIsService Services
 @{
     var adminSection = ViewData["AdminSection"] as string;
     var canReadRoles = (await Authorization.AuthorizeAsync(
@@ -56,6 +57,10 @@
                            asp-page="/SkopkaHelloAdmin/Roles">
                             @Text["Admin.Roles.Title"]
                         </a>
+                    }
+                    @if (canReadRoles && Services.IsService(typeof(Skopka.Hello.AuthorizationServer.IHelloAuthorizationClientManagement)))
+                    {
+                        <a class="admin-nav-link @(adminSection == "clients" ? "active" : null)" asp-page="/SkopkaHelloAdmin/Clients">@Text["Admin.Clients.Title"]</a>
                     }
                     @if (UiOptions.ApplicationHomeUrl is not null)
                     {

@@ -37,6 +37,8 @@ public sealed class HelloAuthorizationServerOptions
 
     public List<string> AdditionalScopes { get; set; } = [];
 
+    public List<string> AdditionalResources { get; set; } = [];
+
     public TimeSpan AuthorizationCodeLifetime { get; set; } =
         TimeSpan.FromMinutes(5);
 
@@ -109,6 +111,21 @@ public sealed class HelloAuthorizationServerOptions
             CompositeBearerAuthenticationScheme);
         ArgumentException.ThrowIfNullOrWhiteSpace(Resource);
         ValidateResource(Resource, "The default authorization resource");
+
+        if (AdditionalResources is null || AdditionalResources.Count > 32)
+        {
+            throw new InvalidOperationException("Invalid additional resources.");
+        }
+
+        var resources = new HashSet<string>(StringComparer.Ordinal) { Resource };
+        foreach (var resource in AdditionalResources)
+        {
+            ValidateResource(resource, "Additional resource");
+            if (!resources.Add(resource))
+            {
+                throw new InvalidOperationException("Duplicate additional resource.");
+            }
+        }
 
         if (!Enum.IsDefined(AccessTokenFormat))
         {
@@ -185,6 +202,7 @@ public sealed class HelloAuthorizationServerOptions
     internal string[] GetResources()
         => Clients
             .Select(GetResource)
+            .Concat(AdditionalResources)
             .Append(Resource)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
@@ -193,6 +211,9 @@ public sealed class HelloAuthorizationServerOptions
         => BuiltInScopes
             .Concat(AdditionalScopes)
             .ToArray();
+
+    internal void ValidateManagedClient(HelloAuthorizationClientOptions client)
+        => ValidateClient(client, new HashSet<string>(StringComparer.Ordinal), new HashSet<string>(GetScopes(), StringComparer.Ordinal));
 
     private void ValidateClient(
         HelloAuthorizationClientOptions client,

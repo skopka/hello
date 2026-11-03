@@ -59,7 +59,7 @@ public sealed class AuthorizationServerFlowTests
     public async Task CodePkceRefreshAndLogicalRevocationAreEnforced()
     {
         await using var host = await TestAuthorizationHost.CreateAsync();
-        Assert.True(host.StaleClientWasRemoved);
+        Assert.True(host.LegacyClientWasPreserved);
         const string verifier =
             "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
         var challenge = Base64UrlEncoder.Encode(
@@ -155,6 +155,217 @@ public sealed class AuthorizationServerFlowTests
         Assert.Equal(
             Errors.InvalidGrant,
             error.RootElement.GetProperty(Parameters.Error).GetString());
+    }
+
+    [Fact]
+    public async Task ManagedClientsEnforceOwnershipRevisionsAndOneTimeSecrets()
+    {
+        await using var host = await TestAuthorizationHost.CreateAsync();
+        await using var scope = host.Services.CreateAsyncScope();
+        var clients = scope.ServiceProvider.GetRequiredService<IHelloAuthorizationClientManagement>();
+        var input = new HelloAuthorizationClientInput(
+            "managed-test", "Managed test", HelloAuthorizationClientType.Confidential,
+            HelloResource, ["https://client.example.test/callback"], [],
+            [Scopes.OpenId, Scopes.Profile], true);
+
+        var created = await clients.CreateAsync(input, CancellationToken.None);
+        Assert.True(created.IsSuccess);
+        var first = created.Value;
+        Assert.False(string.IsNullOrWhiteSpace(first.Secret));
+        Assert.Equal("administration", first.Client.Ownership);
+        Assert.False((await clients.CreateAsync(input, CancellationToken.None)).IsSuccess);
+        Assert.False((await clients.CreateAsync(input with { ClientId = ClientId }, CancellationToken.None)).IsSuccess);
+        Assert.False((await clients.CreateAsync(input with { ClientId = "removed-client" }, CancellationToken.None)).IsSuccess);
+        Assert.False((await clients.CreateAsync(input with { ClientId = "unknown-resource", Resource = "unknown" }, CancellationToken.None)).IsSuccess);
+        Assert.False((await clients.CreateAsync(input with { ClientId = "unknown-scope", Scopes = ["unknown"] }, CancellationToken.None)).IsSuccess);
+
+        var read = await clients.GetAsync(input.ClientId, CancellationToken.None);
+        Assert.True(read.IsSuccess);
+        Assert.Equal(first.Client.Revision, read.Value.Revision);
+        var updated = await clients.UpdateAsync(input.ClientId, first.Client.Revision,
+            input with { DisplayName = "Renamed" }, CancellationToken.None);
+        Assert.True(updated.IsSuccess);
+        Assert.Null(updated.Value.Secret);
+        Assert.True(updated.Value.Client.Revision > first.Client.Revision);
+        Assert.False((await clients.UpdateAsync(input.ClientId, first.Client.Revision, input, CancellationToken.None)).IsSuccess);
+        Assert.False((await clients.DeleteAsync(input.ClientId, first.Client.Revision, CancellationToken.None)).IsSuccess);
+        var rotated = await clients.RotateSecretAsync(input.ClientId, updated.Value.Client.Revision, CancellationToken.None);
+        Assert.True(rotated.IsSuccess);
+        Assert.False(string.IsNullOrWhiteSpace(rotated.Value.Secret));
+        Assert.NotEqual(first.Secret, rotated.Value.Secret);
+        Assert.False((await clients.RotateSecretAsync(input.ClientId, updated.Value.Client.Revision, CancellationToken.None)).IsSuccess);
+        Assert.False((await clients.DeleteAsync(ClientId, 0, CancellationToken.None)).IsSuccess);
+        Assert.False((await clients.DeleteAsync("removed-client", 0, CancellationToken.None)).IsSuccess);
+        Assert.True((await clients.DeleteAsync(input.ClientId, rotated.Value.Client.Revision, CancellationToken.None)).IsSuccess);
+        Assert.False((await clients.GetAsync(input.ClientId, CancellationToken.None)).IsSuccess);
+    }
+
+    [Fact]
+    public async Task SynchronizationPreflightsCollisionsBeforeDeletingConfiguredClients()
+    {
+        await using var host = await TestAuthorizationHost.CreateAsync();
+        await using var scope = host.Services.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        var clients = services.GetRequiredService<IHelloAuthorizationClientManagement>();
+        var input = new HelloAuthorizationClientInput("collision", "Managed", HelloAuthorizationClientType.Public,
+            HelloResource, ["com.example.collision:/callback"], [], [Scopes.OpenId], true);
+        Assert.True((await clients.CreateAsync(input, CancellationToken.None)).IsSuccess);
+        var options = services.GetRequiredService<HelloAuthorizationServerOptions>();
+        options.Clients.RemoveAll(client => client.ClientId == ClientId);
+        options.Clients.Add(new HelloAuthorizationClientOptions
+        {
+            ClientId = input.ClientId,
+            DisplayName = input.DisplayName,
+            Type = input.Type,
+            RedirectUris = input.RedirectUris.ToList(),
+            Scopes = input.Scopes.ToList(),
+        });
+        var synchronizer = services.GetRequiredService<IHelloAuthorizationClientSynchronizer>();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => synchronizer.SynchronizeAsync(CancellationToken.None));
+        Assert.True((await clients.GetAsync(ClientId, CancellationToken.None)).IsSuccess);
+        Assert.Equal("administration", (await clients.GetAsync(input.ClientId, CancellationToken.None)).Value.Ownership);
+    }
+
+    [Fact]
+    public async Task ManagedClientTypeTransitionsGenerateAndRemoveSecrets()
+    {
+        await using var host = await TestAuthorizationHost.CreateAsync();
+        await using var scope = host.Services.CreateAsyncScope();
+        var clients = scope.ServiceProvider.GetRequiredService<IHelloAuthorizationClientManagement>();
+        var input = new HelloAuthorizationClientInput("type-transition", "Transition", HelloAuthorizationClientType.Public,
+            HelloResource, ["https://transition.example.test/callback"], [], [Scopes.OpenId], true);
+        var created = await clients.CreateAsync(input, CancellationToken.None);
+        Assert.True(created.IsSuccess);
+        Assert.Null(created.Value.Secret);
+        Assert.False((await clients.RotateSecretAsync(input.ClientId, created.Value.Client.Revision, CancellationToken.None)).IsSuccess);
+        var confidential = await clients.UpdateAsync(input.ClientId, created.Value.Client.Revision,
+            input with { Type = HelloAuthorizationClientType.Confidential }, CancellationToken.None);
+        Assert.True(confidential.IsSuccess);
+        Assert.False(string.IsNullOrWhiteSpace(confidential.Value.Secret));
+        var applications = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+        var application = await applications.FindByClientIdAsync(input.ClientId);
+        Assert.NotNull(application);
+        Assert.True(await applications.ValidateClientSecretAsync(application, confidential.Value.Secret!));
+        var publicAgain = await clients.UpdateAsync(input.ClientId, confidential.Value.Client.Revision, input, CancellationToken.None);
+        Assert.True(publicAgain.IsSuccess);
+        Assert.Null(publicAgain.Value.Secret);
+        application = await applications.FindByClientIdAsync(input.ClientId);
+        Assert.NotNull(application);
+        Assert.Equal(ClientTypes.Public, await applications.GetClientTypeAsync(application));
+        var descriptor = new OpenIddictApplicationDescriptor();
+        await applications.PopulateAsync(descriptor, application);
+        Assert.Null(descriptor.ClientSecret);
+        Assert.False((await clients.RotateSecretAsync(input.ClientId, publicAgain.Value.Client.Revision, CancellationToken.None)).IsSuccess);
+    }
+
+    [Fact]
+    public async Task ManagedClientUsesCodePkceAndRotatedSecret()
+    {
+        await using var host = await TestAuthorizationHost.CreateAsync();
+        await using var scope = host.Services.CreateAsyncScope();
+        var clients = scope.ServiceProvider.GetRequiredService<IHelloAuthorizationClientManagement>();
+        var synchronizer = scope.ServiceProvider.GetRequiredService<IHelloAuthorizationClientSynchronizer>();
+        const string id = "managed-flow";
+        const string redirect = "https://managed.example.test/callback";
+        const string verifier = "managed-client-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789";
+        var input = new HelloAuthorizationClientInput(id, "Managed flow", HelloAuthorizationClientType.Confidential,
+            HelloResource, [redirect], [], [Scopes.OpenId, Scopes.Profile], true);
+        var created = await clients.CreateAsync(input, CancellationToken.None);
+        Assert.True(created.IsSuccess);
+        await synchronizer.SynchronizeAsync(CancellationToken.None);
+        Assert.True((await clients.GetAsync(id, CancellationToken.None)).IsSuccess);
+        var code = await AuthorizeCodeAsync(host.Client, id, redirect, "openid profile", verifier);
+        using var wrongVerifier = await PostTokenAsync(host.Client, new()
+        {
+            [Parameters.GrantType] = GrantTypes.AuthorizationCode,
+            [Parameters.ClientId] = id,
+            [Parameters.ClientSecret] = created.Value.Secret!,
+            [Parameters.RedirectUri] = redirect,
+            [Parameters.Code] = code,
+            [Parameters.CodeVerifier] = "wrong-verifier-abcdefghijklmnopqrstuvwxyz-0123456789",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, wrongVerifier.StatusCode);
+        var rotated = await clients.RotateSecretAsync(id, created.Value.Client.Revision, CancellationToken.None);
+        Assert.True(rotated.IsSuccess);
+        code = await AuthorizeCodeAsync(host.Client, id, redirect, "openid profile", verifier);
+        using var oldSecret = await PostTokenAsync(host.Client, new()
+        {
+            [Parameters.GrantType] = GrantTypes.AuthorizationCode,
+            [Parameters.ClientId] = id,
+            [Parameters.ClientSecret] = created.Value.Secret!,
+            [Parameters.RedirectUri] = redirect,
+            [Parameters.Code] = code,
+            [Parameters.CodeVerifier] = verifier,
+        });
+        Assert.Equal(HttpStatusCode.Unauthorized, oldSecret.StatusCode);
+        code = await AuthorizeCodeAsync(host.Client, id, redirect, "openid profile", verifier);
+        using var valid = await PostTokenAsync(host.Client, new()
+        {
+            [Parameters.GrantType] = GrantTypes.AuthorizationCode,
+            [Parameters.ClientId] = id,
+            [Parameters.ClientSecret] = rotated.Value.Secret!,
+            [Parameters.RedirectUri] = redirect,
+            [Parameters.Code] = code,
+            [Parameters.CodeVerifier] = verifier,
+        });
+        Assert.Equal(HttpStatusCode.OK, valid.StatusCode);
+    }
+
+    [Fact]
+    public async Task ManagedClientAuthorizesAfterHostRestart()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        const string id = "restart-managed";
+        const string redirect = "com.example.restart:/callback";
+        const string verifier = "restart-client-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789";
+        await using (var first = await TestAuthorizationHost.CreateAsync(sharedConnection: connection))
+        await using (var scope = first.Services.CreateAsyncScope())
+        {
+            var clients = scope.ServiceProvider.GetRequiredService<IHelloAuthorizationClientManagement>();
+            var created = await clients.CreateAsync(new HelloAuthorizationClientInput(id, "Restart", HelloAuthorizationClientType.Public,
+                HelloResource, [redirect], [], [Scopes.OpenId, Scopes.Profile, Scopes.OfflineAccess], true), CancellationToken.None);
+            Assert.True(created.IsSuccess);
+        }
+        await using var restarted = await TestAuthorizationHost.CreateAsync(sharedConnection: connection);
+        var code = await AuthorizeCodeAsync(restarted.Client, id, redirect, "openid profile offline_access", verifier);
+        var tokens = await ExchangeAsync(restarted.Client, new()
+        {
+            [Parameters.GrantType] = GrantTypes.AuthorizationCode,
+            [Parameters.ClientId] = id,
+            [Parameters.RedirectUri] = redirect,
+            [Parameters.Code] = code,
+            [Parameters.CodeVerifier] = verifier,
+        });
+        Assert.False(string.IsNullOrWhiteSpace(tokens.AccessToken));
+    }
+
+    [Fact]
+    public async Task ScopeRemovalInvalidatesOutstandingAuthorizationCode()
+    {
+        await using var host = await TestAuthorizationHost.CreateAsync();
+        await using var scope = host.Services.CreateAsyncScope();
+        var clients = scope.ServiceProvider.GetRequiredService<IHelloAuthorizationClientManagement>();
+        const string id = "scope-removal";
+        const string redirect = "com.example.scope:/callback";
+        const string verifier = "scope-removal-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789";
+        var input = new HelloAuthorizationClientInput(id, "Scope removal", HelloAuthorizationClientType.Public,
+            HelloResource, [redirect], [], [Scopes.OpenId, Scopes.Profile], true);
+        var created = await clients.CreateAsync(input, CancellationToken.None);
+        Assert.True(created.IsSuccess);
+        var code = await AuthorizeCodeAsync(host.Client, id, redirect, "openid profile", verifier);
+        var updated = await clients.UpdateAsync(id, created.Value.Client.Revision,
+            input with { Scopes = [Scopes.OpenId] }, CancellationToken.None);
+        Assert.True(updated.IsSuccess);
+        using var response = await PostTokenAsync(host.Client, new()
+        {
+            [Parameters.GrantType] = GrantTypes.AuthorizationCode,
+            [Parameters.ClientId] = id,
+            [Parameters.RedirectUri] = redirect,
+            [Parameters.Code] = code,
+            [Parameters.CodeVerifier] = verifier,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -847,6 +1058,7 @@ public sealed class AuthorizationServerFlowTests
     {
         private readonly WebApplication application;
         private readonly SqliteConnection connection;
+        private readonly bool ownsConnection;
 
         private TestAuthorizationHost(
             WebApplication application,
@@ -854,15 +1066,19 @@ public sealed class AuthorizationServerFlowTests
             TestSessionRegistry sessions,
             TestAuthorizationSessionTerminator sessionTerminator,
             HttpClient client,
-            bool staleClientWasRemoved)
+            bool legacyClientWasPreserved,
+            bool ownsConnection)
         {
             this.application = application;
             this.connection = connection;
+            this.ownsConnection = ownsConnection;
             Sessions = sessions;
             SessionTerminator = sessionTerminator;
             Client = client;
-            StaleClientWasRemoved = staleClientWasRemoved;
+            LegacyClientWasPreserved = legacyClientWasPreserved;
         }
+
+        public IServiceProvider Services => application.Services;
 
         public TestSessionRegistry Sessions { get; }
 
@@ -870,15 +1086,16 @@ public sealed class AuthorizationServerFlowTests
 
         public HttpClient Client { get; }
 
-        public bool StaleClientWasRemoved { get; }
+        public bool LegacyClientWasPreserved { get; }
 
         public static async Task<TestAuthorizationHost> CreateAsync(
             HelloAuthorizationAccessTokenFormat accessTokenFormat =
                 HelloAuthorizationAccessTokenFormat.Reference,
-            bool signedIn = true)
+            bool signedIn = true,
+            SqliteConnection? sharedConnection = null)
         {
-            var connection = new SqliteConnection("Data Source=:memory:");
-            await connection.OpenAsync();
+            var connection = sharedConnection ?? new SqliteConnection("Data Source=:memory:");
+            if (sharedConnection is null) await connection.OpenAsync();
             var sessions = new TestSessionRegistry();
             var sessionTerminator =
                 new TestAuthorizationSessionTerminator();
@@ -1063,7 +1280,7 @@ public sealed class AuthorizationServerFlowTests
                     () => Results.Ok())
                 .RequireAuthorization("NamedTestPolicy");
 
-            var staleClientWasRemoved = false;
+            var legacyClientWasPreserved = false;
             await using (var scope =
                 application.Services.CreateAsyncScope())
             {
@@ -1072,7 +1289,8 @@ public sealed class AuthorizationServerFlowTests
                 await database.Database.EnsureCreatedAsync();
                 var applications = scope.ServiceProvider
                     .GetRequiredService<IOpenIddictApplicationManager>();
-                await applications.CreateAsync(
+                if (await applications.FindByClientIdAsync("removed-client") is null)
+                    await applications.CreateAsync(
                     new OpenIddictApplicationDescriptor
                     {
                         ClientId = "removed-client",
@@ -1083,8 +1301,8 @@ public sealed class AuthorizationServerFlowTests
                 var clients = scope.ServiceProvider.GetRequiredService<
                     IHelloAuthorizationClientSynchronizer>();
                 await clients.SynchronizeAsync(CancellationToken.None);
-                staleClientWasRemoved = await applications
-                    .FindByClientIdAsync("removed-client") is null;
+                legacyClientWasPreserved = await applications
+                    .FindByClientIdAsync("removed-client") is not null;
             }
 
             await application.StartAsync();
@@ -1096,14 +1314,15 @@ public sealed class AuthorizationServerFlowTests
                 sessions,
                 sessionTerminator,
                 client,
-                staleClientWasRemoved);
+                legacyClientWasPreserved,
+                sharedConnection is null);
         }
 
         public async ValueTask DisposeAsync()
         {
             Client.Dispose();
             await application.DisposeAsync();
-            await connection.DisposeAsync();
+            if (ownsConnection) await connection.DisposeAsync();
         }
     }
 

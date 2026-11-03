@@ -494,6 +494,10 @@ internal sealed class HelloAdminStepUpRequirementProvider<TProfile>
         Requirements = new(
             StringComparer.Ordinal)
         {
+            ["admin.client.create"] = CreatePurpose("hello:admin.client.create"),
+            ["admin.client.update"] = CreatePurpose("hello:admin.client.update"),
+            ["admin.client.delete"] = CreatePurpose("hello:admin.client.delete"),
+            ["admin.client.rotate"] = CreatePurpose("hello:admin.client.rotate"),
             [HelloAdminSecurity.BlockAction] = Create("block"),
             [HelloAdminSecurity.UnblockAction] = Create("unblock"),
             [HelloAdminSecurity.DeleteAction] = Create("delete"),

@@ -31,6 +31,9 @@ public static class SkopkaHelloAdminServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.Admin.IHelloAdminRoleApplication,
             Skopka.Hello.Admin.HelloAdminRoleApplication<TProfile>>();
+        services.TryAddScoped<Skopka.Hello.Admin.IHelloAdminClientApplication>(
+            provider => ActivatorUtilities.CreateInstance<
+                Skopka.Hello.Admin.HelloAdminClientApplication<TProfile>>(provider));
         services.TryAddSingleton<
             Skopka.Hello.Admin.HelloAdminRoleRulesEvaluator>();
         services.TryAddEnumerable(

@@ -5,19 +5,19 @@ using Microsoft.Extensions.Options;
 namespace Skopka.Hello.Admin;
 
 internal sealed class HelloAdminRazorPagesOptionsSetup(
-    HelloAdminRoutePaths routes)
+    HelloAdminRoutePaths routes, Microsoft.Extensions.DependencyInjection.IServiceProviderIsService services)
     : IConfigureOptions<RazorPagesOptions>
 {
     public void Configure(RazorPagesOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Conventions.Add(
-            new HelloAdminPageRouteConvention(routes));
+            new HelloAdminPageRouteConvention(routes, services.IsService(typeof(Skopka.Hello.AuthorizationServer.IHelloAuthorizationClientManagement))));
     }
 }
 
 internal sealed class HelloAdminPageRouteConvention(
-    HelloAdminRoutePaths routes)
+    HelloAdminRoutePaths routes, bool clientsEnabled)
     : IPageRouteModelConvention
 {
     private const string UsersPage =
@@ -29,10 +29,12 @@ internal sealed class HelloAdminPageRouteConvention(
     public void Apply(PageRouteModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
+        if (model.RelativePath == "/Pages/SkopkaHelloAdmin/Clients.cshtml" && !clientsEnabled) { model.Selectors.Clear(); return; }
         var route = model.RelativePath switch
         {
             UsersPage => routes.UsersPath,
             RolesPage => routes.RolesPath,
+            "/Pages/SkopkaHelloAdmin/Clients.cshtml" => routes.ClientsPath,
             _ => null,
         };
         if (route is null)

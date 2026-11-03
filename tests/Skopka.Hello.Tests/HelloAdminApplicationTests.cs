@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+using Skopka.Hello.AuthorizationServer;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Hello.Admin;
 using Skopka.Identity;
@@ -305,6 +307,69 @@ public sealed class HelloAdminApplicationTests
         Assert.False(completed.Value.SessionsRevoked);
     }
 
+    [Fact]
+    public async Task ClientStepUpBindsActionParametersAndRevision()
+    {
+        var actor = CreateUser(Guid.NewGuid(), "Admin", version: 3);
+        var challengeId = Guid.NewGuid();
+        var stepUp = new FakeStepUpService(challengeId, enforceBinding: true);
+        var sender = new FakeMessageSender();
+        var management = new FakeClientManagement();
+        var application = new HelloAdminClientApplication<TestProfile>(management,
+            new FakeSessionService(actor), stepUp, new FakeVerificationService(challengeId),
+            sender, new HelloDeliveryOptions { VerificationChannel = HelloDeliveryChannel.Email },
+            new NullHelloSecurityEventSink(), new HttpContextAccessor(), Microsoft.Extensions.Logging.Abstractions.NullLogger<HelloAdminClientApplication<TestProfile>>.Instance);
+        var input = new HelloAuthorizationClientInput("app", "App", HelloAuthorizationClientType.Public,
+            "resource", ["https://example.test/callback"], [], ["openid"], true);
+        var action = new HelloAdminClientAction("update", input, 7);
+        var begun = await application.BeginAsync("access", action, "client", CancellationToken.None);
+        Assert.True(begun.IsSuccess);
+        Assert.Equal("admin@example.test", sender.Message?.RecipientAddress);
+        var binding = stepUp.BeginCommand!.Binding;
+        var tampered = await application.CompleteAsync("access", new HelloAdminClientCompletion(
+            action with { Input = input with { RedirectUris = ["https://evil.test/callback"] } },
+            challengeId, "123456"), "client", CancellationToken.None);
+        Assert.False(tampered.IsSuccess);
+        Assert.Equal(0, management.Mutations);
+        Assert.NotEqual(binding, stepUp.AuthorizeCommand!.Binding);
+        var stale = await application.CompleteAsync("access", new HelloAdminClientCompletion(
+            action with { ExpectedRevision = 8 }, challengeId, "123456"), "client", CancellationToken.None);
+        Assert.False(stale.IsSuccess);
+        Assert.Equal(0, management.Mutations);
+        Assert.NotEqual(binding, stepUp.AuthorizeCommand!.Binding);
+        var wrongAction = await application.CompleteAsync("access", new HelloAdminClientCompletion(
+            action with { Action = "delete" }, challengeId, "123456"), "client", CancellationToken.None);
+        Assert.False(wrongAction.IsSuccess);
+        Assert.Equal(0, management.Mutations);
+        Assert.NotEqual(stepUp.BeginCommand.Action, stepUp.AuthorizeCommand!.Action);
+        var valid = await application.CompleteAsync("access", new HelloAdminClientCompletion(
+            action, challengeId, "123456"), "client", CancellationToken.None);
+        Assert.True(valid.IsSuccess);
+        Assert.Equal(1, management.Mutations);
+        var replay = await application.CompleteAsync("access", new HelloAdminClientCompletion(
+            action, challengeId, "123456"), "client", CancellationToken.None);
+        Assert.False(replay.IsSuccess);
+        Assert.Equal(1, management.Mutations);
+    }
+
+    private sealed class FakeClientManagement : IHelloAuthorizationClientManagement
+    {
+        public int Mutations { get; private set; }
+        public HelloAuthorizationClientCatalog GetCatalog() => new([], []);
+        public Task<OperationResult<bool>> ValidateCreateAsync(HelloAuthorizationClientInput input, CancellationToken ct) => Task.FromResult(OperationResultFactory.Success(true));
+        public Task<OperationResult<bool>> ValidateUpdateAsync(string id, long revision, HelloAuthorizationClientInput input, CancellationToken ct) => Task.FromResult(OperationResultFactory.Success(true));
+        public Task<OperationResult<HelloAuthorizationClientMutation>> UpdateAsync(string id, long revision, HelloAuthorizationClientInput input, CancellationToken ct)
+        {
+            Mutations++;
+            return Task.FromResult(OperationResultFactory.Success(new HelloAuthorizationClientMutation(new HelloAuthorizationClientView(id, input.DisplayName, input.Type, input.Resource, input.RedirectUris, input.PostLogoutRedirectUris, input.Scopes, input.HonorReauthenticationPrompts, "administration", revision + 1), null)));
+        }
+        public Task<OperationResult<bool>> DeleteAsync(string id, long revision, CancellationToken ct) => Task.FromResult(OperationResultFactory.Success(true));
+        public Task<OperationResult<IReadOnlyList<HelloAuthorizationClientView>>> ListAsync(int offset, int count, CancellationToken ct) => throw new NotSupportedException();
+        public Task<OperationResult<HelloAuthorizationClientView>> GetAsync(string id, CancellationToken ct) => throw new NotSupportedException();
+        public Task<OperationResult<HelloAuthorizationClientMutation>> CreateAsync(HelloAuthorizationClientInput input, CancellationToken ct) => throw new NotSupportedException();
+        public Task<OperationResult<HelloAuthorizationClientMutation>> RotateSecretAsync(string id, long revision, CancellationToken ct) => throw new NotSupportedException();
+    }
+
     private static IdentityUser<TestProfile> CreateUser(
         Guid id,
         string displayName,
@@ -476,9 +541,10 @@ public sealed class HelloAdminApplicationTests
             => throw new NotSupportedException();
     }
 
-    private sealed class FakeStepUpService(Guid? challengeId = null)
+    private sealed class FakeStepUpService(Guid? challengeId = null, bool enforceBinding = false)
         : IIdentityStepUpService<TestProfile>
     {
+        private bool consumed;
         public BeginStepUpCommand? BeginCommand { get; private set; }
         public AuthorizeStepUpCommand? AuthorizeCommand { get; private set; }
 
@@ -501,6 +567,9 @@ public sealed class HelloAdminApplicationTests
             CancellationToken ct)
         {
             AuthorizeCommand = cmd;
+            if (enforceBinding && (consumed || BeginCommand?.Action != cmd.Action || BeginCommand.Binding != cmd.Binding))
+                return Task.FromResult(OperationResultFactory.Fail<StepUpDecision>(new Error("invalid_stepup", "Invalid proof", ErrorType.Unauthorized)));
+            consumed = true;
             return Task.FromResult(
                 OperationResultFactory.Success(
                     new StepUpDecision(

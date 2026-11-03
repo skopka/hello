@@ -67,6 +67,7 @@ public static class
     private static async Task<IResult> AuthorizeAsync<TProfile>(
         HttpContext httpContext,
         IHelloAuthorizationApplication<TProfile> application,
+        IOpenIddictApplicationManager applications,
         HelloAuthorizationServerOptions options,
         CancellationToken cancellationToken)
     {
@@ -74,23 +75,24 @@ public static class
             ?? throw new InvalidOperationException(
                 "OpenIddict did not expose the authorization request.");
 
-        if (!TryGetClientResource(
-                request,
-                options,
-                out var client,
-                out var resource))
+        var client = await GetClientAsync(request, applications, options, cancellationToken);
+        if (client is null)
         {
             return Forbid(
                 Errors.InvalidClient,
                 "The authorization client is not configured.");
         }
 
+        var resource = options.GetResource(client);
         if (!HasAllowedResource(request, resource))
         {
             return Forbid(
                 Errors.InvalidTarget,
                 "The requested resource is not allowed for this client.");
         }
+
+        if (request.GetScopes().Any(scope => !client.Scopes.Contains(scope, StringComparer.Ordinal)))
+            return Forbid(Errors.InvalidScope, "A requested scope is not allowed for this client.");
 
         if (HasPrompt(request, "consent"))
         {
@@ -191,6 +193,7 @@ public static class
             HelloAuthorizationDefaults.SourceSessionIdClaim,
             validated.Value.SessionId.ToString("D"));
 
+        identity.SetClaim("skopka_client_revision", client.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture));
         var principal = new ClaimsPrincipal(identity);
         principal.SetScopes(request.GetScopes());
         principal.SetResources(resource);
@@ -203,23 +206,22 @@ public static class
     private static async Task<IResult> ExchangeAsync<TProfile>(
         HttpContext httpContext,
         IHelloAuthorizationApplication<TProfile> application,
+        IOpenIddictApplicationManager applications,
         HelloAuthorizationServerOptions options,
         CancellationToken cancellationToken)
     {
         var request = httpContext.GetOpenIddictServerRequest()
             ?? throw new InvalidOperationException(
                 "OpenIddict did not expose the token request.");
-        if (!TryGetClientResource(
-                request,
-                options,
-                out var client,
-                out var resource))
+        var client = await GetClientAsync(request, applications, options, cancellationToken);
+        if (client is null)
         {
             return Forbid(
                 Errors.InvalidClient,
                 "The authorization client is not configured.");
         }
 
+        var resource = options.GetResource(client);
         if (!HasAllowedResource(request, resource))
         {
             return Forbid(
@@ -239,6 +241,10 @@ public static class
                 Errors.InvalidGrant,
                 "The token grant is invalid or expired.");
         }
+
+        if (authentication.Principal.FindFirstValue("skopka_client_revision") != client.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            || authentication.Principal.GetScopes().Any(scope => !client.Scopes.Contains(scope, StringComparer.Ordinal)))
+            return Forbid(Errors.InvalidGrant, "The client registration has changed.");
 
         if (!HasOnlyResource(authentication.Principal, resource))
         {
@@ -309,7 +315,8 @@ public static class
         var principal = CreateTokenPrincipal(
             result.Value,
             scopes,
-            resource);
+            resource,
+            client.Revision);
         return Results.SignIn(
             principal,
             authenticationScheme:
@@ -319,13 +326,15 @@ public static class
     private static ClaimsPrincipal CreateTokenPrincipal(
         HelloAuthorizationSubject subject,
         IEnumerable<string> scopes,
-        string resource)
+        string resource,
+        long revision)
     {
         var identity = new ClaimsIdentity(
             TokenValidationParameters.DefaultAuthenticationType,
             Claims.Name,
             Claims.Role);
         identity.SetClaim(Claims.Subject, subject.UserId.ToString("D"));
+        identity.SetClaim("skopka_client_revision", revision.ToString(System.Globalization.CultureInfo.InvariantCulture));
         identity.SetClaim(
             IdentitySessionClaimTypes.SessionId,
             subject.SessionId.ToString("D"));
@@ -383,6 +392,8 @@ public static class
             ];
         }
 
+        if (claim.Type == "skopka_client_revision") return [];
+
         if (claim.Type == HelloAuthorizationDefaults.OAuthTransportClaim)
         {
             return [Destinations.AccessToken];
@@ -432,6 +443,7 @@ public static class
         StringComparer.Ordinal)
     {
         Claims.Subject,
+        "skopka_client_revision",
         IdentitySessionClaimTypes.SessionId,
         HelloAuthorizationDefaults.SourceSessionIdClaim,
         HelloAuthorizationDefaults.OAuthTransportClaim,
@@ -472,24 +484,30 @@ public static class
             && sessionId != Guid.Empty;
     }
 
-    private static bool TryGetClientResource(
-        OpenIddictRequest request,
-        HelloAuthorizationServerOptions options,
-        out HelloAuthorizationClientOptions client,
-        out string resource)
+    private static async Task<HelloAuthorizationClientOptions?> GetClientAsync(
+        OpenIddictRequest request, IOpenIddictApplicationManager applications,
+        HelloAuthorizationServerOptions options, CancellationToken cancellationToken)
     {
-        client = options.Clients.FirstOrDefault(candidate => string.Equals(
-            candidate.ClientId,
-            request.ClientId,
-            StringComparison.Ordinal))!;
-        if (client is null)
+        if (string.IsNullOrEmpty(request.ClientId)) return null;
+        var app = await applications.FindByClientIdAsync(request.ClientId, cancellationToken);
+        if (app is null) return null;
+        var descriptor = await HelloClientRegistration.DescribeAsync(applications, app, cancellationToken);
+        var metadata = HelloClientRegistration.Read(descriptor);
+        if (metadata is null)
+            return descriptor.Properties.ContainsKey(HelloClientRegistration.Key)
+                ? null : options.Clients.FirstOrDefault(x => x.ClientId == request.ClientId);
+        if (metadata.Revision <= 0 || metadata.Ownership is not ("configuration" or "administration")
+            || metadata.Scopes is null || metadata.Scopes.Any(x => !options.GetScopes().Contains(x, StringComparer.Ordinal))
+            || !options.GetResources().Contains(metadata.Resource, StringComparer.Ordinal)) return null;
+        return new HelloAuthorizationClientOptions
         {
-            resource = string.Empty;
-            return false;
-        }
-
-        resource = options.GetResource(client);
-        return true;
+            ClientId = request.ClientId,
+            DisplayName = descriptor.DisplayName ?? request.ClientId,
+            Resource = metadata.Resource,
+            HonorReauthenticationPrompts = metadata.HonorReauthenticationPrompts,
+            Scopes = metadata.Scopes.ToList(),
+            Revision = metadata.Revision,
+        };
     }
 
     private static bool HasAllowedResource(

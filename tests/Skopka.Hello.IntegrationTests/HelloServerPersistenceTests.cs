@@ -81,17 +81,33 @@ public sealed class HelloServerPersistenceTests
         Assert.Equal(
             OpenIddictConstants.ClientTypes.Public,
             await applications.GetClientTypeAsync(application));
-        Assert.Null(
+        Assert.NotNull(
             await applications.FindByClientIdAsync(
                 "removed-postgres-client"));
-        Assert.Null(
+        Assert.NotNull(
             await applications.FindByClientIdAsync(
                 "another-removed-postgres-client"));
+        var management = scope.ServiceProvider.GetRequiredService<IHelloAuthorizationClientManagement>();
+        var created = await management.CreateAsync(new HelloAuthorizationClientInput(
+            "managed-postgres", "Managed PostgreSQL", HelloAuthorizationClientType.Public,
+            "skopka-hello-api", ["com.example.managed:/callback"], [],
+            [OpenIddictConstants.Scopes.OpenId], true), CancellationToken.None);
+        Assert.True(created.IsSuccess);
+        await clients.SynchronizeAsync(CancellationToken.None);
+        await using (var restartedProvider = services.BuildServiceProvider())
+        await using (var restartedScope = restartedProvider.CreateAsyncScope())
+        {
+            var restartedManagement = restartedScope.ServiceProvider.GetRequiredService<IHelloAuthorizationClientManagement>();
+            var persisted = await restartedManagement.GetAsync("managed-postgres", CancellationToken.None);
+            Assert.True(persisted.IsSuccess);
+            Assert.Equal("administration", persisted.Value.Ownership);
+            Assert.Equal(created.Value.Client.Revision, persisted.Value.Revision);
+        }
 
         await using var dataSource = NpgsqlDataSource.Create(
             connectionString);
         Assert.Equal(
-            1L,
+            4L,
             await CountAsync(
                 dataSource,
                 "skopka_hello_oauth.applications"));

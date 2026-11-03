@@ -10,7 +10,7 @@ ViewData["AdminSection"] = "clients";
         <h1>@Text["Admin.Clients.Title"]</h1>
     </div>
 </header>
-<div asp-validation-summary="All" class="alert alert-danger" role="alert">
+<div asp-validation-summary="All" class="alert alert-danger admin-validation" role="alert">
 </div>
 @if (Model.StatusMessage is not null)
 {
@@ -61,7 +61,7 @@ ViewData["AdminSection"] = "clients";
                 <input type="hidden" asp-for="ActionName" />
                 <input type="hidden" asp-for="ExpectedRevision" />
                 <div class="col-md-4">
-                    <label class="form-label" asp-for="ClientId">Client ID</label>
+                    <label class="form-label" asp-for="ClientId">@Text["Admin.Clients.ClientId"]</label>
                     <input class="form-control" asp-for="ClientId" readonly="@(Model.ActionName == "update")" required />
                 </div>
                 <div class="col-md-4">
@@ -70,7 +70,10 @@ ViewData["AdminSection"] = "clients";
                 </div>
                 <div class="col-md-3">
                     <label class="form-label" asp-for="Type">@Text["Admin.Clients.Type"]</label>
-                    <select class="form-select" asp-for="Type" asp-items="Html.GetEnumSelectList<Skopka.Hello.AuthorizationServer.HelloAuthorizationClientType>()"></select>
+                    <select class="form-select" asp-for="Type">
+                        <option value="0">@Text["Admin.Clients.Public"]</option>
+                        <option value="1">@Text["Admin.Clients.Confidential"]</option>
+                    </select>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label" asp-for="Resource">@Text["Admin.Clients.Resource"]</label>
@@ -110,8 +113,8 @@ ViewData["AdminSection"] = "clients";
         {
             <article class="border rounded p-3 mb-2">
                 <h3 class="h6">@client.DisplayName (@client.ClientId)</h3>
-                <p>@client.Type · @Text[client.Ownership == "administration" ? "Admin.Clients.Managed" : "Admin.Clients.ReadOnly"] · @Text["Admin.Clients.Revision"]: @client.Revision</p>
-                <p>@Text["Admin.Clients.Resource"]: @client.Resource<br />@Text["Admin.Clients.Scopes"]: @string.Join(", ", client.Scopes)<br />@Text["Admin.Clients.Redirects"]: @string.Join(", ", client.RedirectUris)<br />@Text["Admin.Clients.LogoutRedirects"]: @string.Join(", ", client.PostLogoutRedirectUris)<br />@Text["Admin.Clients.Reauthentication"]: @client.HonorReauthenticationPrompts</p>
+                <p>@Text[client.Type == Skopka.Hello.AuthorizationServer.HelloAuthorizationClientType.Public ? "Admin.Clients.Public" : "Admin.Clients.Confidential"] · @Text[client.Ownership == "administration" ? "Admin.Clients.Managed" : "Admin.Clients.ReadOnly"] · @Text["Admin.Clients.Revision"]: @client.Revision</p>
+                <p>@Text["Admin.Clients.Resource"]: @client.Resource<br />@Text["Admin.Clients.Scopes"]: @string.Join(", ", client.Scopes)<br />@Text["Admin.Clients.Redirects"]: @string.Join(", ", client.RedirectUris)<br />@Text["Admin.Clients.LogoutRedirects"]: @string.Join(", ", client.PostLogoutRedirectUris)<br />@Text["Admin.Clients.Reauthentication"]: @Text[client.HonorReauthenticationPrompts ? "Admin.Clients.Yes" : "Admin.Clients.No"]</p>
                 @if (Model.CanManage && client.Ownership == "administration")
                 {
                     <div class="d-flex gap-2 flex-wrap">

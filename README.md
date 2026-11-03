@@ -15,7 +15,9 @@ fields; see [customization](docs/customization.md). It also adds
 step-up-protected management of OAuth clients; see the
 [authorization-server guide](docs/authorization-server.md).
 
-The current `0.25.0` vertical slice contains:
+Version `0.25.1` fixes Admin client localization and the empty validation summary. Custom UI localization dictionaries must place translation keys under `texts`; unknown or duplicate root properties are rejected at startup.
+
+The current `0.25.1` vertical slice contains:
 
 - atomic password registration;
 - passwordless SMS sign-in and atomic registration by verified phone;

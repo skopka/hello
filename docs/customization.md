@@ -342,6 +342,11 @@ options.Localization.SetSupportedCultures(
 Call `AddDictionaryFile` after `SetSupportedCultures`, because replacement
 also clears dictionary-file registrations for the previous selection.
 
+Dictionary JSON accepts only `culture` and `texts` at the root. Put every
+translation key inside `texts`. Unknown or duplicate root properties are
+rejected when the catalog is initialized; files that previously placed keys
+at the root must move them into `texts`.
+
 `UseAcceptLanguageHeader` defaults to `true` for compatibility. Set it to
 `false` when the configured default must be used for first-time visitors and
 language changes should happen only through the packaged selector. The culture

@@ -179,6 +179,25 @@ internal sealed class HelloUiTextCatalog
 
         using (document)
         {
+            if (document.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                var rootKeys = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var property in document.RootElement.EnumerateObject())
+                {
+                    if (property.Name is not ("culture" or "texts"))
+                    {
+                        throw new InvalidOperationException(
+                            $"The UI dictionary '{sourceName}' contains unknown root property '{property.Name}'. Only 'culture' and 'texts' are allowed.");
+                    }
+
+                    if (!rootKeys.Add(property.Name))
+                    {
+                        throw new InvalidOperationException(
+                            $"The UI dictionary '{sourceName}' contains duplicate root property '{property.Name}'.");
+                    }
+                }
+            }
+
             if (document.RootElement.ValueKind != JsonValueKind.Object
                 || !document.RootElement.TryGetProperty(
                     "culture",

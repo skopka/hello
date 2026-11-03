@@ -10,15 +10,17 @@ SkopiClub repository.
 
 1. Update `H:/Rep/skopi-club/hello/Directory.Packages.props`: its five referenced
    `Skopka.Hello*` packages are currently pinned to `0.22.1`. Set all of them to
-   `0.25.0`. Align its four
+   `0.25.1`. Align its four
    direct `Skopka.Identity*` references with the new Hello package's dependency
    requirements; this Hello checkout currently uses Identity `0.16.0`, while
    SkopiClub pins `0.14.0`. Check transitive dependency resolution and run the
    SkopiClub test suite for upgrade compatibility. Its `NuGet.Config` uses
    `vendor/packages` and NuGet.org: make the coordinated packages available to
    the deployment's chosen feed and update its vendored artifacts and checksums
-   if that feed remains in use. Verify that all six 0.25.0 packages are available
-   before starting the host upgrade.
+   if that feed remains in use. Verify that all six 0.25.1 packages are available
+   before starting the host upgrade. Custom UI localization dictionaries must place
+   translation keys under `texts`; unknown or duplicate root properties are rejected
+   at startup.
 2. Keep the existing `AddAuthorizationStorage` using
    `SkopiClubAuthorizationDbContext`,
    `AddSkopkaHelloAuthorizationServer<SkopiClubProfile>`, and

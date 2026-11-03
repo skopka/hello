@@ -64,7 +64,8 @@ public sealed class AuthenticationFlowTests
             try
             {
                 await postgres.StartAsync();
-                app = await TestApplication.CreateAsync(postgres.GetConnectionString());
+                app = await TestApplication.CreateAsync(postgres.GetConnectionString(), authorizationClientsEnabled: true,
+                    configureUi: options => options.Localization.Enabled = true);
                 using var client = app.CreateClient();
                 var actor = await RegisterUiAccountAsync(client, "browser-admin", "browser-admin@example.test", "Browser Admin");
                 var target = await RegisterUiAccountAsync(client, "browser-target", "browser-target@example.test", "Browser Target");
@@ -5013,13 +5014,20 @@ public sealed class AuthenticationFlowTests
             CultureInfo.InvariantCulture);
     }
 
-    [Fact]
-    public async Task AdminClientRazorFormsRequirePolicyAntiforgeryAndStepUp()
+    [Theory]
+    [InlineData("en", "OIDC clients", "Create client", "Edit client", "Managed here", "Client action completed.", "Create", "Update", "Delete", "Rotate secret", "Read-only", "Public", "No")]
+    [InlineData("ru", "Клиенты OIDC", "Создать клиента", "Изменить клиента", "Управляется здесь", "Действие с клиентом выполнено.", "Создать", "Изменить", "Удалить", "Обновить секрет", "Только чтение", "Публичный (Public)", "Нет")]
+    public async Task AdminClientRazorFormsRequirePolicyAntiforgeryAndStepUp(
+        string culture, string title, string createTitle, string editTitle, string managed,
+        string completed, string create, string update, string delete, string rotate,
+        string readOnly, string publicType, string no)
     {
         await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
         await postgres.StartAsync();
-        await using var app = await TestApplication.CreateAsync(postgres.GetConnectionString(), authorizationClientsEnabled: true);
+        await using var app = await TestApplication.CreateAsync(postgres.GetConnectionString(), authorizationClientsEnabled: true,
+            configureUi: options => options.Localization.Enabled = true);
         using var client = app.CreateClient(allowAutoRedirect: false);
+        client.DefaultRequestHeaders.AcceptLanguage.ParseAdd(culture);
         const string email = "client-admin@example.test";
         var userId = await RegisterUiAccountAsync(client, "client-admin", email, "Client Admin");
         using (var requested = await client.PostAsJsonAsync("/auth/email-confirmation/request", new { email }))
@@ -5057,6 +5065,16 @@ public sealed class AuthenticationFlowTests
         Assert.Equal(HttpStatusCode.OK, initial.StatusCode);
         MergeCookies(cookies, initial);
         var html = await initial.Content.ReadAsStringAsync();
+        var decoded = WebUtility.HtmlDecode(html);
+        Assert.Contains(title, decoded, StringComparison.Ordinal);
+        Assert.Contains(createTitle, decoded, StringComparison.Ordinal);
+        var configuredArticle = Regex.Match(decoded, "<article[^>]*>[^<]*<h3[^>]*>Configured Client.*?</article>",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant).Value;
+        Assert.NotEmpty(configuredArticle);
+        Assert.Contains(readOnly, configuredArticle, StringComparison.Ordinal);
+        Assert.Contains(publicType, configuredArticle, StringComparison.Ordinal);
+        Assert.Contains(no, configuredArticle, StringComparison.Ordinal);
+        Assert.DoesNotContain("Admin.Clients.", decoded, StringComparison.Ordinal);
         var token = ReadInputValue(html, "__RequestVerificationToken");
         var form = new Dictionary<string, string>
         {
@@ -5094,6 +5112,9 @@ public sealed class AuthenticationFlowTests
             using var begin = await SendFormAsync(client, "/hello/admin/clients?handler=Begin", cookies, form);
             Assert.Equal(HttpStatusCode.OK, begin.StatusCode);
             var beginHtml = await begin.Content.ReadAsStringAsync();
+            var actionLabel = action switch { "create" => create, "update" => update, "delete" => delete, _ => rotate };
+            Assert.Contains($"{actionLabel}: razor-client", WebUtility.HtmlDecode(beginHtml), StringComparison.Ordinal);
+            Assert.DoesNotContain("Admin.Clients.", WebUtility.HtmlDecode(beginHtml), StringComparison.Ordinal);
             var challenge = ReadInputValue(beginHtml, "challengeId");
             form["__RequestVerificationToken"] = ReadInputValue(beginHtml, "__RequestVerificationToken");
             var issued = app.Messages.Where(x => x.Kind == HelloAccountMessageKind.AdminActionVerification).ToArray();
@@ -5103,6 +5124,8 @@ public sealed class AuthenticationFlowTests
             using var complete = await SendFormAsync(client, "/hello/admin/clients?handler=Complete", cookies, form);
             Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
             var completeHtml = await complete.Content.ReadAsStringAsync();
+            Assert.Contains(completed, WebUtility.HtmlDecode(completeHtml), StringComparison.Ordinal);
+            Assert.DoesNotContain("Admin.Clients.", WebUtility.HtmlDecode(completeHtml), StringComparison.Ordinal);
             form["__RequestVerificationToken"] = ReadInputValue(completeHtml, "__RequestVerificationToken");
             form.Remove("challengeId"); form.Remove("VerificationCode");
             return completeHtml;
@@ -5114,7 +5137,10 @@ public sealed class AuthenticationFlowTests
         using (var reload = await SendAsync(client, HttpMethod.Get, "/hello/admin/clients?edit=razor-client", cookies))
         {
             Assert.Equal(HttpStatusCode.OK, reload.StatusCode);
-            Assert.DoesNotContain(secret, await reload.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+            var editHtml = await reload.Content.ReadAsStringAsync();
+            Assert.DoesNotContain(secret, editHtml, StringComparison.Ordinal);
+            Assert.Contains(editTitle, WebUtility.HtmlDecode(editHtml), StringComparison.Ordinal);
+            Assert.Contains(managed, WebUtility.HtmlDecode(editHtml), StringComparison.Ordinal);
         }
         form["DisplayName"] = "Renamed Razor Client";
         var updated = await CompleteAsync("update", 1);
@@ -6074,6 +6100,15 @@ public sealed class AuthenticationFlowTests
                 builder.Services.AddSkopkaHelloAuthorizationClients(options =>
                 {
                     options.Issuer = new Uri("https://integration.skopka.test");
+                    options.Clients.Add(new HelloAuthorizationClientOptions
+                    {
+                        ClientId = "configured-client",
+                        DisplayName = "Configured Client",
+                        Type = HelloAuthorizationClientType.Public,
+                        RedirectUris = ["https://configured.example.test/callback"],
+                        Scopes = ["openid"],
+                        HonorReauthenticationPrompts = false,
+                    });
                 });
             }
             builder.Services.AddSkopkaHelloAdmin<
@@ -6138,6 +6173,8 @@ public sealed class AuthenticationFlowTests
                 {
                     var authorizationDatabase = scope.ServiceProvider.GetRequiredService<HelloAuthorizationDbContext>();
                     await authorizationDatabase.Database.MigrateAsync();
+                    await scope.ServiceProvider.GetRequiredService<IHelloAuthorizationClientSynchronizer>()
+                        .SynchronizeAsync(CancellationToken.None);
                 }
             }
 

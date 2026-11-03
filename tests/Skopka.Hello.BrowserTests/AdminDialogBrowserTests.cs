@@ -102,6 +102,49 @@ public sealed class AdminDialogBrowserTests(BrowserFixture browser) : IClassFixt
         await Assertions.Expect(roleDialog.Locator("textarea[name='description']")).ToHaveValueAsync("Preserve this description");
     }
 
+    [Theory]
+    [InlineData("en", "OIDC clients", "Create client", "Client pages")]
+    [InlineData("ru", "Клиенты OIDC", "Создать клиента", "Страницы клиентов")]
+    public async Task ClientValidationSummaryAppearsOnlyForErrors(string culture, string title, string createTitle, string pages)
+    {
+        await using var host = await AuthenticationFlowTests.AdminBrowserHost.CreateAsync();
+        await using var context = await browser.Browser.NewContextAsync(new() { Locale = culture });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(new Uri(host.Origin, "/hello/login").ToString());
+        await page.Locator("[name='Input.Login']").FillAsync("browser-admin@example.test");
+        await page.Locator("[name='Input.Password']").FillAsync("correct horse battery staple");
+        await page.Locator("form:has([name='Input.Password']) button[type='submit']").ClickAsync();
+        await page.GotoAsync(new Uri(host.Origin, "/hello/admin/clients").ToString());
+        await Assertions.Expect(page).ToHaveTitleAsync(new System.Text.RegularExpressions.Regex(System.Text.RegularExpressions.Regex.Escape(title)));
+        await Assertions.Expect(page.Locator("h1")).ToHaveTextAsync(title);
+        await Assertions.Expect(page.Locator(".admin-nav-link.active")).ToHaveTextAsync(title);
+        Assert.DoesNotContain("Admin.Clients.", await page.Locator("body").InnerTextAsync(), StringComparison.Ordinal);
+        await Assertions.Expect(page.GetByRole(AriaRole.Navigation, new() { Name = pages })).ToHaveCountAsync(1);
+        await Assertions.Expect(page.Locator("h2").Filter(new() { HasText = createTitle })).ToHaveCountAsync(1);
+        var summary = page.Locator("[data-valmsg-summary]");
+        await Assertions.Expect(summary).ToBeHiddenAsync();
+        await ClientScreenshotAsync(page, $"{culture}-healthy.png");
+        await page.Locator("#ClientId").FillAsync("browser-client");
+        await page.Locator("#DisplayName").FillAsync("Browser client");
+        await page.Locator("#Scopes").FillAsync("openid\nprofile");
+        await page.Locator("#RedirectUris").FillAsync("not a valid URI");
+        await page.Locator("form:has(#ClientId) button[type='submit']").ClickAsync();
+        await Assertions.Expect(summary).ToBeVisibleAsync();
+        Assert.False(string.IsNullOrWhiteSpace(await summary.InnerTextAsync()));
+        await ClientScreenshotAsync(page, $"{culture}-invalid.png");
+        await page.Locator("#RedirectUris").FillAsync("https://client.example.test/callback");
+        await page.Locator("form:has(#ClientId) button[type='submit']").ClickAsync();
+        await Assertions.Expect(summary).ToBeHiddenAsync();
+        await Assertions.Expect(page.Locator("input[name='challengeId']")).ToHaveCountAsync(1);
+    }
+
+    private static async Task ClientScreenshotAsync(IPage page, string name)
+    {
+        var directory = Path.Combine(FindRoot(), "artifacts", "client-localization");
+        Directory.CreateDirectory(directory);
+        await page.ScreenshotAsync(new() { Path = Path.Combine(directory, name), FullPage = true, Animations = ScreenshotAnimations.Disabled });
+    }
+
     private static async Task ScreenshotAsync(IPage page, string name)
     {
         var directory = Path.Combine(FindRoot(), "artifacts", "admin-compact");

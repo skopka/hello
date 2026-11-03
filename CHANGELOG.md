@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.25.1
+
+- Fix missing English and Russian Admin client translations and localize the client ID, client type and yes/no labels.
+- Hide the empty validation summary on the Admin clients page when there are no errors.
+- Reject unknown and duplicate root properties in UI localization dictionaries. Move any translation keys at the root into `texts`.
+
 ## 0.25.0
 
 - Publish NuGet packages through Trusted Publishing using short-lived credentials.

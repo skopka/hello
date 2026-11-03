@@ -48,6 +48,86 @@ public sealed class ExternalOidcFlowTests
         new("https://oidc.test/");
 
     [Fact]
+    public async Task TotpExternalReauthenticationRequiresFreshAuthenticationAndSameSubject()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        await postgres.StartAsync();
+        await using var authority = await TestOidcAuthority.CreateAsync();
+        await using var hello = await TestHelloApplication.CreateAsync(postgres.GetConnectionString(), authority);
+        using var client = hello.CreateClient();
+        Dictionary<string, string> cookies = new(StringComparer.Ordinal);
+        await CompleteProviderChallengeAsync(client, authority, cookies);
+        using var registerPage = await SendHelloAsync(client, HttpMethod.Get, HelloUiDefaults.ExternalRegistrationPath, cookies);
+        var registerToken = ReadInputValue(await registerPage.Content.ReadAsStringAsync(), "__RequestVerificationToken");
+        using var registered = await SendHelloFormAsync(client, HelloUiDefaults.ExternalRegistrationPath, cookies,
+            new Dictionary<string, string>
+            {
+                ["Input.DisplayName"] = "External Alice",
+                ["Input.Email"] = "external@example.test",
+                ["Input.UserName"] = "external-alice",
+                ["Input.Phone"] = "",
+                ["Input.Locale"] = "en",
+                ["Input.AcceptTermsOfService"] = "true",
+                ["Input.AcceptPrivacyPolicy"] = "true",
+                ["__RequestVerificationToken"] = registerToken,
+            });
+        Assert.Equal(HttpStatusCode.Redirect, registered.StatusCode);
+
+        foreach (var scenario in new[] { "missing", "old", "subject", "fresh" })
+        {
+            authority.AuthenticationTime = scenario switch
+            {
+                "missing" => null,
+                "old" => DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds(),
+                _ => DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            };
+            authority.Subject = scenario == "subject" ? "another-subject" : Subject;
+            using var security = await SendHelloAsync(client, HttpMethod.Get, "/hello/account/security", cookies);
+            Assert.Equal(HttpStatusCode.OK, security.StatusCode);
+            var securityHtml = await security.Content.ReadAsStringAsync();
+            Assert.DoesNotContain("hello-qr-code", securityHtml, StringComparison.Ordinal);
+            var token = ReadInputValue(securityHtml, "__RequestVerificationToken");
+            using var challenge = await SendHelloFormAsync(client, "/hello/account/security?handler=TotpExternal", cookies,
+                new Dictionary<string, string> { ["providerId"] = ProviderId, ["__RequestVerificationToken"] = token });
+            if (challenge.StatusCode != HttpStatusCode.Redirect)
+            {
+                var html = await challenge.Content.ReadAsStringAsync();
+                var summary = Regex.Match(html, "<div[^>]*class=\"hello-validation[^>]*>(.*?)</div>", RegexOptions.Singleline).Groups[1].Value;
+                Assert.Fail("External reauthentication rejected: " + WebUtility.HtmlDecode(Regex.Replace(summary, "<[^>]+>", " ")));
+            }
+            Assert.Equal(HttpStatusCode.Redirect, challenge.StatusCode);
+            var location = Assert.IsType<Uri>(challenge.Headers.Location);
+            var query = QueryHelpers.ParseQuery(location.Query);
+            Assert.Equal("login", ReadQuery(query, "prompt"));
+            Assert.Equal("0", ReadQuery(query, "max_age"));
+            using var authorization = await authority.Client.GetAsync(location.PathAndQuery);
+            Assert.Equal(HttpStatusCode.OK, authorization.StatusCode);
+            var callbackForm = ReadHiddenForm(await authorization.Content.ReadAsStringAsync());
+            using var callback = await SendHelloFormAsync(client, HelloOidcDefaults.CallbackPathPrefix + ProviderId, cookies, callbackForm);
+            Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
+            if (scenario is "missing" or "old")
+            {
+                Assert.Contains("totpExternalError", callback.Headers.Location?.OriginalString, StringComparison.Ordinal);
+                continue;
+            }
+            Assert.Equal(HelloOidcDefaults.CompletionPath, callback.Headers.Location?.OriginalString);
+            using var completionPage = await SendHelloAsync(client, HttpMethod.Get, HelloOidcDefaults.CompletionPath, cookies);
+            var completionToken = ReadInputValue(await completionPage.Content.ReadAsStringAsync(), "__RequestVerificationToken");
+            using var completion = await SendHelloFormAsync(client, HelloOidcDefaults.CompletionPath, cookies,
+                new Dictionary<string, string> { ["__RequestVerificationToken"] = completionToken });
+            if (scenario == "subject")
+            {
+                Assert.Equal(HttpStatusCode.OK, completion.StatusCode);
+                Assert.DoesNotContain("hello-qr-code", await completion.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+                continue;
+            }
+            Assert.Equal(HttpStatusCode.Redirect, completion.StatusCode);
+            using var enrolled = await SendHelloAsync(client, HttpMethod.Get, "/hello/account/security", cookies);
+            Assert.Contains("hello-qr-code", await enrolled.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public async Task AuthorizationCodeFlowRegistersAndReusesExternalIdentity()
     {
         await using var postgres = new PostgreSqlBuilder(
@@ -1349,6 +1429,8 @@ public sealed class ExternalOidcFlowTests
 
     private sealed class AuthorityRequestRecorder
     {
+        public string Subject { get; set; } = ExternalOidcFlowTests.Subject;
+        public long? AuthenticationTime { get; set; }
         private readonly ConcurrentQueue<RecordedAuthorizationRequest>
             requests = new();
 
@@ -1400,6 +1482,8 @@ public sealed class ExternalOidcFlowTests
         }
 
         public HttpClient Client { get; }
+        public string Subject { set => recorder.Subject = value; }
+        public long? AuthenticationTime { set => recorder.AuthenticationTime = value; }
 
         public static async Task<TestOidcAuthority> CreateAsync()
         {
@@ -1457,7 +1541,12 @@ public sealed class ExternalOidcFlowTests
                     var identity = new ClaimsIdentity(
                         OpenIddictServerAspNetCoreDefaults
                             .AuthenticationScheme);
-                    identity.AddClaim(new Claim(Claims.Subject, Subject));
+                    identity.AddClaim(new Claim(Claims.Subject, capture.Subject));
+                    if (capture.AuthenticationTime is { } authTime)
+                    {
+                        identity.AddClaim(new Claim("auth_time", authTime.ToString(System.Globalization.CultureInfo.InvariantCulture), ClaimValueTypes.Integer64)
+                            .SetDestinations(Destinations.IdentityToken));
+                    }
                     identity.AddClaim(
                         new Claim(Claims.Name, "Provider Alice")
                             .SetDestinations(Destinations.IdentityToken));
@@ -1613,6 +1702,7 @@ public sealed class ExternalOidcFlowTests
                 .AddSkopkaHello<IntegrationProfile>(options =>
                 {
                     options.PublicOrigin = PublicOrigin;
+                    options.Totp.Enabled = true;
                 })
                 .UsePostgreSql(connectionString)
                 .UsePbkdf2PasswordHasher(options =>
@@ -1621,6 +1711,7 @@ public sealed class ExternalOidcFlowTests
                     options.MaximumAcceptedIterations = 1_000;
                 })
                 .UseDataProtectionActionTokens()
+                .UseDataProtectionTotp()
                 .UseJwtSessions(
                     RandomNumberGenerator.GetBytes(32),
                     options =>

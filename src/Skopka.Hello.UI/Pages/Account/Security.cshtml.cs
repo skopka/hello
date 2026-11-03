@@ -13,7 +13,8 @@ public sealed class AccountSecurityModel(
     HelloUiPrgStateStore prgState,
     IHelloUiLocalizer text,
     IHelloUiWebAuthnApplication? passkeys = null,
-    SkopkaHelloOptions? helloOptions = null)
+    SkopkaHelloOptions? helloOptions = null,
+    IHelloUiExternalApplication? external = null)
     : PageModel
 {
 
@@ -111,8 +112,55 @@ public sealed class AccountSecurityModel(
 
         public string AttestationObject { get; set; } = string.Empty;
 
+        public string CredentialId { get; set; } = string.Empty;
+        public string AuthenticatorData { get; set; } = string.Empty;
+        public string Signature { get; set; } = string.Empty;
+
         [StringLength(64)]
         public string? Label { get; set; }
+    }
+
+    public async Task<IActionResult> OnPostTotpPasskeyChallengeAsync(
+        CancellationToken cancellationToken)
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (passkeys is null)
+        {
+            return NotFound();
+        }
+        var result = await passkeys.BeginTotpAuthorizationAsync(
+            HttpContext, cancellationToken);
+        return result.IsSuccess ? new JsonResult(result.Value) : StatusCode(400);
+    }
+
+    public async Task<IActionResult> OnPostTotpPasskeyAsync(
+        CancellationToken cancellationToken)
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (passkeys is null)
+        {
+            return NotFound();
+        }
+        var proof = await passkeys.CompleteTotpAuthorizationAsync(
+            new HelloUiWebAuthnAssertion(Passkey.Ticket, Passkey.CredentialId,
+                Passkey.ClientDataJson, Passkey.AuthenticatorData, Passkey.Signature),
+            HttpContext, cancellationToken);
+        if (proof.IsSuccess)
+        {
+            var enrollment = await application.BeginTotpEnrollmentAsync(
+                HttpContext, cancellationToken, proof: proof.Value);
+            if (enrollment.IsSuccess)
+            {
+                EnrollmentStateToken = prgState.Store(enrollment.Value);
+                return RedirectToPage();
+            }
+            HelloUiModelState.AddErrors(ModelState, enrollment.Errors, text);
+        }
+        else
+        {
+            HelloUiModelState.AddErrors(ModelState, proof.Errors, text);
+        }
+        return await LoadStateAsync(cancellationToken) ? Page() : Challenge();
     }
     public HelloCredentialState? Credentials { get; private set; }
 
@@ -121,6 +169,40 @@ public sealed class AccountSecurityModel(
     public HelloTotpEnrollment? Enrollment { get; private set; }
 
     public Guid? PendingEnrollmentId { get; private set; }
+
+    public string? PendingEnrollmentTicket { get; private set; }
+
+    public HelloTotpPhoneChallenge? TotpPhone { get; private set; }
+    public IReadOnlyList<Skopka.Hello.Oidc.HelloOidcLinkedProvider> TotpProviders
+    { get; private set; } = [];
+
+    public async Task<IActionResult> OnPostTotpExternalAsync(
+        string providerId, CancellationToken cancellationToken)
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (external is null)
+        {
+            return NotFound();
+        }
+        var transport = sessionCookies.ValidateTransport(HttpContext);
+        if (!transport.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, transport.Errors, text);
+            return await LoadStateAsync(cancellationToken) ? Page() : Challenge();
+        }
+        var result = await external.BeginTotpAsync(
+            providerId, HttpContext, cancellationToken);
+        if (result.IsSuccess)
+        {
+            await external.ClearBrowserFlowAsync(HttpContext, cancellationToken);
+            return Challenge(result.Value.Properties, result.Value.AuthenticationScheme);
+        }
+        HelloUiModelState.AddErrors(ModelState, result.Errors, text);
+        return await LoadStateAsync(cancellationToken) ? Page() : Challenge();
+    }
+
+    [TempData]
+    public string? TotpPhoneStateToken { get; set; }
 
     public IReadOnlyList<string>? RecoveryCodes { get; private set; }
 
@@ -145,9 +227,14 @@ public sealed class AccountSecurityModel(
     public string? RecoveryCodesStateToken { get; set; }
 
     public async Task<IActionResult> OnGetAsync(
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool totpExternalError = false)
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (totpExternalError)
+        {
+            ModelState.AddModelError(string.Empty, text["Security.TotpExternalFailed"]);
+        }
         var loaded = await LoadAsync(cancellationToken);
         if (loaded is not PageResult)
         {
@@ -202,12 +289,15 @@ public sealed class AccountSecurityModel(
             cancellationToken);
 
     public async Task<IActionResult> OnPostBeginTotpAsync(
+        string? password,
         CancellationToken cancellationToken)
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
         var result = await application.BeginTotpEnrollmentAsync(
             HttpContext,
-            cancellationToken);
+            cancellationToken,
+            password);
+        ModelState.Remove("password");
         if (result.IsSuccess)
         {
             EnrollmentStateToken = prgState.Store(result.Value);
@@ -227,6 +317,7 @@ public sealed class AccountSecurityModel(
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
         PendingEnrollmentId = input.EnrollmentId;
+        PendingEnrollmentTicket = input.EnrollmentTicket;
         if (!ModelState.IsValid)
         {
             await LoadStateAsync(cancellationToken);
@@ -236,7 +327,8 @@ public sealed class AccountSecurityModel(
         var result = await application.ConfirmTotpEnrollmentAsync(
             new HelloUiConfirmTotpEnrollmentCommand(
                 input.EnrollmentId,
-                input.Code),
+                input.Code,
+                input.EnrollmentTicket),
             HttpContext,
             cancellationToken);
         if (result.IsSuccess)
@@ -257,6 +349,58 @@ public sealed class AccountSecurityModel(
 
         var loaded = await LoadStateAsync(cancellationToken);
         return loaded ? Page() : Challenge();
+    }
+
+    public async Task<IActionResult> OnPostBeginTotpPhoneAsync(
+        CancellationToken cancellationToken)
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        var result = await application.BeginTotpPhoneAsync(
+            HttpContext, cancellationToken);
+        if (result.IsSuccess)
+        {
+            TotpPhoneStateToken = prgState.Store(result.Value);
+            return RedirectToPage();
+        }
+        HelloUiModelState.AddErrors(ModelState, result.Errors, text);
+        return await LoadStateAsync(cancellationToken) ? Page() : Challenge();
+    }
+
+    public IActionResult OnPostRestartTotp()
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        prgState.Remove(EnrollmentStateToken);
+        prgState.Remove(TotpPhoneStateToken);
+        EnrollmentStateToken = null;
+        TotpPhoneStateToken = null;
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostCompleteTotpPhoneAsync(
+        string ticket, string code, CancellationToken cancellationToken)
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        var proof = await application.CompleteTotpPhoneAsync(
+            ticket, code, HttpContext, cancellationToken);
+        if (proof.IsSuccess)
+        {
+            var enrollment = await application.BeginTotpEnrollmentAsync(
+                HttpContext, cancellationToken, proof: proof.Value);
+            if (enrollment.IsSuccess)
+            {
+                EnrollmentStateToken = prgState.Store(enrollment.Value);
+                prgState.Remove(TotpPhoneStateToken);
+                TotpPhoneStateToken = null;
+                return RedirectToPage();
+            }
+            HelloUiModelState.AddErrors(ModelState, enrollment.Errors, text);
+        }
+        else
+        {
+            HelloUiModelState.AddErrors(ModelState, proof.Errors, text);
+        }
+        RestorePrgState();
+        return await LoadStateAsync(cancellationToken) ? Page() : Challenge();
     }
 
     public Task<IActionResult> OnPostBeginDisableTotpAsync(
@@ -518,6 +662,15 @@ public sealed class AccountSecurityModel(
             if (totp.IsSuccess)
             {
                 Totp ??= totp.Value;
+                if (external is not null && !result.Value.HasPassword)
+                {
+                    var linked = await external.ListLinkedProvidersAsync(
+                        HttpContext, cancellationToken);
+                    if (linked.IsSuccess)
+                    {
+                        TotpProviders = linked.Value.Where(x => x.Enabled).ToArray();
+                    }
+                }
                 if (passkeys is not null)
                 {
                     var listed = await passkeys.ListAsync(
@@ -593,6 +746,12 @@ public sealed class AccountSecurityModel(
 
     private void RestorePrgState()
     {
+        if (prgState.TryGet<HelloTotpPhoneChallenge>(
+                TotpPhoneStateToken, out var phone) && phone is not null)
+        {
+            TotpPhone = phone;
+            TempData.Keep(nameof(TotpPhoneStateToken));
+        }
         if (prgState.TryGet<HelloTotpEnrollment>(
                 EnrollmentStateToken,
                 out var enrollment)
@@ -600,6 +759,7 @@ public sealed class AccountSecurityModel(
         {
             Enrollment = enrollment;
             PendingEnrollmentId = enrollment.EnrollmentId;
+            PendingEnrollmentTicket = enrollment.EnrollmentTicket;
             TempData.Keep(nameof(EnrollmentStateToken));
         }
 
@@ -615,6 +775,8 @@ public sealed class AccountSecurityModel(
     public sealed class TotpEnrollmentInput
     {
         public Guid EnrollmentId { get; set; }
+
+        public string? EnrollmentTicket { get; set; }
 
         [Required(ErrorMessage = "Validation.Required")]
         [StringLength(256, ErrorMessage = "Validation.StringLength")]

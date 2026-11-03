@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.25.2
+
+- Require fresh primary authentication before revealing an authenticator enrollment secret or QR code: password accounts re-enter their password; passwordless accounts use a verified phone, passkey or linked external provider.
+- Bind protected, single-use enrollment proofs and confirmation tickets to the exact access token, with independent rate limits and a maximum five-minute ticket lifetime. Refreshing the access token requires restarting enrollment.
+- HTTP clients must send `password` or a fresh `proof` when starting enrollment and the returned `enrollmentTicket` when confirming it. Previously started enrollments must be restarted.
+
 ## 0.25.1
 
 - Fix missing English and Russian Admin client translations and localize the client ID, client type and yes/no labels.

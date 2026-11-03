@@ -9,7 +9,8 @@ public sealed record HelloUiExternalCompletion(
     HelloUiSignIn? SignIn,
     HelloOidcRegistrationHints? Registration,
     HelloOidcProvider? Provider,
-    string ReturnUrl);
+    string ReturnUrl,
+    string? TotpProof = null);
 
 public sealed record HelloUiExternalRegisterCommand(
     string? UserName,
@@ -29,6 +30,11 @@ public sealed record HelloUiExternalRegistration(
 
 public interface IHelloUiExternalApplication
 {
+    Task<OperationResult<HelloOidcChallenge>> BeginTotpAsync(
+        string providerId, HttpContext httpContext, CancellationToken cancellationToken)
+        => Task.FromResult(OperationResultFactory.Fail<HelloOidcChallenge>(
+            new Error("hello.totp.authorization_invalid",
+                "Fresh authentication is required.", ErrorType.Unauthorized)));
     bool IsConfigured { get; }
 
     IReadOnlyList<HelloOidcProvider> Providers { get; }

@@ -12,7 +12,8 @@ internal sealed class HelloUiApplication<TProfile>(
     SkopkaHelloOptions helloOptions,
     IHelloRegistrationConsentPolicy registrationConsentPolicy,
     TimeProvider timeProvider,
-    IHelloUiProfileEditor<TProfile>? profileEditor = null)
+    IHelloUiProfileEditor<TProfile>? profileEditor = null,
+    IHelloTotpEnrollmentAuthorization<TProfile>? totpAuthorization = null)
     : IHelloUiApplication
 {
     public async Task<OperationResult> RegisterAsync(
@@ -405,7 +406,9 @@ internal sealed class HelloUiApplication<TProfile>(
     public async Task<OperationResult<HelloTotpEnrollment>>
         BeginTotpEnrollmentAsync(
             HttpContext httpContext,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            string? password = null,
+            string? proof = null)
     {
         var accessToken = await ReadAccessTokenAsync(httpContext);
         return accessToken is null
@@ -413,7 +416,31 @@ internal sealed class HelloUiApplication<TProfile>(
             : await application.BeginTotpEnrollmentAsync(
                 new HelloBeginTotpEnrollmentCommand(
                     accessToken,
-                    requestContext.CreateClientKey(httpContext)),
+                    requestContext.CreateClientKey(httpContext),
+                    password,
+                    proof),
+                cancellationToken);
+    }
+
+    public async Task<OperationResult<HelloTotpPhoneChallenge>>
+        BeginTotpPhoneAsync(HttpContext httpContext, CancellationToken cancellationToken)
+    {
+        var token = await ReadAccessTokenAsync(httpContext);
+        return token is null || totpAuthorization is null
+            ? InvalidSession<HelloTotpPhoneChallenge>()
+            : await totpAuthorization.BeginPhoneAsync(
+                token, requestContext.CreateClientKey(httpContext), cancellationToken);
+    }
+
+    public async Task<OperationResult<string>> CompleteTotpPhoneAsync(
+        string ticket, string code, HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var token = await ReadAccessTokenAsync(httpContext);
+        return token is null || totpAuthorization is null
+            ? InvalidSession<string>()
+            : await totpAuthorization.CompletePhoneAsync(
+                token, ticket, code, requestContext.CreateClientKey(httpContext),
                 cancellationToken);
     }
 
@@ -432,7 +459,8 @@ internal sealed class HelloUiApplication<TProfile>(
                     accessToken,
                     command.EnrollmentId,
                     command.Code,
-                    requestContext.CreateClientKey(httpContext)),
+                    requestContext.CreateClientKey(httpContext),
+                    command.EnrollmentTicket),
                 cancellationToken);
     }
 

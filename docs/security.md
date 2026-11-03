@@ -315,7 +315,32 @@ new challenge. The Razor UI clears its challenge id and renders the request-code
 state while retaining the underlying password or concurrency error as
 additional diagnostic context.
 
-Authenticator enrollment generates a 20-byte Base32 secret and an
+Authenticator enrollment requires a fresh primary authentication before the
+secret or QR code is returned. Accounts with a password must supply that
+password; passwordless accounts prove an existing phone, passkey or linked
+external provider. Enrollment authorization and confirmation are bound to the
+user, action and exact online-validated access token. Refreshing the session
+changes the access token and invalidates a pending ceremony; start again after
+refresh. Proofs are short-lived and single-use, and an enrollment created
+before this protection cannot be confirmed without a new authorized start.
+Cookie-authorized enrollment forms require antiforgery validation. The UI does
+not persist the password.
+
+API clients POST `password` or a fresh `proof` to
+`/account/authenticator/enrollment`, then send the returned `enrollmentTicket`
+with `enrollmentId` and `code` to `/account/authenticator/enrollment/confirm`.
+Passwordless phone and passkey clients obtain proofs through the respective
+`/account/authenticator/proof/phone` and `/account/authenticator/proof/passkey`
+start and `/confirm` endpoints. Existing clients that omit the new authorization
+or confirmation ticket fail closed and must restart enrollment after upgrading.
+Tickets expire after at most five minutes. Password verification and enrollment
+also have independent rate limits. Multi-instance deployments need a shared
+atomic replay guard; the ready Server uses its persistent rate limiter.
+External provider reauthentication requests `prompt=login` and `max_age=0` and
+requires a single `auth_time` close to the challenge, allowing one minute of
+clock skew. The authenticated provider and subject must match the linked login.
+
+An authorized enrollment generates a 20-byte Base32 secret and an
 `otpauth://totp` URI for the interoperable HMAC-SHA1/six-digit/30-second
 profile. The secret is Data Protection-encrypted in the Identity database and
 is not enabled until the user proves possession. Verification accepts one

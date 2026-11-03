@@ -337,6 +337,21 @@ public static class HelloEndpointRouteBuilderExtensions
         }
         if (helloOptions.Totp.Enabled)
         {
+            if (helloOptions.PhoneOtpEnabled)
+            {
+                endpoints.MapPost("/account/authenticator/proof/phone", BeginTotpPhoneProofAsync<TProfile>)
+                    .RequireAuthorization().WithName("SkopkaHelloBeginAuthenticatorPhoneProof");
+                endpoints.MapPost("/account/authenticator/proof/phone/confirm", CompleteTotpPhoneProofAsync<TProfile>)
+                    .RequireAuthorization().WithName("SkopkaHelloCompleteAuthenticatorPhoneProof");
+            }
+
+            if (endpoints.ServiceProvider.GetService<IIdentityWebAuthnService<TProfile>>() is not null)
+            {
+                endpoints.MapPost("/account/authenticator/proof/passkey", BeginTotpPasskeyProofAsync<TProfile>)
+                    .RequireAuthorization().WithName("SkopkaHelloBeginAuthenticatorPasskeyProof");
+                endpoints.MapPost("/account/authenticator/proof/passkey/confirm", CompleteTotpPasskeyProofAsync<TProfile>)
+                    .RequireAuthorization().WithName("SkopkaHelloCompleteAuthenticatorPasskeyProof");
+            }
             endpoints.MapGet(
                     "/account/authenticator",
                     GetTotpStateAsync<TProfile>)
@@ -1726,6 +1741,56 @@ public static class HelloEndpointRouteBuilderExtensions
                 httpContext);
     }
 
+    private static async Task<IResult> BeginTotpPhoneProofAsync<TProfile>(
+        IHelloTotpEnrollmentAuthorization<TProfile> authorization, IHelloRequestContext context,
+        HttpContext httpContext, CancellationToken ct)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var token = ReadBearerToken(httpContext);
+        if (token is null) return InvalidSession(httpContext);
+        var result = await authorization.BeginPhoneAsync(token, context.CreateClientKey(httpContext), ct);
+        return result.IsSuccess ? TypedResults.Ok(result.Value) : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    private static async Task<IResult> CompleteTotpPhoneProofAsync<TProfile>(
+        CompleteTotpPhoneProofRequest request, IHelloTotpEnrollmentAuthorization<TProfile> authorization,
+        IHelloRequestContext context, HttpContext httpContext, CancellationToken ct)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var token = ReadBearerToken(httpContext);
+        if (token is null) return InvalidSession(httpContext);
+        var result = await authorization.CompletePhoneAsync(token, request.Ticket, request.Code, context.CreateClientKey(httpContext), ct);
+        return result.IsSuccess ? TypedResults.Ok(new TotpProofResponse(result.Value)) : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    private static async Task<IResult> BeginTotpPasskeyProofAsync<TProfile>(
+        IHelloTotpEnrollmentAuthorization<TProfile> authorization, IHelloRequestContext context,
+        HttpContext httpContext, CancellationToken ct)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var token = ReadBearerToken(httpContext);
+        if (token is null) return InvalidSession(httpContext);
+        var result = await authorization.BeginPasskeyAsync(token, context.CreateClientKey(httpContext), ct);
+        return result.IsSuccess ? TypedResults.Ok(new WebAuthnAssertionChallengeResponse(
+            result.Value.Ticket, result.Value.RelyingPartyId, Base64UrlTextEncoder.Encode(result.Value.Challenge),
+            result.Value.UserVerificationRequired, result.Value.ExpiresAt)) : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    private static async Task<IResult> CompleteTotpPasskeyProofAsync<TProfile>(
+        CompleteWebAuthnSignInRequest request, IHelloTotpEnrollmentAuthorization<TProfile> authorization,
+        IHelloRequestContext context, HttpContext httpContext, CancellationToken ct)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var token = ReadBearerToken(httpContext);
+        if (token is null) return InvalidSession(httpContext);
+        if (!TryDecode(request.CredentialId, out var credential) || !TryDecode(request.ClientDataJson, out var clientData)
+            || !TryDecode(request.AuthenticatorData, out var authenticatorData) || !TryDecode(request.Signature, out var signature))
+            return InvalidWebAuthnResponse(httpContext);
+        var result = await authorization.CompletePasskeyAsync(token, request.Ticket, credential, clientData,
+            authenticatorData, signature, context.CreateClientKey(httpContext), ct);
+        return result.IsSuccess ? TypedResults.Ok(new TotpProofResponse(result.Value)) : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
     private static async Task<IResult> GetTotpStateAsync<TProfile>(
         IHelloIdentityApplication<TProfile> application,
         HttpContext httpContext,
@@ -1747,6 +1812,7 @@ public static class HelloEndpointRouteBuilderExtensions
     }
 
     private static async Task<IResult> BeginTotpEnrollmentAsync<TProfile>(
+        BeginTotpEnrollmentRequest request,
         IHelloIdentityApplication<TProfile> application,
         IHelloRequestContext requestContext,
         HttpContext httpContext,
@@ -1762,7 +1828,9 @@ public static class HelloEndpointRouteBuilderExtensions
         var result = await application.BeginTotpEnrollmentAsync(
             new HelloBeginTotpEnrollmentCommand(
                 accessToken,
-                requestContext.CreateClientKey(httpContext)),
+                requestContext.CreateClientKey(httpContext),
+                request.Password,
+                request.Proof),
             cancellationToken);
         return result.IsSuccess
             ? TypedResults.Ok(
@@ -1771,7 +1839,8 @@ public static class HelloEndpointRouteBuilderExtensions
                     result.Value.Secret,
                     result.Value.ProvisioningUri,
                     result.Value.QrCodeSvg,
-                    result.Value.ExpiresAt))
+                    result.Value.ExpiresAt,
+                    result.Value.EnrollmentTicket))
             : OperationResultProblemMapper.ToResult(result, httpContext);
     }
 
@@ -1794,7 +1863,8 @@ public static class HelloEndpointRouteBuilderExtensions
                 accessToken,
                 request.EnrollmentId,
                 request.Code,
-                requestContext.CreateClientKey(httpContext)),
+                requestContext.CreateClientKey(httpContext),
+                request.EnrollmentTicket),
             cancellationToken);
         return result.IsSuccess
             ? TypedResults.Ok(

@@ -17,7 +17,9 @@ step-up-protected management of OAuth clients; see the
 
 Version `0.25.1` fixes Admin client localization and the empty validation summary. Custom UI localization dictionaries must place translation keys under `texts`; unknown or duplicate root properties are rejected at startup.
 
-The current `0.25.1` vertical slice contains:
+Version `0.25.2` requires fresh primary authentication before authenticator enrollment reveals its secret or QR code. API clients must provide a password or proof at enrollment and the returned enrollment ticket at confirmation; see [security](docs/security.md).
+
+The current `0.25.2` vertical slice contains:
 
 - atomic password registration;
 - passwordless SMS sign-in and atomic registration by verified phone;
@@ -141,8 +143,8 @@ The same client is covered by real Chromium tests.
 | `DELETE` | `/account/external-logins/unlink` | Bearer + pending-flow cookie + CSRF header + one-time code |
 | `DELETE` | `/account/sessions/{sessionId}` | Bearer |
 | `GET` | `/account/authenticator` | Bearer |
-| `POST` | `/account/authenticator/enrollment` | Bearer; returns Base32 secret, otpauth URI and QR SVG |
-| `POST` | `/account/authenticator/enrollment/confirm` | Bearer + current TOTP code; returns recovery codes once |
+| `POST` | `/account/authenticator/enrollment` | Bearer + password or fresh proof; returns secret, QR and enrollment ticket |
+| `POST` | `/account/authenticator/enrollment/confirm` | Bearer + enrollment ticket and current TOTP code; returns recovery codes once |
 | `POST` | `/account/authenticator/remove/challenge` | Bearer |
 | `DELETE` | `/account/authenticator` | Bearer + TOTP or recovery code |
 | `POST` | `/account/password/change/challenge` | Bearer |

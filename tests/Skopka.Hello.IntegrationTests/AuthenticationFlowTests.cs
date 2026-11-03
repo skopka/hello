@@ -39,6 +39,101 @@ namespace Skopka.Hello.IntegrationTests;
 
 public sealed class AuthenticationFlowTests
 {
+    [Fact]
+    public async Task AuthenticatorEnrollmentRequiresPasswordAndBindsConfirmationToSession()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(
+            postgres.GetConnectionString(), configureHello: options => options.Totp.Enabled = true);
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        const string password = "correct horse battery staple";
+        const string email = "enrollment-proof@example.test";
+        using var registration = await client.PostAsJsonAsync("/auth/register", new
+        {
+            userName = "enrollment-proof",
+            email,
+            phone = (string?)null,
+            profile = new { displayName = "Enrollment proof", locale = "en" },
+            password,
+        });
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+        var actor = await LoginAsync(client, email, password);
+        var otherSession = await LoginAsync(client, email, password);
+        using var otherRegistration = await client.PostAsJsonAsync("/auth/register", new
+        {
+            userName = "enrollment-other",
+            email = "enrollment-other@example.test",
+            phone = (string?)null,
+            profile = new { displayName = "Other user", locale = "en" },
+            password,
+        });
+        Assert.Equal(HttpStatusCode.Created, otherRegistration.StatusCode);
+        var otherUser = await LoginAsync(client, "enrollment-other@example.test", password);
+
+        foreach (var (candidate, status, code) in new (string?, HttpStatusCode, string)[]
+        {
+            (null, HttpStatusCode.Unauthorized, "hello.totp.authorization_invalid"),
+            ("wrong password", HttpStatusCode.BadRequest, IdentityErrorCodes.InvalidPassword),
+        })
+        {
+            using var denied = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+                "/account/authenticator/enrollment", actor.AccessToken, new { password = candidate });
+            Assert.Equal(status, denied.StatusCode);
+            var body = await denied.Content.ReadAsStringAsync();
+            using var problem = JsonDocument.Parse(body);
+            Assert.Equal(code, problem.RootElement.GetProperty("code").GetString());
+            Assert.DoesNotContain("otpauth://", body, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("qrCodeSvg", body, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("secret", body, StringComparison.OrdinalIgnoreCase);
+        }
+
+        using var pendingBeforeRefresh = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/enrollment", actor.AccessToken, new { password });
+        Assert.Equal(HttpStatusCode.OK, pendingBeforeRefresh.StatusCode);
+        var oldEnrollment = await pendingBeforeRefresh.Content.ReadFromJsonAsync<TotpEnrollmentResponse>();
+        Assert.NotNull(oldEnrollment);
+        actor = await RefreshAsync(client, actor.Cookies);
+        using var afterRefresh = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/enrollment/confirm", actor.AccessToken, new
+            {
+                enrollmentId = oldEnrollment.EnrollmentId,
+                enrollmentTicket = oldEnrollment.EnrollmentTicket,
+                code = ComputeTotp(oldEnrollment.Secret),
+            });
+        Assert.False(afterRefresh.IsSuccessStatusCode);
+
+        using var begin = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/enrollment", actor.AccessToken, new { password });
+        Assert.Equal(HttpStatusCode.OK, begin.StatusCode);
+        var enrollment = await begin.Content.ReadFromJsonAsync<TotpEnrollmentResponse>();
+        Assert.NotNull(enrollment);
+        Assert.Contains("otpauth://totp/", enrollment.ProvisioningUri, StringComparison.Ordinal);
+        Assert.Contains("<svg", enrollment.QrCodeSvg, StringComparison.OrdinalIgnoreCase);
+        var confirmation = new
+        {
+            enrollmentId = enrollment.EnrollmentId,
+            enrollmentTicket = enrollment.EnrollmentTicket,
+            code = ComputeTotp(enrollment.Secret),
+        };
+        using var wrongSession = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/enrollment/confirm", otherSession.AccessToken, confirmation);
+        Assert.False(wrongSession.IsSuccessStatusCode);
+        using var wrongUser = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/enrollment/confirm", otherUser.AccessToken, confirmation);
+        Assert.False(wrongUser.IsSuccessStatusCode);
+        using var legacyConfirmation = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/enrollment/confirm", actor.AccessToken,
+            new { enrollmentId = enrollment.EnrollmentId, code = confirmation.code });
+        Assert.False(legacyConfirmation.IsSuccessStatusCode);
+        using var confirmed = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/enrollment/confirm", actor.AccessToken, confirmation);
+        Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
+        using var replay = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/enrollment/confirm", actor.AccessToken, confirmation);
+        Assert.False(replay.IsSuccessStatusCode);
+    }
+
     public sealed class AdminBrowserHost : IAsyncDisposable
     {
         private readonly PostgreSqlContainer postgres;
@@ -65,6 +160,7 @@ public sealed class AuthenticationFlowTests
             {
                 await postgres.StartAsync();
                 app = await TestApplication.CreateAsync(postgres.GetConnectionString(), authorizationClientsEnabled: true,
+                    configureHello: options => options.Totp.Enabled = true,
                     configureUi: options => options.Localization.Enabled = true);
                 using var client = app.CreateClient();
                 var actor = await RegisterUiAccountAsync(client, "browser-admin", "browser-admin@example.test", "Browser Admin");
@@ -431,7 +527,10 @@ public sealed class AuthenticationFlowTests
             {
                 options.PhoneOtpEnabled = true;
                 options.DefaultPhoneRegion = "RU";
-            });
+                options.Totp.Enabled = true;
+            },
+            passkeysEnabled: true,
+            shortVerificationCooldown: true);
         using var client = app.CreateClient(allowAutoRedirect: false);
 
         using var nullPhone = await client.PostAsJsonAsync(
@@ -485,6 +584,81 @@ public sealed class AuthenticationFlowTests
             "Bearer", session.AccessToken);
         using var account = await client.SendAsync(accountRequest);
         Assert.Equal(HttpStatusCode.OK, account.StatusCode);
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
+        using var passkeyStart = await client.PostAsync("/account/passkeys/challenge", null);
+        Assert.Equal(HttpStatusCode.OK, passkeyStart.StatusCode);
+        var passkeyOffer = await passkeyStart.Content.ReadFromJsonAsync<WebAuthnRegistrationChallengeResponse>(WebJsonOptions);
+        Assert.NotNull(passkeyOffer);
+        var authenticator = new SoftwareAuthenticator(passkeyOffer.RelyingPartyId);
+        using var passkeyRegistered = await client.PostAsJsonAsync("/account/passkeys", new CompleteWebAuthnRegistrationRequest(
+            passkeyOffer.Ticket,
+            Base64UrlTextEncoder.Encode(SoftwareAuthenticator.ClientData("webauthn.create", passkeyOffer.Challenge)),
+            Base64UrlTextEncoder.Encode(authenticator.Attestation()), "Enrollment key"), WebJsonOptions);
+        Assert.Equal(HttpStatusCode.OK, passkeyRegistered.StatusCode);
+        using var passkeyProofStart = await client.PostAsync("/account/authenticator/proof/passkey", null);
+        Assert.Equal(HttpStatusCode.OK, passkeyProofStart.StatusCode);
+        var passkeyProofOffer = await passkeyProofStart.Content.ReadFromJsonAsync<WebAuthnAssertionChallengeResponse>(WebJsonOptions);
+        Assert.NotNull(passkeyProofOffer);
+        var clientData = SoftwareAuthenticator.ClientData("webauthn.get", passkeyProofOffer.Challenge);
+        var assertion = authenticator.Assert(clientData);
+        var passkeyAnswer = new CompleteWebAuthnSignInRequest(passkeyProofOffer.Ticket,
+            Base64UrlTextEncoder.Encode(authenticator.CredentialId), Base64UrlTextEncoder.Encode(clientData),
+            Base64UrlTextEncoder.Encode(assertion.AuthenticatorData), Base64UrlTextEncoder.Encode(assertion.Signature));
+        using var passkeyProofResponse = await client.PostAsJsonAsync("/account/authenticator/proof/passkey/confirm", passkeyAnswer, WebJsonOptions);
+        Assert.Equal(HttpStatusCode.OK, passkeyProofResponse.StatusCode);
+        using var passkeyProofJson = JsonDocument.Parse(await passkeyProofResponse.Content.ReadAsStringAsync());
+        var passkeyProof = passkeyProofJson.RootElement.GetProperty("proof").GetString();
+        using var passkeyProofReplay = await client.PostAsJsonAsync("/account/authenticator/proof/passkey/confirm", passkeyAnswer, WebJsonOptions);
+        Assert.False(passkeyProofReplay.IsSuccessStatusCode);
+        using var passkeyEnrollment = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/enrollment", session.AccessToken, new { proof = passkeyProof });
+        Assert.Equal(HttpStatusCode.OK, passkeyEnrollment.StatusCode);
+
+        // A passwordless user must authenticate the confirmed phone again;
+        // the earlier registration OTP does not authorize enrollment.
+        using var noProof = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/enrollment", session.AccessToken, new { });
+        Assert.False(noProof.IsSuccessStatusCode);
+        using var phoneProofStart = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/proof/phone", session.AccessToken, new { });
+        Assert.Equal(HttpStatusCode.OK, phoneProofStart.StatusCode);
+        using var phoneTicketJson = JsonDocument.Parse(await phoneProofStart.Content.ReadAsStringAsync());
+        var phoneTicket = phoneTicketJson.RootElement.GetProperty("ticket").GetString();
+        Assert.NotNull(phoneTicket);
+        var freshMessage = app.Messages.Last(message => message.Kind == HelloAccountMessageKind.PhoneSignInVerification);
+        Assert.Equal("+79991234572", freshMessage.RecipientAddress);
+        Assert.NotNull(freshMessage.VerificationCode);
+        var phoneConfirmation = new { ticket = phoneTicket, code = freshMessage.VerificationCode };
+        using var phoneProof = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/proof/phone/confirm", session.AccessToken, phoneConfirmation);
+        Assert.Equal(HttpStatusCode.OK, phoneProof.StatusCode);
+        using var proofJson = JsonDocument.Parse(await phoneProof.Content.ReadAsStringAsync());
+        var proof = proofJson.RootElement.GetProperty("proof").GetString();
+        Assert.NotNull(proof);
+        using var phoneReplay = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/proof/phone/confirm", session.AccessToken, phoneConfirmation);
+        Assert.False(phoneReplay.IsSuccessStatusCode);
+        using var enrollmentResponse = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/enrollment", session.AccessToken, new { proof });
+        Assert.Equal(HttpStatusCode.OK, enrollmentResponse.StatusCode);
+        var enrollment = await enrollmentResponse.Content.ReadFromJsonAsync<TotpEnrollmentResponse>();
+        Assert.NotNull(enrollment);
+        using var wrongAction = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/proof/phone/confirm", session.AccessToken,
+            new { ticket = enrollment.EnrollmentTicket, code = freshMessage.VerificationCode });
+        Assert.False(wrongAction.IsSuccessStatusCode);
+        using var reusedProof = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/enrollment", session.AccessToken, new { proof });
+        Assert.False(reusedProof.IsSuccessStatusCode);
+        using var enrolled = await SendAuthorizedJsonAsync(client, HttpMethod.Post,
+            "/account/authenticator/enrollment/confirm", session.AccessToken, new
+            {
+                enrollmentId = enrollment.EnrollmentId,
+                enrollmentTicket = enrollment.EnrollmentTicket,
+                code = ComputeTotp(enrollment.Secret),
+            });
+        Assert.Equal(HttpStatusCode.OK, enrolled.StatusCode);
         using var replay = await client.PostAsJsonAsync(
             "/auth/phone/register", registration);
         Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
@@ -549,7 +723,10 @@ public sealed class AuthenticationFlowTests
 
         using var enrollmentRequest = new HttpRequestMessage(
             HttpMethod.Post,
-            "/account/authenticator/enrollment");
+            "/account/authenticator/enrollment")
+        {
+            Content = JsonContent.Create(new { password }),
+        };
         enrollmentRequest.Headers.Authorization =
             new AuthenticationHeaderValue("Bearer", actor.AccessToken);
         using var enrollmentResponse = await client.SendAsync(
@@ -567,6 +744,7 @@ public sealed class AuthenticationFlowTests
             new
             {
                 enrollmentId = enrollment.EnrollmentId,
+                enrollmentTicket = enrollment.EnrollmentTicket,
                 code = enrollmentCode,
             });
         Assert.Equal(HttpStatusCode.OK, confirmedEnrollment.StatusCode);
@@ -745,7 +923,10 @@ public sealed class AuthenticationFlowTests
 
         using var enrollmentRequest = new HttpRequestMessage(
             HttpMethod.Post,
-            "/account/authenticator/enrollment");
+            "/account/authenticator/enrollment")
+        {
+            Content = JsonContent.Create(new { password }),
+        };
         enrollmentRequest.Headers.Authorization =
             new AuthenticationHeaderValue("Bearer", actor.AccessToken);
         using var enrollmentResponse = await client.SendAsync(
@@ -762,6 +943,7 @@ public sealed class AuthenticationFlowTests
             new
             {
                 enrollmentId = enrollment.EnrollmentId,
+                enrollmentTicket = enrollment.EnrollmentTicket,
                 code = ComputeTotp(enrollment.Secret),
             });
         Assert.Equal(HttpStatusCode.OK, confirmedEnrollment.StatusCode);
@@ -5942,7 +6124,8 @@ public sealed class AuthenticationFlowTests
             bool crossDeviceEnabled = false,
             bool passkeysEnabled = false,
             Action<PhoneOtpOptions>? configurePhoneOtp = null,
-            bool authorizationClientsEnabled = false)
+            bool authorizationClientsEnabled = false,
+            bool shortVerificationCooldown = false)
         {
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions
@@ -6039,7 +6222,14 @@ public sealed class AuthenticationFlowTests
             {
                 identity.UseHmacRateLimiting(
                     "v2",
-                    rateLimitKeys);
+                    rateLimitKeys,
+                    options =>
+                    {
+                        if (shortVerificationCooldown)
+                        {
+                            options.VerificationResendCooldown = TimeSpan.FromMilliseconds(1);
+                        }
+                    });
             }
             finally
             {

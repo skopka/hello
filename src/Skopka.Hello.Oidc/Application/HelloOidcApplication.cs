@@ -15,9 +15,29 @@ internal sealed class HelloOidcApplication<TProfile>(
     HelloOidcOptions options,
     SkopkaHelloOptions helloOptions,
     HelloUiRoutePaths uiRoutes,
-    IHelloRequestContext? requestContext = null)
+    IHelloRequestContext? requestContext = null,
+    IHelloTotpEnrollmentAuthorization<TProfile>? totpAuthorization = null)
     : IHelloOidcApplication<TProfile>
 {
+    public async Task<OperationResult<HelloOidcChallenge>> BeginTotpAsync(
+        string providerId,
+        HelloOidcLocalSession localSession,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        if (totpAuthorization is null)
+        {
+            return Fail<HelloOidcChallenge>(HelloOidcErrors.PendingIdentityInvalid());
+        }
+
+        var begun = await totpAuthorization.BeginExternalAsync(
+            localSession.AccessToken, providerId,
+            requestContext?.CreateClientKey(httpContext), cancellationToken);
+        return begun.IsSuccess
+            ? challenges.CreateTotp(providerId, localSession.UserId, localSession.SessionId, begun.Value)
+            : Fail<HelloOidcChallenge>(begun.Errors);
+    }
+
     public async Task<OperationResult<HelloOidcCompletion<TProfile>>>
         CompleteChallengeAsync(
             HttpContext httpContext,
@@ -59,6 +79,26 @@ internal sealed class HelloOidcApplication<TProfile>(
             await HelloOidcTicketService.DeleteExternalAsync(httpContext);
             return Fail<HelloOidcCompletion<TProfile>>(
                 HelloOidcErrors.PendingIdentityInvalid());
+        }
+
+        if (ticket.Intent == HelloOidcProperties.TotpIntent)
+        {
+            await HelloOidcTicketService.DeleteExternalAsync(httpContext);
+            if (totpAuthorization is null || localSession is null
+                || ticket.UserId != localSession.UserId
+                || ticket.SessionId != localSession.SessionId
+                || string.IsNullOrEmpty(ticket.TotpActionTicket))
+            {
+                return Fail<HelloOidcCompletion<TProfile>>(HelloOidcErrors.PendingIdentityInvalid());
+            }
+            var authorized = await totpAuthorization.CompleteExternalAsync(
+                localSession.AccessToken, ticket.TotpActionTicket, ticket.Login,
+                requestContext?.CreateClientKey(httpContext), cancellationToken);
+            return authorized.IsSuccess
+                ? OperationResultFactory.Success(new HelloOidcCompletion<TProfile>(
+                    HelloOidcCompletionKind.TotpAuthorized, null, null,
+                    publicProvider, uiRoutes.AccountSecurityPath, authorized.Value))
+                : Fail<HelloOidcCompletion<TProfile>>(authorized.Errors);
         }
 
         if (ticket.Intent == HelloOidcProperties.SignInIntent)

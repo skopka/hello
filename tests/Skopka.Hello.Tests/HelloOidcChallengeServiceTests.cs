@@ -1,10 +1,79 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Http;
+using System.Security.Claims;
 using Skopka.Hello.Oidc;
 
 namespace Skopka.Hello.Tests;
 
 public sealed class HelloOidcChallengeServiceTests
 {
+    [Theory]
+    [InlineData(-120, false)]
+    [InlineData(0, true)]
+    [InlineData(120, false)]
+    public async Task TotpProviderRequiresFreshAuthTime(int offsetSeconds, bool valid)
+    {
+        using var services = CreateServices();
+        var challenges = services.GetRequiredService<IHelloOidcChallengeService>();
+        var challenge = challenges.CreateTotp("github", Guid.NewGuid(), Guid.NewGuid(), "protected-action").Value;
+        var options = services.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>().Get(challenge.AuthenticationScheme);
+        var scheme = new AuthenticationScheme(challenge.AuthenticationScheme, null, typeof(OpenIdConnectHandler));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim("sub", "subject"),
+                new Claim("auth_time", challenge.Properties.IssuedUtc!.Value.AddSeconds(offsetSeconds).ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)),
+            ], "oidc"));
+        var context = new TokenValidatedContext(
+            new DefaultHttpContext(), scheme, options, principal, challenge.Properties);
+
+        await options.Events.TokenValidated(context);
+
+        Assert.Equal(valid, context.Result?.Failure is null);
+    }
+
+    [Fact]
+    public async Task TotpProviderRequestsInteractiveFreshAuthentication()
+    {
+        using var services = CreateServices();
+        var challenge = services.GetRequiredService<IHelloOidcChallengeService>()
+            .CreateTotp("github", Guid.NewGuid(), Guid.NewGuid(), "protected-action").Value;
+        var options = services.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>().Get(challenge.AuthenticationScheme);
+        var scheme = new AuthenticationScheme(challenge.AuthenticationScheme, null, typeof(OpenIdConnectHandler));
+        var context = new RedirectContext(new DefaultHttpContext(), scheme, options, challenge.Properties)
+        {
+            ProtocolMessage = new Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectMessage(),
+        };
+        await options.Events.RedirectToIdentityProvider(context);
+        Assert.Equal("login", context.ProtocolMessage.Prompt);
+        Assert.Equal("0", context.ProtocolMessage.MaxAge);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TotpProviderRejectsMissingOrDuplicateAuthTime(bool duplicate)
+    {
+        using var services = CreateServices();
+        var challenge = services.GetRequiredService<IHelloOidcChallengeService>()
+            .CreateTotp("github", Guid.NewGuid(), Guid.NewGuid(), "protected-action").Value;
+        var options = services.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>()
+            .Get(challenge.AuthenticationScheme);
+        var scheme = new AuthenticationScheme(challenge.AuthenticationScheme, null, typeof(OpenIdConnectHandler));
+        var identity = new ClaimsIdentity([new Claim("sub", "subject")], "oidc");
+        if (duplicate)
+        {
+            var value = challenge.Properties.IssuedUtc!.Value.ToUnixTimeSeconds()
+                .ToString(System.Globalization.CultureInfo.InvariantCulture);
+            identity.AddClaim(new Claim("auth_time", value));
+            identity.AddClaim(new Claim("auth_time", value));
+        }
+        var context = new TokenValidatedContext(new DefaultHttpContext(), scheme,
+            options, new ClaimsPrincipal(identity), challenge.Properties);
+        await options.Events.TokenValidated(context);
+        Assert.NotNull(context.Result?.Failure);
+    }
     [Fact]
     public void SignInPreservesLocalReturnUrlAndBindsCanonicalProvider()
     {

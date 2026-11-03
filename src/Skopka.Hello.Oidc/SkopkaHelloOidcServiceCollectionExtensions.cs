@@ -12,6 +12,7 @@ namespace Microsoft.Extensions.DependencyInjection;
 
 public static class SkopkaHelloOidcServiceCollectionExtensions
 {
+    private const string TotpFailureItem = "Skopka.Hello.Oidc.TotpFailure";
     public static IServiceCollection AddSkopkaHelloOidc<TProfile>(
         this IServiceCollection services,
         Action<Skopka.Hello.Oidc.HelloOidcOptions> configure)
@@ -159,6 +160,13 @@ public static class SkopkaHelloOidcServiceCollectionExtensions
                     provider.CallbackPath.Value!.TrimStart('/'))
                     .AbsoluteUri;
                 context.ProtocolMessage.RedirectUri = redirectUri;
+                if (context.Properties.Items.TryGetValue(
+                        Skopka.Hello.Oidc.HelloOidcProperties.Intent, out var intent)
+                    && intent == Skopka.Hello.Oidc.HelloOidcProperties.TotpIntent)
+                {
+                    context.ProtocolMessage.Prompt = "login";
+                    context.ProtocolMessage.MaxAge = "0";
+                }
                 return Task.CompletedTask;
             },
             OnTokenValidated = context =>
@@ -179,6 +187,28 @@ public static class SkopkaHelloOidcServiceCollectionExtensions
         TokenValidatedContext context,
         Skopka.Hello.Oidc.HelloOidcProviderRegistration provider)
     {
+        if (context.Properties?.Items.TryGetValue(
+                Skopka.Hello.Oidc.HelloOidcProperties.Intent, out var intent) == true
+            && intent == Skopka.Hello.Oidc.HelloOidcProperties.TotpIntent)
+        {
+            var authTimes = context.Principal?.FindAll("auth_time").ToArray() ?? [];
+            // Allow one minute of clock skew, while requiring the provider to
+            // attest that authentication happened for this challenge.
+            if (context.Properties.IssuedUtc is not { } issued
+                || authTimes.Length != 1
+                || !long.TryParse(authTimes[0].Value,
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out var seconds)
+                || seconds < issued.ToUnixTimeSeconds() - 60
+                || seconds > DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 60)
+            {
+                // The handler's remote-failure context can omit properties.
+                // This marker is set only after protected state was restored.
+                context.HttpContext.Items[TotpFailureItem] = true;
+                context.Fail("Fresh provider authentication is required.");
+                return Task.CompletedTask;
+            }
+        }
         var subjectClaims = context.Principal?
             .FindAll(Skopka.Hello.Oidc.HelloOidcClaims.Subject)
             .ToArray()
@@ -309,6 +339,14 @@ public static class SkopkaHelloOidcServiceCollectionExtensions
 
         var uiRoutes = httpContext.RequestServices
             .GetRequiredService<Skopka.Hello.HelloUiRoutePaths>();
+        if (httpContext.Items.ContainsKey(TotpFailureItem)
+            || (properties?.Items.TryGetValue(
+                Skopka.Hello.Oidc.HelloOidcProperties.Intent,
+                out var flowIntent) == true
+                && flowIntent == Skopka.Hello.Oidc.HelloOidcProperties.TotpIntent))
+        {
+            return $"{uiRoutes.AccountSecurityPath}?totpExternalError=true";
+        }
         return properties?.Items.TryGetValue(
                 Skopka.Hello.Oidc.HelloOidcProperties.Intent,
                 out var intent) == true

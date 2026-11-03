@@ -31,6 +31,20 @@ internal sealed class HelloUiExternalApplication<TProfile>(
     public IReadOnlyList<HelloOidcProvider> Providers =>
         catalog?.Providers ?? [];
 
+    public async Task<OperationResult<HelloOidcChallenge>> BeginTotpAsync(
+        string providerId, HttpContext httpContext, CancellationToken cancellationToken)
+    {
+        var local = await TryReadLocalSessionAsync(httpContext);
+        if (oidc is null)
+        {
+            return Unavailable<HelloOidcChallenge>();
+        }
+        return local is null
+            ? InvalidSession<HelloOidcChallenge>()
+            : await oidc.BeginTotpAsync(
+                providerId, local, httpContext, cancellationToken);
+    }
+
     public OperationResult<HelloOidcChallenge> CreateSignInChallenge(
         string providerId,
         string? returnUrl)
@@ -90,7 +104,8 @@ internal sealed class HelloUiExternalApplication<TProfile>(
                     : MapSignIn(result.Value.SignIn),
                 result.Value.Registration,
                 result.Value.Provider,
-                result.Value.ReturnUrl));
+                result.Value.ReturnUrl,
+                result.Value.TotpProof));
     }
 
     public Task<OperationResult<HelloOidcRegistrationHints>>

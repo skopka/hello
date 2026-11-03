@@ -71,6 +71,10 @@ public static class SkopkaHelloServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.IHelloIdentityApplication<TProfile>,
             Skopka.Hello.HelloIdentityApplication<TProfile>>();
+        services.TryAddSingleton<Skopka.Hello.HelloTotpPasswordAttempts>();
+        services.TryAddScoped<Skopka.Hello.HelloTotpEnrollmentAuthorization<TProfile>>();
+        services.TryAddScoped<Skopka.Hello.IHelloTotpEnrollmentAuthorization<TProfile>>(
+            provider => provider.GetRequiredService<Skopka.Hello.HelloTotpEnrollmentAuthorization<TProfile>>());
         if (!options.PasswordSignInEnabled)
         {
             services.TryAddScoped<

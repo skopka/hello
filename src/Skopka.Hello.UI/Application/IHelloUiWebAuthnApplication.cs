@@ -43,6 +43,19 @@ public sealed record HelloUiWebAuthnAttestation(
 
 public interface IHelloUiWebAuthnApplication
 {
+    Task<OperationResult<HelloUiWebAuthnChallenge>> BeginTotpAuthorizationAsync(
+        HttpContext httpContext, CancellationToken cancellationToken)
+        => Task.FromResult(Unavailable<HelloUiWebAuthnChallenge>());
+
+    Task<OperationResult<string>> CompleteTotpAuthorizationAsync(
+        HelloUiWebAuthnAssertion assertion, HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => Task.FromResult(Unavailable<string>());
+
+    private static OperationResult<T> Unavailable<T>()
+        => OperationResultFactory.Fail<T>(new Error(
+            "hello.totp.authorization_invalid", "Fresh authentication is required.",
+            ErrorType.Unauthorized));
     Task<OperationResult<HelloUiWebAuthnChallenge>> BeginSignInAsync(
         HttpContext httpContext,
         CancellationToken cancellationToken);

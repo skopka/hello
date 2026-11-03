@@ -7,7 +7,9 @@ namespace Skopka.Hello.UI.Pages;
 public sealed class ExternalCompleteModel(
     IHelloUiExternalApplication application,
     IHelloSessionCookieManager sessionCookies,
-    IHelloUiLocalizer text)
+    IHelloUiLocalizer text,
+    IHelloUiApplication? identity = null,
+    HelloUiPrgStateStore? prgState = null)
     : PageModel
 {
     public void OnGet()
@@ -49,8 +51,29 @@ public sealed class ExternalCompleteModel(
                 RedirectToPage(
                     "/SkopkaHello/Account/ExternalLogins",
                     new { pending = true }),
+            HelloOidcCompletionKind.TotpAuthorized =>
+                await CompleteTotpAsync(result.Value, cancellationToken),
             _ => InvalidCompletion(),
         };
+    }
+
+    private async Task<IActionResult> CompleteTotpAsync(
+        HelloUiExternalCompletion completion, CancellationToken cancellationToken)
+    {
+        if (identity is null || prgState is null
+            || string.IsNullOrEmpty(completion.TotpProof))
+        {
+            return InvalidCompletion();
+        }
+        var result = await identity.BeginTotpEnrollmentAsync(
+            HttpContext, cancellationToken, proof: completion.TotpProof);
+        if (!result.IsSuccess)
+        {
+            return RedirectToPage("/SkopkaHello/Account/Security",
+                new { totpExternalError = true });
+        }
+        TempData["EnrollmentStateToken"] = prgState.Store(result.Value);
+        return RedirectToPage("/SkopkaHello/Account/Security");
     }
 
     public async Task<IActionResult> OnPostCancelAsync(

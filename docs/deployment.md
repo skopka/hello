@@ -54,6 +54,16 @@ web-server startup never seeds a privileged user.
 
 ## Configuration
 
+The ready Server enables TOTP by default; configure
+`SkopkaHello:Totp:Enabled` and `SkopkaHello:Totp:Issuer` in JSON or with
+double-underscore environment names. Cross-device sign-in is opt-in through
+`SkopkaHello:CrossDeviceSignIn:Enabled`. External OIDC providers are enabled
+individually under `SkopkaHello:ExternalOidc:Providers` as described below.
+These settings are startup configuration. The ready Server does not register
+`UseWebAuthn`, so passkeys require a custom host build that registers it. SMS
+also requires a custom host build with an SMS provider adapter; configuration
+alone cannot add either capability to the ready image.
+
 Inject the PostgreSQL connection string plus independent versioned JWT,
 rate-limit and verification-code HMAC keys from a secret manager. Do
 not bake `.env`, database passwords or signing material into the image. Use a

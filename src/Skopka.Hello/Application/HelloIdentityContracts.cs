@@ -161,7 +161,8 @@ public sealed record HelloSessionInfo(
 
 public sealed record HelloCredentialState(
     bool HasPassword,
-    bool CanRemovePassword);
+    bool CanRemovePassword,
+    bool HasPhoneOtp = false);
 
 public sealed record HelloTotpState(
     bool IsAvailable,
@@ -174,7 +175,8 @@ public sealed record HelloTotpEnrollment(
     string Secret,
     string ProvisioningUri,
     string QrCodeSvg,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    string EnrollmentTicket = "");
 
 public sealed record HelloConfirmedTotpEnrollment(
     HelloTotpState State,
@@ -182,13 +184,16 @@ public sealed record HelloConfirmedTotpEnrollment(
 
 public sealed record HelloBeginTotpEnrollmentCommand(
     string AccessToken,
-    string? ClientKey);
+    string? ClientKey,
+    string? Password = null,
+    string? Proof = null);
 
 public sealed record HelloConfirmTotpEnrollmentCommand(
     string AccessToken,
     Guid EnrollmentId,
     string Code,
-    string? ClientKey);
+    string? ClientKey,
+    string? EnrollmentTicket = null);
 
 public sealed record HelloBeginTotpDisableCommand(
     string AccessToken,

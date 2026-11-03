@@ -9,6 +9,8 @@ public sealed record HelloOidcChallenge(
 
 public interface IHelloOidcChallengeService
 {
+    OperationResult<HelloOidcChallenge> CreateTotp(
+        string providerId, Guid userId, Guid sessionId, string actionTicket);
     OperationResult<HelloOidcChallenge> CreateSignIn(
         string providerId,
         string? returnUrl);
@@ -35,6 +37,24 @@ internal sealed class HelloOidcChallengeService(
     HelloUiRoutePaths uiRoutes)
     : IHelloOidcChallengeService
 {
+    public OperationResult<HelloOidcChallenge> CreateTotp(
+        string providerId, Guid userId, Guid sessionId, string actionTicket)
+    {
+        if (userId == Guid.Empty || sessionId == Guid.Empty
+            || string.IsNullOrEmpty(actionTicket))
+        {
+            return OperationResultFactory.Fail<HelloOidcChallenge>(HelloOidcErrors.PendingIdentityInvalid());
+        }
+        var result = Create(providerId, HelloOidcProperties.TotpIntent,
+            uiRoutes.AccountSecurityPath, uiRoutes.ExternalCompletionPath,
+            userId, sessionId, false);
+        if (result.IsSuccess)
+        {
+            result.Value.Properties.Items[HelloOidcProperties.TotpActionTicket] = actionTicket;
+        }
+        return result;
+    }
+
     public OperationResult<HelloOidcChallenge> CreateSignIn(
         string providerId,
         string? returnUrl)

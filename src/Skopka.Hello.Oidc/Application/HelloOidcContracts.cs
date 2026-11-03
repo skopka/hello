@@ -9,6 +9,7 @@ public enum HelloOidcCompletionKind
     SignedIn = 1,
     RegistrationRequired = 2,
     LinkPending = 3,
+    TotpAuthorized = 4,
 }
 
 public sealed record HelloOidcRegistrationHints(
@@ -23,7 +24,8 @@ public sealed record HelloOidcCompletion<TProfile>(
     HelloSignIn<TProfile>? SignIn,
     HelloOidcRegistrationHints? Registration,
     HelloOidcProvider? Provider,
-    string ReturnUrl);
+    string ReturnUrl,
+    string? TotpProof = null);
 
 public sealed record HelloOidcLocalSession(
     Guid UserId,
@@ -51,6 +53,9 @@ public sealed record HelloOidcHeadlessLinkStart(string ChallengeUrl);
 
 public interface IHelloOidcApplication<TProfile>
 {
+    Task<OperationResult<HelloOidcChallenge>> BeginTotpAsync(
+        string providerId, HelloOidcLocalSession localSession,
+        HttpContext httpContext, CancellationToken cancellationToken);
     Task<OperationResult<HelloOidcCompletion<TProfile>>>
         CompleteChallengeAsync(
             HttpContext httpContext,

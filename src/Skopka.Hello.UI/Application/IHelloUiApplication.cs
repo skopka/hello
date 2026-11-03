@@ -84,7 +84,8 @@ public sealed record HelloUiCompleteAccountSecurityActionCommand(
 
 public sealed record HelloUiConfirmTotpEnrollmentCommand(
     Guid EnrollmentId,
-    string Code);
+    string Code,
+    string? EnrollmentTicket = null);
 
 public interface IHelloUiApplication
 {
@@ -198,8 +199,18 @@ public interface IHelloUiApplication
 
     Task<OperationResult<HelloTotpEnrollment>> BeginTotpEnrollmentAsync(
         HttpContext httpContext,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? password = null,
+        string? proof = null)
         => AccountSelfServiceUnavailable<HelloTotpEnrollment>();
+
+    Task<OperationResult<HelloTotpPhoneChallenge>> BeginTotpPhoneAsync(
+        HttpContext httpContext, CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailable<HelloTotpPhoneChallenge>();
+
+    Task<OperationResult<string>> CompleteTotpPhoneAsync(
+        string ticket, string code, HttpContext httpContext, CancellationToken cancellationToken)
+        => AccountSelfServiceUnavailable<string>();
 
     Task<OperationResult<HelloConfirmedTotpEnrollment>>
         ConfirmTotpEnrollmentAsync(

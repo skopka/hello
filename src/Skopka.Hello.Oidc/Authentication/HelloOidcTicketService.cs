@@ -17,7 +17,8 @@ internal sealed record HelloOidcTicket(
     Guid? UserId,
     Guid? SessionId,
     Guid? ChallengeId,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    string? TotpActionTicket = null);
 
 internal sealed record HelloOidcLinkRequest(
     Guid FlowId,
@@ -300,7 +301,8 @@ internal sealed class HelloOidcTicketService(
             || intent is not (
                 HelloOidcProperties.SignInIntent
                 or HelloOidcProperties.LinkIntent
-                or HelloOidcProperties.UnlinkIntent)
+                or HelloOidcProperties.UnlinkIntent
+                or HelloOidcProperties.TotpIntent)
             || !properties.TryGetValue(
                 HelloOidcProperties.Provider,
                 out var propertyProvider)
@@ -367,7 +369,8 @@ internal sealed class HelloOidcTicketService(
             ParseGuid(properties, HelloOidcProperties.UserId),
             ParseGuid(properties, HelloOidcProperties.SessionId),
             ParseGuid(properties, HelloOidcProperties.ChallengeId),
-            expiresUtc);
+            expiresUtc,
+            properties.TryGetValue(HelloOidcProperties.TotpActionTicket, out var actionTicket) ? actionTicket : null);
 
         return OperationResultFactory.Success(ticket);
     }

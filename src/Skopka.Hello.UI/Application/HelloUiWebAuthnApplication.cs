@@ -11,9 +11,49 @@ internal sealed class HelloUiWebAuthnApplication<TProfile>(
     IHelloWebAuthnApplication<TProfile> application,
     IHelloRequestContext requestContext,
     IHelloUiProfileFactory<TProfile> profiles,
-    SkopkaHelloOptions helloOptions)
+    SkopkaHelloOptions helloOptions,
+    IHelloTotpEnrollmentAuthorization<TProfile>? totpAuthorization = null)
     : IHelloUiWebAuthnApplication
 {
+    public async Task<OperationResult<HelloUiWebAuthnChallenge>>
+        BeginTotpAuthorizationAsync(HttpContext httpContext, CancellationToken cancellationToken)
+    {
+        var token = await ReadAccessTokenAsync(httpContext);
+        if (token is null || totpAuthorization is null)
+        {
+            return InvalidSession<HelloUiWebAuthnChallenge>();
+        }
+        var issued = await totpAuthorization.BeginPasskeyAsync(
+            token, requestContext.CreateClientKey(httpContext), cancellationToken);
+        return issued.IsSuccess
+            ? OperationResultFactory.Success(new HelloUiWebAuthnChallenge(
+                issued.Value.Ticket, issued.Value.RelyingPartyId, string.Empty,
+                Base64Url.Encode(issued.Value.Challenge), string.Empty,
+                string.Empty, string.Empty, [], [], issued.Value.UserVerificationRequired))
+            : OperationResultFactory.Fail<HelloUiWebAuthnChallenge>(issued.Errors);
+    }
+
+    public async Task<OperationResult<string>> CompleteTotpAuthorizationAsync(
+        HelloUiWebAuthnAssertion assertion, HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var token = await ReadAccessTokenAsync(httpContext);
+        if (token is null || totpAuthorization is null)
+        {
+            return InvalidSession<string>();
+        }
+        if (!TryDecode(assertion.CredentialId, out var id)
+            || !TryDecode(assertion.ClientDataJson, out var client)
+            || !TryDecode(assertion.AuthenticatorData, out var data)
+            || !TryDecode(assertion.Signature, out var signature))
+        {
+            return Unreadable<string>();
+        }
+        return await totpAuthorization.CompletePasskeyAsync(
+            token, assertion.Ticket, id, client, data, signature,
+            requestContext.CreateClientKey(httpContext), cancellationToken);
+    }
+
     public async Task<OperationResult<HelloUiWebAuthnChallenge>> BeginSignInAsync(
         HttpContext httpContext,
         CancellationToken cancellationToken)

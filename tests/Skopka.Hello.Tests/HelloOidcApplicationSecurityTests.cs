@@ -853,6 +853,8 @@ public sealed class HelloOidcApplicationSecurityTests
             services.AddSkopkaHello<TestProfile>(options =>
                 options.SelfRegistrationEnabled =
                     selfRegistrationEnabled);
+            services.RemoveAll<IHelloTotpEnrollmentAuthorization<TestProfile>>();
+            services.AddSingleton<IHelloTotpEnrollmentAuthorization<TestProfile>, UnavailableTotpAuthorization>();
             FlowStore = new AllowingFlowStore();
             services.AddSingleton<IHelloOidcFlowStore>(FlowStore);
             services.AddSingleton<
@@ -908,6 +910,19 @@ public sealed class HelloOidcApplicationSecurityTests
                 ClientId = "hello-tests",
                 ClientSecret = "not-a-production-secret",
             };
+    }
+
+    private sealed class UnavailableTotpAuthorization : IHelloTotpEnrollmentAuthorization<TestProfile>
+    {
+        private static OperationResult<T> Fail<T>() => OperationResultFactory.Fail<T>(
+            new Error("test.unavailable", "Unavailable", ErrorType.Validation));
+
+        public Task<OperationResult<HelloTotpPhoneChallenge>> BeginPhoneAsync(string accessToken, string? clientKey, CancellationToken cancellationToken) => Task.FromResult(Fail<HelloTotpPhoneChallenge>());
+        public Task<OperationResult<string>> CompletePhoneAsync(string accessToken, string ticket, string code, string? clientKey, CancellationToken cancellationToken) => Task.FromResult(Fail<string>());
+        public Task<OperationResult<Skopka.Hello.WebAuthn.HelloWebAuthnAssertionChallenge>> BeginPasskeyAsync(string accessToken, string? clientKey, CancellationToken cancellationToken) => Task.FromResult(Fail<Skopka.Hello.WebAuthn.HelloWebAuthnAssertionChallenge>());
+        public Task<OperationResult<string>> CompletePasskeyAsync(string accessToken, string ticket, byte[] credentialId, byte[] clientDataJson, byte[] authenticatorData, byte[] signature, string? clientKey, CancellationToken cancellationToken) => Task.FromResult(Fail<string>());
+        public Task<OperationResult<string>> BeginExternalAsync(string accessToken, string provider, string? clientKey, CancellationToken cancellationToken) => Task.FromResult(Fail<string>());
+        public Task<OperationResult<string>> CompleteExternalAsync(string accessToken, string ticket, ExternalLoginKey login, string? clientKey, CancellationToken cancellationToken) => Task.FromResult(Fail<string>());
     }
 
     private sealed class FakeAuthenticationService

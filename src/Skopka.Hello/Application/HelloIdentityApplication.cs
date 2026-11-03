@@ -38,7 +38,8 @@ internal sealed class HelloIdentityApplication<TProfile>(
     HelloStepUpMethodResolver<TProfile>? stepUpMethodResolver = null,
     IHelloRegistrationConsentPolicy? registrationConsentPolicy = null,
     IHelloRegistrationConsentProfileEnricher<TProfile>?
-        registrationConsentProfileEnricher = null)
+        registrationConsentProfileEnricher = null,
+    HelloTotpEnrollmentAuthorization<TProfile>? totpAuthorization = null)
     : IHelloIdentityApplication<TProfile>
 {
     private readonly HelloStepUpMethodResolver<TProfile> stepUpMethods =
@@ -390,7 +391,10 @@ internal sealed class HelloIdentityApplication<TProfile>(
                     snapshot.Value.HasPassword
                     && (snapshot.Value.ExternalLogins.Count > 0
                         || options.PhoneOtpEnabled
-                            && snapshot.Value.HasPhoneOtp)))
+                            && snapshot.Value.HasPhoneOtp),
+                    options.PhoneOtpEnabled && snapshot.Value.HasPhoneOtp
+                        && validated.Value.PhoneConfirmed
+                        && !string.IsNullOrWhiteSpace(validated.Value.Phone)))
             : OperationResultFactory.Fail<HelloCredentialState>(
                 snapshot.Errors);
     }
@@ -448,6 +452,17 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 validated.Errors);
         }
 
+        if (totpAuthorization is null)
+        {
+            return OperationResultFactory.Fail<HelloTotpEnrollment>(
+                HelloTotpEnrollmentAuthorization<TProfile>.Invalid());
+        }
+        var authorized = await totpAuthorization.AuthorizeAsync(command, cancellationToken);
+        if (!authorized.IsSuccess)
+        {
+            return OperationResultFactory.Fail<HelloTotpEnrollment>(authorized.Errors);
+        }
+
         var begun = await totp!.BeginEnrollmentAsync(
             new BeginTotpEnrollmentCommand(
                 validated.Value.Id,
@@ -459,6 +474,13 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 begun.Errors);
         }
 
+        var enrollmentTicket = await totpAuthorization.IssueEnrollmentTicketAsync(
+            command.AccessToken, begun.Value.EnrollmentId, begun.Value.ExpiresAt, authorized.Value, cancellationToken);
+        if (enrollmentTicket is null)
+        {
+            return OperationResultFactory.Fail<HelloTotpEnrollment>(
+                HelloTotpEnrollmentAuthorization<TProfile>.Invalid());
+        }
         var account = FirstNonEmpty(
             validated.Value.Email,
             validated.Value.UserName,
@@ -474,7 +496,8 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 begun.Value.Secret,
                 uri,
                 CreateQrCodeSvg(uri),
-                begun.Value.ExpiresAt));
+                enrollmentTicket.ExpiresAt,
+                enrollmentTicket.Ticket));
     }
 
     public async Task<OperationResult<HelloConfirmedTotpEnrollment>>
@@ -497,6 +520,13 @@ internal sealed class HelloIdentityApplication<TProfile>(
         {
             return OperationResultFactory.Fail<
                 HelloConfirmedTotpEnrollment>(validated.Errors);
+        }
+
+        if (totpAuthorization is null || !await totpAuthorization.ValidateEnrollmentTicketAsync(
+            command.AccessToken, command.EnrollmentTicket, command.EnrollmentId, cancellationToken))
+        {
+            return OperationResultFactory.Fail<HelloConfirmedTotpEnrollment>(
+                HelloTotpEnrollmentAuthorization<TProfile>.Invalid());
         }
 
         var confirmed = await totp!.ConfirmEnrollmentAsync(

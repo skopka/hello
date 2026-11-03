@@ -10,11 +10,17 @@ public sealed record TotpEnrollmentResponse(
     string Secret,
     string ProvisioningUri,
     string QrCodeSvg,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    string EnrollmentTicket);
+
+public sealed record BeginTotpEnrollmentRequest(string? Password, string? Proof);
+public sealed record CompleteTotpPhoneProofRequest(string Ticket, string Code);
+public sealed record TotpProofResponse(string Proof);
 
 public sealed record ConfirmTotpEnrollmentRequest(
     Guid EnrollmentId,
-    string Code);
+    string Code,
+    string? EnrollmentTicket = null);
 
 public sealed record ConfirmedTotpEnrollmentResponse(
     TotpStateResponse State,

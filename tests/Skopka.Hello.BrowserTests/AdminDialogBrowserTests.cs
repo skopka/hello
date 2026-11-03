@@ -44,7 +44,9 @@ public sealed class AdminDialogBrowserTests(BrowserFixture browser) : IClassFixt
         await Assertions.Expect(dialog).ToBeHiddenAsync();
         await Assertions.Expect(button).ToBeFocusedAsync();
         await button.ClickAsync();
+        await Assertions.Expect(dialog).ToBeFocusedAsync();
         await dialog.Locator("[data-bs-dismiss='modal']").ClickAsync();
+        await Assertions.Expect(dialog).ToBeHiddenAsync();
         await Assertions.Expect(button).ToBeFocusedAsync();
         await page.SetViewportSizeAsync(375, 812);
         await button.ClickAsync();
@@ -63,6 +65,7 @@ public sealed class AdminDialogBrowserTests(BrowserFixture browser) : IClassFixt
         var reopen = page.Locator("button[data-bs-target='#admin-pending-dialog']");
         await reopen.ClickAsync();
         await Assertions.Expect(pending).ToBeVisibleAsync();
+        await Assertions.Expect(pending).ToBeFocusedAsync();
         await Assertions.Expect(pending.Locator("[name='userId']")).ToHaveValueAsync(host.TargetId.ToString());
         await Assertions.Expect(pending.Locator("[name='reason']")).ToHaveValueAsync("Browser review");
         Assert.NotNull(host.VerificationCode);
@@ -94,6 +97,7 @@ public sealed class AdminDialogBrowserTests(BrowserFixture browser) : IClassFixt
         await page.SetViewportSizeAsync(1280, 800);
         await ScreenshotAsync(page, "roles-desktop.png");
         await roleButton.ClickAsync();
+        await Assertions.Expect(roleDialog).ToBeFocusedAsync();
         await roleDialog.Locator("input[name='name']").FillAsync("   ");
         await roleDialog.Locator("textarea[name='description']").FillAsync("Preserve this description");
         await roleDialog.Locator("form:has(input[name='action'][value='update']) button[type='submit']").ClickAsync();

@@ -112,7 +112,7 @@ public sealed class HelloServerPersistenceTests
                 dataSource,
                 "skopka_hello_oauth.applications"));
         Assert.Equal(
-            1L,
+            2L,
             await CountAsync(
                 dataSource,
                 "skopka_hello_oauth.schema_migrations"));
@@ -305,6 +305,30 @@ public sealed class HelloServerPersistenceTests
         Assert.Null(
             await terminalOutbox.TryLeaseAsync(
                 CancellationToken.None));
+
+        var retryOutbox = new PostgreSqlHelloAccountMessageOutbox(
+            dataSource,
+            serializer,
+            new HelloServerPersistenceOptions
+            {
+                MaximumAttempts = 3,
+                RetryDelay = TimeSpan.Zero,
+                PollingInterval = TimeSpan.Zero,
+            },
+            new HelloDurableEmailRouteOptions("capture"),
+            NullLogger<PostgreSqlHelloAccountMessageOutbox>.Instance);
+        var retryMessage = accountMessage with { MessageId = Guid.NewGuid() };
+        Assert.True((await retryOutbox.SendAsync(retryMessage, CancellationToken.None)).IsSuccess);
+        var retryLease = await retryOutbox.TryLeaseAsync(CancellationToken.None);
+        Assert.NotNull(retryLease);
+        Assert.True((await retryOutbox.FailAsync(
+            retryLease, HelloEmailTransportErrorCodes.Retryable, CancellationToken.None)).IsSuccess);
+        var secondLease = await retryOutbox.TryLeaseAsync(CancellationToken.None);
+        Assert.NotNull(secondLease);
+        Assert.Equal(retryMessage.MessageId, secondLease.Message.MessageId);
+        Assert.True((await retryOutbox.FailAsync(
+            secondLease, HelloEmailTransportErrorCodes.Permanent, CancellationToken.None)).IsSuccess);
+        Assert.Null(await retryOutbox.TryLeaseAsync(CancellationToken.None));
 
         var audit = new PostgreSqlHelloAuditOutbox(dataSource);
         var auditEvent = new HelloSecurityEventEnvelope(

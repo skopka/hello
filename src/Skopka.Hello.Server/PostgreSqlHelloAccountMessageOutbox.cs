@@ -237,12 +237,12 @@ internal sealed partial class PostgreSqlHelloAccountMessageOutbox(
                     : """
                       UPDATE skopka_hello.account_message_outbox
                       SET failed_at = CASE
-                              WHEN attempts >= $3 OR expires_at <= CURRENT_TIMESTAMP
+                              WHEN attempts >= $3 OR expires_at <= CURRENT_TIMESTAMP OR $5 = 'hello.email.permanent'
                                   THEN CURRENT_TIMESTAMP
                               ELSE NULL
                           END,
                           available_at = CASE
-                              WHEN attempts >= $3 OR expires_at <= CURRENT_TIMESTAMP
+                              WHEN attempts >= $3 OR expires_at <= CURRENT_TIMESTAMP OR $5 = 'hello.email.permanent'
                                   THEN available_at
                               ELSE CURRENT_TIMESTAMP + $4
                           END,

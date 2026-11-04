@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure;
 using OpenIddict.EntityFrameworkCore.Models;
+using Skopka.Hello.AuthorizationServer;
 
 namespace Skopka.Hello.Server;
 
@@ -17,6 +18,7 @@ public sealed class HelloAuthorizationDbContext(
     {
         base.OnModelCreating(modelBuilder);
         modelBuilder.UseOpenIddict();
+        modelBuilder.AddHelloNativeAppFlows();
         modelBuilder.Entity<OpenIddictEntityFrameworkCoreApplication>()
             .ToTable("applications", SchemaName);
         modelBuilder.Entity<OpenIddictEntityFrameworkCoreAuthorization>()

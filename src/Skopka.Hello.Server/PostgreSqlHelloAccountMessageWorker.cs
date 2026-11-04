@@ -151,8 +151,9 @@ internal sealed partial class PostgreSqlHelloAccountMessageWorker
                 return null;
             }
 
-            var errorCode = result.Errors.FirstOrDefault()?.Code
-                ?? HelloDeliveryErrorCodes.Failed;
+            var errorCode = result.Errors.Any(error => error.Code == HelloEmailTransportErrorCodes.Permanent)
+                ? HelloEmailTransportErrorCodes.Permanent
+                : HelloEmailTransportErrorCodes.Retryable;
             AccountMessageDeliveryFailed(
                 logger,
                 lease.DestinationProviderId,

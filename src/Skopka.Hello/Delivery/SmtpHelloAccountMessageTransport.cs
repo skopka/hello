@@ -1,102 +1,56 @@
-using System.Net;
 using System.Net.Mail;
-using System.Net.Mime;
-using System.Text;
+using Microsoft.Extensions.DependencyInjection;
 using Skopka.Abstraction.OperationResult;
 
 namespace Skopka.Hello;
 
-internal sealed class SmtpHelloAccountMessageTransport(
-    HelloSmtpOptions options,
-    HelloAccountEmailTemplateRenderer renderer)
+internal sealed class SmtpHelloAccountMessageTransport
 {
-    public async Task<OperationResult> SendAsync(
-        HelloAccountMessage message,
-        CancellationToken cancellationToken)
+    private readonly HelloSmtpOptions options;
+    private readonly HelloAccountEmailTemplateRenderer renderer;
+    private readonly IServiceScopeFactory? scopeFactory;
+
+    public SmtpHelloAccountMessageTransport(HelloSmtpOptions options, HelloAccountEmailTemplateRenderer renderer)
+        : this(options, renderer, null) { }
+
+    public SmtpHelloAccountMessageTransport(HelloSmtpOptions options, HelloAccountEmailTemplateRenderer renderer, IServiceScopeFactory? scopeFactory)
+        => (this.options, this.renderer, this.scopeFactory) = (options, renderer, scopeFactory);
+
+    public async Task<OperationResult> SendAsync(HelloAccountMessage message, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(message);
         cancellationToken.ThrowIfCancellationRequested();
-
         if (message.Channel != HelloDeliveryChannel.Email)
-        {
-            return OperationResultFactory.Fail(
-                HelloAccountMessageValidator.ChannelMismatch());
-        }
-
-        var validation = HelloAccountMessageValidator.Validate(
-            message,
-            DateTimeOffset.UtcNow);
-        if (validation is not null)
-        {
-            return OperationResultFactory.Fail(validation);
-        }
-
+            return OperationResultFactory.Fail(HelloAccountMessageValidator.ChannelMismatch());
+        var validation = HelloAccountMessageValidator.Validate(message, DateTimeOffset.UtcNow);
+        if (validation is not null) return OperationResultFactory.Fail(validation);
         try
         {
-            using var mail = CreateMessage(message);
-            using var client = new SmtpClient(
-                options.Host,
-                options.Port)
+            var email = Render(message);
+            OperationResult result;
+            if (scopeFactory is null)
+                result = await new SmtpHelloEmailTransport(options).SendAsync(email, cancellationToken);
+            else
             {
-                EnableSsl = options.EnableSsl,
-                UseDefaultCredentials = false,
-            };
-            if (!string.IsNullOrWhiteSpace(options.UserName))
-            {
-                client.Credentials = new NetworkCredential(
-                    options.UserName,
-                    options.Password);
+                await using var scope = scopeFactory.CreateAsyncScope();
+                result = await scope.ServiceProvider.GetRequiredService<IHelloEmailTransport>().SendAsync(email, cancellationToken);
             }
-
-            await client.SendMailAsync(
-                mail,
-                cancellationToken);
-            return OperationResultFactory.Success();
+            if (result.IsSuccess) return result;
+            // Never propagate arbitrary provider strings into logs or durable journals.
+            return SmtpHelloEmailTransport.Failure(result.Errors.Any(e => e.Code == HelloEmailTransportErrorCodes.Permanent)
+                ? HelloEmailTransportErrorCodes.Permanent : HelloEmailTransportErrorCodes.Retryable);
         }
-        catch (SmtpException)
-        {
-            return DeliveryFailed();
-        }
-        catch (InvalidOperationException)
-        {
-            return DeliveryFailed();
-        }
-        catch (FormatException)
-        {
-            return DeliveryFailed();
-        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception) { return SmtpHelloEmailTransport.Failure(HelloEmailTransportErrorCodes.Retryable); }
     }
 
-    internal MailMessage CreateMessage(
-        HelloAccountMessage message)
+    private HelloEmail Render(HelloAccountMessage message)
     {
-        ArgumentNullException.ThrowIfNull(message);
         var content = renderer.Render(message);
-
-        var mail = new MailMessage
-        {
-            From = new MailAddress(
-                options.FromAddress,
-                options.FromName),
-            To = { new MailAddress(message.RecipientAddress) },
-            Subject = content.Subject,
-            SubjectEncoding = Encoding.UTF8,
-            Body = content.TextBody,
-            BodyEncoding = Encoding.UTF8,
-            IsBodyHtml = false,
-        };
-        mail.AlternateViews.Add(
-            AlternateView.CreateAlternateViewFromString(
-                content.HtmlBody,
-                Encoding.UTF8,
-                MediaTypeNames.Text.Html));
-        return mail;
+        return new HelloEmail(options.FromAddress, options.FromName, message.RecipientAddress,
+            content.Subject, content.TextBody, content.HtmlBody, message.Kind);
     }
 
-    private static OperationResult DeliveryFailed()
-        => OperationResultFactory.Fail(
-            new Error(
-                HelloDeliveryErrorCodes.Failed,
-                "The account message could not be delivered.",
-                ErrorType.Failure));
+    internal MailMessage CreateMessage(HelloAccountMessage message)
+        => SmtpHelloEmailTransport.CreateMessage(Render(message));
 }

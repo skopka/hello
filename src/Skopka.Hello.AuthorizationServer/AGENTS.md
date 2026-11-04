@@ -34,3 +34,8 @@ sign-in by default. A client may opt out with
 `HonorReauthenticationPrompts = false`, which reuses the existing session for a
 trusted first-party client whose sign-in code sends one of those unconditionally.
 The flag is persisted with the OpenIddict registration and read at the authorization endpoint.
+
+Native app sign-in uses this module's client catalog and durable flow store but
+is a separate Hello handoff, not an OAuth grant or code exchange. Approval issues
+a one-use receipt in the callback fragment; completion requires its hash match,
+the original WebView binder and S256 verifier. Status never exposes the receipt.

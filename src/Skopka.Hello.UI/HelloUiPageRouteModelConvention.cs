@@ -10,7 +10,8 @@ internal sealed class HelloUiPageRouteModelConvention(
     bool accountSwitchingEnabled,
     HelloUiPages enabledPages,
     bool emailConfirmationEnabled,
-    bool phoneConfirmationEnabled)
+    bool phoneConfirmationEnabled,
+    bool nativeEnabled = false)
     : IPageRouteModelConvention
 {
     private readonly Dictionary<string, string?> pageRoutes =
@@ -117,6 +118,12 @@ internal sealed class HelloUiPageRouteModelConvention(
                     HelloUiPages.ExternalIdentity)
                     ? routes.ExternalLoginsPath
                     : null,
+            ["/Pages/SkopkaHello/NativeSignIn/Index.cshtml"] =
+                nativeEnabled && IsEnabled(enabledPages, HelloUiPages.Login)
+                    ? routes.PathPrefix + "/native-sign-in" : null,
+            ["/Pages/SkopkaHello/NativeSignIn/Browser.cshtml"] =
+                nativeEnabled && IsEnabled(enabledPages, HelloUiPages.Login)
+                    ? routes.PathPrefix + "/native-sign-in/browser" : null,
             ["/Pages/SkopkaHello/CrossDevice/Waiting.cshtml"] =
                 crossDeviceEnabled
                 && IsEnabled(enabledPages, HelloUiPages.Login)

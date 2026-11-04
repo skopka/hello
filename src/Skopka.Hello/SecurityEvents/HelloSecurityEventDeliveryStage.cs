@@ -11,4 +11,6 @@ public enum HelloSecurityEventDeliveryStage
     /// roll it back, so durable follow-up work must be enqueued idempotently.
     /// </summary>
     AfterIdentityCommit = 0,
+    /// <summary>The Hello flow mutation has committed; delivery is not transactional.</summary>
+    AfterHelloCommit = 1,
 }

@@ -1,146 +1,251 @@
 @page
 @model ClientsModel
 @{
-ViewData["Title"] = Text["Admin.Clients.Title"];
-ViewData["AdminSection"] = "clients";
+    ViewData["Title"] = Text["Admin.Clients.Title"];
+    ViewData["AdminSection"] = "clients";
+    var posted = ViewContext.HttpContext.Request.HasFormContentType;
+    var hasErrors = posted && !ViewData.ModelState.IsValid;
 }
+<div class="admin-directory">
 <header class="admin-page-header">
     <div>
-        <div class="admin-eyebrow">@Text["Admin.Common.Administration"]</div>
-        <h1>@Text["Admin.Clients.Title"]</h1>
-    </div>
+                    <div class="admin-eyebrow">@Text["Admin.Common.Administration"]</div>
+                    <h1>@Text["Admin.Clients.Title"]</h1>
+                    </div>
+    @if (Model.CanManage) { <button class="btn btn-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#admin-client-create">@Text["Admin.Clients.NewClient"]</button> }
 </header>
 <div asp-validation-summary="All" class="alert alert-danger admin-validation" role="alert">
-</div>
-@if (Model.StatusMessage is not null)
-{
-    <div class="alert alert-success" role="status">@Model.StatusMessage</div>
-}
-@if (Model.Secret is not null)
-{
-    <div class="alert alert-warning" role="status">
-        <strong>@Text["Admin.Clients.SecretOnce"]</strong>
-        <pre>@Model.Secret</pre>
-    </div>
-}
+                    </div>
+@if (Model.StatusMessage is not null) { <div class="alert alert-success" role="status">@Model.StatusMessage</div> }
+@if (Model.Secret is not null) { <div class="alert alert-warning" role="status">
+                    <strong>@Text["Admin.Clients.SecretOnce"]</strong>
+                    <pre>@Model.Secret</pre>
+                    </div> }
 @if (Model.ChallengeId is not null)
 {
-    <section class="card admin-card mb-4">
-        <div class="card-body">
-            <h2 class="h5">@Text["Admin.Clients.Verify"]</h2>
-            <p>@Text["Admin.Clients." + (Model.ActionName == "rotate" ? "Rotate" : Model.ActionName == "delete" ? "Delete" : Model.ActionName == "update" ? "Update" : "Create")]: @Model.ClientId</p>
-            <form method="post" asp-page-handler="Complete">
-                <input type="hidden" name="challengeId" value="@Model.ChallengeId" />
-                <input type="hidden" asp-for="ActionName" />
-                <input type="hidden" asp-for="ClientId" />
-                <input type="hidden" asp-for="DisplayName" />
-                <input type="hidden" asp-for="Type" />
-                <input type="hidden" asp-for="Resource" />
-                <input type="hidden" asp-for="RedirectUris" />
-                <input type="hidden" asp-for="PostLogoutRedirectUris" />
-                <input type="hidden" asp-for="Scopes" />
-                <input type="hidden" asp-for="HonorReauthenticationPrompts" />
-                <input type="hidden" asp-for="ExpectedRevision" />
-                <label class="form-label" asp-for="VerificationCode">@Text["Admin.Clients.Code"]</label>
-                <input class="form-control mb-2" asp-for="VerificationCode" autocomplete="one-time-code" required />
-                <button class="btn btn-primary" type="submit">@Text["Admin.Clients.Confirm"]</button>
-                <a class="btn btn-outline-secondary" asp-page="/SkopkaHelloAdmin/Clients">@Text["Admin.Clients.Cancel"]</a>
-            </form>
-        </div>
-    </section>
-}
-@if (Model.CanManage && Model.ChallengeId is null)
-{
-    <section class="card admin-card mb-4">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center">
-                <h2 class="h5">@Text[Model.ActionName == "update" ? "Admin.Clients.EditTitle" : "Admin.Clients.CreateTitle"]</h2>
-                <a class="btn btn-outline-secondary btn-sm" asp-page="/SkopkaHelloAdmin/Clients">@Text["Admin.Clients.NewClient"]</a>
+    <button type="button" class="btn btn-warning btn-sm mb-3" data-bs-toggle="modal" data-bs-target="#admin-client-pending">@Text["Admin.Clients.Verify"]</button>
+    <div class="modal fade" id="admin-client-pending" data-admin-auto-open="true" tabindex="-1" aria-labelledby="admin-client-pending-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable">
+                    <div class="modal-content">
+            <div class="modal-header">
+                    <h2 class="modal-title fs-5" id="admin-client-pending-title">@Text["Admin.Clients.Verify"]</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="@Text["Admin.Common.Close"]">
+                    </button>
+                    </div>
+            <div class="modal-body">
+                <div asp-validation-summary="All" class="alert alert-danger admin-validation" role="alert">
+                    </div>
+                <p>@Text["Admin.Clients." + (Model.ActionName == "rotate" ? "Rotate" : Model.ActionName == "delete" ? "Delete" : Model.ActionName == "update" ? "Update" : "Create")]: @Model.ClientId</p>
+                <form method="post" asp-page-handler="Complete">
+                    <input type="hidden" name="challengeId" value="@Model.ChallengeId" />
+                    <input type="hidden" asp-for="ActionName" />
+                    <input type="hidden" asp-for="ClientId" />
+                    <input type="hidden" asp-for="DisplayName" />
+                    <input type="hidden" asp-for="Type" />
+                    <input type="hidden" asp-for="Resource" />
+                    <input type="hidden" asp-for="RedirectUris" />
+                    <input type="hidden" asp-for="PostLogoutRedirectUris" />
+                    @foreach (var scope in Model.SelectedScopes) { <input type="hidden" name="SelectedScopes" value="@scope" /> }
+                    <input type="hidden" asp-for="HonorReauthenticationPrompts" />
+                    <input type="hidden" asp-for="ExpectedRevision" />
+                    <input type="hidden" asp-for="Offset" />
+                    <label class="form-label" asp-for="VerificationCode">@Text["Admin.Clients.Code"]</label>
+                    <input class="form-control mb-2" asp-for="VerificationCode" autocomplete="one-time-code" required />
+                    <button class="btn btn-primary" type="submit">@Text["Admin.Clients.Confirm"]</button>
+                    <a class="btn btn-outline-secondary" asp-page="/SkopkaHelloAdmin/Clients">@Text["Admin.Clients.Cancel"]</a>
+                </form>
             </div>
-            <form method="post" asp-page-handler="Begin" class="row g-3">
-                <input type="hidden" asp-for="ActionName" />
-                <input type="hidden" asp-for="ExpectedRevision" />
-                <div class="col-md-4">
-                    <label class="form-label" asp-for="ClientId">@Text["Admin.Clients.ClientId"]</label>
-                    <input class="form-control" asp-for="ClientId" readonly="@(Model.ActionName == "update")" required />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" asp-for="DisplayName">@Text["Admin.Clients.Name"]</label>
-                    <input class="form-control" asp-for="DisplayName" />
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label" asp-for="Type">@Text["Admin.Clients.Type"]</label>
-                    <select class="form-select" asp-for="Type">
-                        <option value="0">@Text["Admin.Clients.Public"]</option>
-                        <option value="1">@Text["Admin.Clients.Confidential"]</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label" asp-for="Resource">@Text["Admin.Clients.Resource"]</label>
-                    <select class="form-select" asp-for="Resource">@foreach (var value in Model.Catalog.Resources) { <option value="@value">@value</option> }
-                    </select>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label" asp-for="Scopes">@Text["Admin.Clients.Scopes"]</label>
-                    <textarea class="form-control" asp-for="Scopes"></textarea>
-                    <small>@string.Join(", ", Model.Catalog.Scopes)</small>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label" asp-for="RedirectUris">@Text["Admin.Clients.Redirects"]</label>
-                    <textarea class="form-control" asp-for="RedirectUris"></textarea>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label" asp-for="PostLogoutRedirectUris">@Text["Admin.Clients.LogoutRedirects"]</label>
-                    <textarea class="form-control" asp-for="PostLogoutRedirectUris"></textarea>
-                </div>
-                <div class="col-12">
-                    <div class="form-check">
-                        <input class="form-check-input" asp-for="HonorReauthenticationPrompts" />
-                        <label class="form-check-label" asp-for="HonorReauthenticationPrompts">@Text["Admin.Clients.Reauthentication"]</label>
-                    </div>
-                </div>
-                <div class="col-12">
-                    <button class="btn btn-primary" type="submit">@Text["Admin.Clients.SendCode"]</button>
-                </div>
-            </form>
         </div>
-    </section>
-}
-<section class="card admin-card">
-    <div class="card-body">
-        <h2 class="h5">@Text["Admin.Clients.Title"]</h2>
-        @foreach (var client in Model.Clients)
-        {
-            <article class="border rounded p-3 mb-2">
-                <h3 class="h6">@client.DisplayName (@client.ClientId)</h3>
-                <p>@Text[client.Type == Skopka.Hello.AuthorizationServer.HelloAuthorizationClientType.Public ? "Admin.Clients.Public" : "Admin.Clients.Confidential"] · @Text[client.Ownership == "administration" ? "Admin.Clients.Managed" : "Admin.Clients.ReadOnly"] · @Text["Admin.Clients.Revision"]: @client.Revision</p>
-                <p>@Text["Admin.Clients.Resource"]: @client.Resource<br />@Text["Admin.Clients.Scopes"]: @string.Join(", ", client.Scopes)<br />@Text["Admin.Clients.Redirects"]: @string.Join(", ", client.RedirectUris)<br />@Text["Admin.Clients.LogoutRedirects"]: @string.Join(", ", client.PostLogoutRedirectUris)<br />@Text["Admin.Clients.Reauthentication"]: @Text[client.HonorReauthenticationPrompts ? "Admin.Clients.Yes" : "Admin.Clients.No"]</p>
-                @if (Model.CanManage && client.Ownership == "administration")
-                {
-                    <div class="d-flex gap-2 flex-wrap">
-                        <a class="btn btn-outline-primary btn-sm" asp-page="/SkopkaHelloAdmin/Clients" asp-route-edit="@client.ClientId">@Text["Admin.Clients.Update"]</a>
-                        <form method="post" asp-page-handler="Begin">
-                            <input type="hidden" name="ActionName" value="delete" />
-                            <input type="hidden" name="ClientId" value="@client.ClientId" />
-                            <input type="hidden" name="ExpectedRevision" value="@client.Revision" />
-                            <button class="btn btn-outline-danger btn-sm" type="submit">@Text["Admin.Clients.Delete"]</button>
-                        </form>
-                        @if (client.Type == Skopka.Hello.AuthorizationServer.HelloAuthorizationClientType.Confidential)
-                        {
-                            <form method="post" asp-page-handler="Begin">
-                                <input type="hidden" name="ActionName" value="rotate" />
-                                <input type="hidden" name="ClientId" value="@client.ClientId" />
-                                <input type="hidden" name="ExpectedRevision" value="@client.Revision" />
-                                <button class="btn btn-outline-secondary btn-sm" type="submit">@Text["Admin.Clients.Rotate"]</button>
-                            </form>
-                        }
                     </div>
-                }
-            </article>
-        }
     </div>
+}
+@if (Model.CanManage)
+{
+    <div class="modal fade" id="admin-client-create" data-admin-auto-open="@(hasErrors && Model.ChallengeId is null && Model.ActionName == "create" ? "true" : null)" tabindex="-1" aria-labelledby="admin-client-create-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable">
+                    <div class="modal-content">
+            <div class="modal-header">
+                    <h2 class="modal-title fs-5" id="admin-client-create-title">@Text["Admin.Clients.CreateTitle"]</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="@Text["Admin.Common.Close"]">
+                    </button>
+                    </div>
+            <div class="modal-body">
+                <div asp-validation-summary="All" class="alert alert-danger admin-validation" role="alert">
+                    </div>
+                <form method="post" asp-page-handler="Begin" class="row g-3">
+                    <input type="hidden" name="ActionName" value="create" />
+                    <input type="hidden" name="Offset" value="@Model.Offset" />
+                    <div class="col-12">
+                    <label class="form-label" for="create-client-id">@Text["Admin.Clients.ClientId"]</label>
+                    <input class="form-control" id="create-client-id" name="ClientId" value="@(hasErrors && Model.ActionName == "create" ? Model.ClientId : null)" required />
+                    </div>
+                    <div class="col-12">
+                    <label class="form-label" for="create-client-name">@Text["Admin.Clients.Name"]</label>
+                    <input class="form-control" id="create-client-name" name="DisplayName" value="@(hasErrors && Model.ActionName == "create" ? Model.DisplayName : null)" />
+                    </div>
+                    <div class="col-12">
+                    <label class="form-label" for="create-client-type">@Text["Admin.Clients.Type"]</label>
+                    <select class="form-select" id="create-client-type" name="Type">
+                    <option value="0" selected="@(Model.Type == Skopka.Hello.AuthorizationServer.HelloAuthorizationClientType.Public)">@Text["Admin.Clients.Public"]</option>
+                    <option value="1" selected="@(Model.Type == Skopka.Hello.AuthorizationServer.HelloAuthorizationClientType.Confidential)">@Text["Admin.Clients.Confidential"]</option>
+                    </select>
+                    </div>
+                    <div class="col-12">
+                    <label class="form-label" for="create-client-resource">@Text["Admin.Clients.Resource"]</label>
+                    <select class="form-select" id="create-client-resource" name="Resource">@foreach (var value in Model.Catalog.Resources) { <option value="@value" selected="@(Model.Resource == value)">@value</option> }</select>
+                    </div>
+                    <fieldset class="col-12">
+                    <legend class="form-label fs-6">@Text["Admin.Clients.Scopes"]</legend>@foreach (var scope in Model.Catalog.Scopes) { <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="SelectedScopes" value="@scope" id="create-scope-@scope" checked="@(Model.ActionName == "create" && Model.SelectedScopes.Contains(scope))" />
+                    <label class="form-check-label" for="create-scope-@scope">@scope</label>
+                    </div> }</fieldset>
+                    <div class="col-12">
+                    <label class="form-label" for="create-redirects">@Text["Admin.Clients.Redirects"]</label>
+                    <textarea class="form-control" id="create-redirects" name="RedirectUris">@(hasErrors && Model.ActionName == "create" ? Model.RedirectUris : null)</textarea>
+                    </div>
+                    <div class="col-12">
+                    <label class="form-label" for="create-logout">@Text["Admin.Clients.LogoutRedirects"]</label>
+                    <textarea class="form-control" id="create-logout" name="PostLogoutRedirectUris">@(hasErrors && Model.ActionName == "create" ? Model.PostLogoutRedirectUris : null)</textarea>
+                    </div>
+                    <div class="col-12 form-check ms-2">
+                    <input class="form-check-input" type="checkbox" id="create-reauth" name="HonorReauthenticationPrompts" value="true" checked="@Model.HonorReauthenticationPrompts" />
+                    <input type="hidden" name="HonorReauthenticationPrompts" value="false" />
+                    <label class="form-check-label" for="create-reauth">@Text["Admin.Clients.Reauthentication"]</label>
+                    </div>
+                    <div class="col-12">
+                    <button class="btn btn-primary" type="submit">@Text["Admin.Clients.SendCode"]</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+                    </div>
+    </div>
+}
+<section class="admin-list" aria-label="@Text["Admin.Clients.Title"]">
+@{ var index = 0; }
+@foreach (var client in Model.Clients)
+{
+    var dialogId = $"admin-client-{index++}";
+    var active = Model.ChallengeId is null && ((hasErrors && Model.ClientId == client.ClientId && Model.ActionName != "create") || (!posted && Model.Edit == client.ClientId));
+    var editing = hasErrors && Model.ClientId == client.ClientId && Model.ActionName == "update";
+    <article class="admin-list-row">
+                    <div class="admin-row-content">
+                    <h2 class="admin-role-title">@client.DisplayName</h2>
+                    <span class="admin-row-summary">@client.ClientId · @Text[client.Type == Skopka.Hello.AuthorizationServer.HelloAuthorizationClientType.Public ? "Admin.Clients.Public" : "Admin.Clients.Confidential"] · @Text[client.Ownership == "administration" ? "Admin.Clients.Managed" : "Admin.Clients.ReadOnly"] · @Text["Admin.Clients.Revision"]: @client.Revision</span>
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#@dialogId">@Text["Admin.Common.Manage"]</button>
+                    </article>
+    <div class="modal fade" id="@dialogId" data-admin-auto-open="@(active ? "true" : null)" tabindex="-1" aria-labelledby="@(dialogId)-title" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-scrollable">
+                    <div class="modal-content">
+        <div class="modal-header">
+                    <h2 class="modal-title fs-5" id="@(dialogId)-title">@client.DisplayName</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="@Text["Admin.Common.Close"]">
+                    </button>
+                    </div>
+        <div class="modal-body">
+                    <div asp-validation-summary="All" class="alert alert-danger admin-validation" role="alert">
+                    </div>
+            <dl class="admin-detail-list mb-3">
+                    <div>
+                    <dt>@Text["Admin.Clients.ClientId"]</dt>
+                    <dd>@client.ClientId</dd>
+                    </div>
+                    <div>
+                    <dt>@Text["Admin.Clients.Type"]</dt>
+                    <dd>@Text[client.Type == Skopka.Hello.AuthorizationServer.HelloAuthorizationClientType.Public ? "Admin.Clients.Public" : "Admin.Clients.Confidential"]</dd>
+                    </div>
+                    <div>
+                    <dt>@Text["Admin.Clients.Revision"]</dt>
+                    <dd>@client.Revision · @Text[client.Ownership == "administration" ? "Admin.Clients.Managed" : "Admin.Clients.ReadOnly"]</dd>
+                    </div>
+                    </dl>
+            @if (Model.CanManage && client.Ownership == "administration")
+            {
+                <h3 class="h5">@Text["Admin.Clients.EditTitle"]</h3>
+                <form method="post" asp-page-handler="Begin" class="row g-3">
+                    <input type="hidden" name="ActionName" value="update" />
+                    <input type="hidden" name="ClientId" value="@client.ClientId" />
+                    <input type="hidden" name="ExpectedRevision" value="@(editing ? Model.ExpectedRevision : client.Revision)" />
+                    <input type="hidden" name="Offset" value="@Model.Offset" />
+                    <div class="col-12">
+                    <label class="form-label" for="@(dialogId)-name">@Text["Admin.Clients.Name"]</label>
+                    <input class="form-control" id="@(dialogId)-name" name="DisplayName" value="@(editing ? Model.DisplayName : client.DisplayName)" />
+                    </div>
+                    <div class="col-12">
+                    <label class="form-label" for="@(dialogId)-type">@Text["Admin.Clients.Type"]</label>
+                    <select class="form-select" id="@(dialogId)-type" name="Type">
+                    <option value="0" selected="@((editing ? Model.Type : client.Type) == Skopka.Hello.AuthorizationServer.HelloAuthorizationClientType.Public)">@Text["Admin.Clients.Public"]</option>
+                    <option value="1" selected="@((editing ? Model.Type : client.Type) == Skopka.Hello.AuthorizationServer.HelloAuthorizationClientType.Confidential)">@Text["Admin.Clients.Confidential"]</option>
+                    </select>
+                    </div>
+                    <div class="col-12">
+                    <label class="form-label" for="@(dialogId)-resource">@Text["Admin.Clients.Resource"]</label>
+                    <select class="form-select" id="@(dialogId)-resource" name="Resource">@foreach (var value in Model.Catalog.Resources) { <option value="@value" selected="@((editing ? Model.Resource : client.Resource) == value)">@value</option> }</select>
+                    </div>
+                    <fieldset class="col-12">
+                    <legend class="form-label fs-6">@Text["Admin.Clients.Scopes"]</legend>@foreach (var scope in Model.Catalog.Scopes) { var scopeId = $"{dialogId}-scope-{scope}"; <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="SelectedScopes" value="@scope" id="@scopeId" checked="@((editing ? Model.SelectedScopes : client.Scopes).Contains(scope))" />
+                    <label class="form-check-label" for="@scopeId">@scope</label>
+                    </div> }</fieldset>
+                    <div class="col-12">
+                    <label class="form-label" for="@(dialogId)-redirects">@Text["Admin.Clients.Redirects"]</label>
+                    <textarea class="form-control" id="@(dialogId)-redirects" name="RedirectUris">@(editing ? Model.RedirectUris : string.Join("\n", client.RedirectUris))</textarea>
+                    </div>
+                    <div class="col-12">
+                    <label class="form-label" for="@(dialogId)-logout">@Text["Admin.Clients.LogoutRedirects"]</label>
+                    <textarea class="form-control" id="@(dialogId)-logout" name="PostLogoutRedirectUris">@(editing ? Model.PostLogoutRedirectUris : string.Join("\n", client.PostLogoutRedirectUris))</textarea>
+                    </div>
+                    <div class="col-12 form-check ms-2">
+                    <input class="form-check-input" type="checkbox" id="@(dialogId)-reauth" name="HonorReauthenticationPrompts" value="true" checked="@(editing ? Model.HonorReauthenticationPrompts : client.HonorReauthenticationPrompts)" />
+                    <input type="hidden" name="HonorReauthenticationPrompts" value="false" />
+                    <label class="form-check-label" for="@(dialogId)-reauth">@Text["Admin.Clients.Reauthentication"]</label>
+                    </div>
+                    <div class="col-12">
+                    <button class="btn btn-primary" type="submit">@Text["Admin.Clients.Update"]</button>
+                    </div>
+                </form>
+                <div class="admin-role-actions">
+                    <form method="post" asp-page-handler="Begin">
+                    <input type="hidden" name="ActionName" value="delete" />
+                    <input type="hidden" name="ClientId" value="@client.ClientId" />
+                    <input type="hidden" name="ExpectedRevision" value="@client.Revision" />
+                    <button class="btn btn-outline-danger btn-sm" type="submit">@Text["Admin.Clients.Delete"]</button>
+                    </form>
+                @if (client.Type == Skopka.Hello.AuthorizationServer.HelloAuthorizationClientType.Confidential) { <form method="post" asp-page-handler="Begin">
+                    <input type="hidden" name="ActionName" value="rotate" />
+                    <input type="hidden" name="ClientId" value="@client.ClientId" />
+                    <input type="hidden" name="ExpectedRevision" value="@client.Revision" />
+                    <button class="btn btn-outline-secondary btn-sm" type="submit">@Text["Admin.Clients.Rotate"]</button>
+                    </form> }</div>
+            }
+            else { <dl class="admin-detail-list">
+                    <div>
+                    <dt>@Text["Admin.Clients.Resource"]</dt>
+                    <dd>@client.Resource</dd>
+                    </div>
+                    <div>
+                    <dt>@Text["Admin.Clients.Scopes"]</dt>
+                    <dd>@string.Join(", ", client.Scopes)</dd>
+                    </div>
+                    <div>
+                    <dt>@Text["Admin.Clients.Redirects"]</dt>
+                    <dd>@string.Join(", ", client.RedirectUris)</dd>
+                    </div>
+                    <div>
+                    <dt>@Text["Admin.Clients.LogoutRedirects"]</dt>
+                    <dd>@string.Join(", ", client.PostLogoutRedirectUris)</dd>
+                    </div>
+                    <div>
+                    <dt>@Text["Admin.Clients.Reauthentication"]</dt>
+                    <dd>@Text[client.HonorReauthenticationPrompts ? "Admin.Clients.Yes" : "Admin.Clients.No"]</dd>
+                    </div>
+                    </dl> }
+        </div>
+    </div>
+                    </div>
+                    </div>
+}
 </section>
-<nav aria-label="@Text["Admin.Clients.Pages"]" class="d-flex gap-2 mt-3">
-    @if (Model.Offset > 0) { <a class="btn btn-outline-secondary" asp-route-offset="@(Math.Max(0, Model.Offset - 50))">@Text["Admin.Clients.Previous"]</a> }
-    @if (Model.Clients.Count == 50) { <a class="btn btn-outline-secondary" asp-route-offset="@(Model.Offset + 50)">@Text["Admin.Clients.Next"]</a> }
-</nav>
+<nav aria-label="@Text["Admin.Clients.Pages"]" class="d-flex gap-2 mt-3">@if (Model.Offset > 0) { <a class="btn btn-outline-secondary" asp-route-offset="@(Math.Max(0, Model.Offset - 50))">@Text["Admin.Clients.Previous"]</a> } @if (Model.Clients.Count == 50) { <a class="btn btn-outline-secondary" asp-route-offset="@(Model.Offset + 50)">@Text["Admin.Clients.Next"]</a> }</nav>
+</div>

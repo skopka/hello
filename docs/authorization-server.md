@@ -266,3 +266,5 @@ a Hello password or accept a provider token in JSON.
 
 See [mail OIDC integration](mail-oidc-integration.md) for the Roundcube 1.7 and
 Stalwart 0.16 deployment example.
+
+For a WebView and system-browser handoff, see [native app sign-in](native-app-sign-in.md).

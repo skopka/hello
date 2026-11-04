@@ -176,3 +176,9 @@ package-set validation, NuGet.org publication and GitHub Release attachments in
 one coordinated job. The same tag publishes the ready Server image to GHCR
 with its exact SemVer and commit-SHA tags. Release setup and operator steps
 live in `docs/releasing.md`.
+
+Native app sign-in is a separate Hello browser handoff, not an OAuth grant.
+The system browser explicitly approves an account; completion requires the
+original WebView binder and S256 verifier plus a one-use receipt delivered in
+the callback fragment. Status never returns the receipt. Keep callback, launch,
+receipt and verifier secrets out of logs; the source browser session is unchanged.

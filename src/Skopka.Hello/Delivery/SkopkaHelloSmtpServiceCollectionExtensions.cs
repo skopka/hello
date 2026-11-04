@@ -25,8 +25,11 @@ public static class SkopkaHelloSmtpServiceCollectionExtensions
                     Microsoft.Extensions.Hosting.IHostEnvironment>()));
         services.AddSingleton<
             Skopka.Hello.HelloAccountEmailTemplateRenderer>();
-        services.AddSingleton<
-            Skopka.Hello.SmtpHelloAccountMessageTransport>();
+        services.TryAddScoped<Skopka.Hello.IHelloEmailTransport, Skopka.Hello.SmtpHelloEmailTransport>();
+        services.AddSingleton<Skopka.Hello.SmtpHelloAccountMessageTransport>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<
+            Microsoft.Extensions.Hosting.IHostedService,
+            Skopka.Hello.HelloEmailTransportStartupValidator>());
         if (options.UseBackgroundQueue)
         {
             services.AddSingleton<

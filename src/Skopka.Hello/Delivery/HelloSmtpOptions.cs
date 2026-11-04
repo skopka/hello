@@ -32,7 +32,7 @@ public sealed class HelloSmtpOptions
         _ = HelloAccountMessageDispatcher.NormalizeProviderId(
             ProviderId,
             "The SMTP provider id");
-        ArgumentException.ThrowIfNullOrWhiteSpace(Host);
+
         ArgumentException.ThrowIfNullOrWhiteSpace(FromAddress);
         ArgumentException.ThrowIfNullOrWhiteSpace(FromName);
         Localization.Validate();

@@ -109,7 +109,7 @@
     "Admin.Clients.Revision": "Версия (кроме создания)",
     "Admin.Clients.Type": "Тип клиента",
     "Admin.Clients.Resource": "Ресурс",
-    "Admin.Clients.Scopes": "Области доступа (по одной на строку)",
+    "Admin.Clients.Scopes": "Разрешённые области доступа",
     "Admin.Clients.Redirects": "URI перенаправления (по одному на строку)",
     "Admin.Clients.LogoutRedirects": "URI после выхода (по одному на строку)",
     "Admin.Clients.Reauthentication": "Учитывать запросы повторного входа",
@@ -128,6 +128,7 @@
     "Admin.Clients.Public": "Публичный (Public)",
     "Admin.Clients.Confidential": "Конфиденциальный (Confidential)",
     "Admin.Clients.Yes": "Да",
-    "Admin.Clients.No": "Нет"
+    "Admin.Clients.No": "Нет",
+    "Admin.Clients.InvalidScopes": "Выберите области доступа из доступного списка."
   }
 }

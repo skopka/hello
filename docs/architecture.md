@@ -83,6 +83,10 @@ Identity session; transports use the existing session-cookie manager. The raw
 browser verifier remains only in B's Secure HttpOnly cookie. See
 [cross-device sign-in](cross-device-sign-in.md).
 
+Optional [native app sign-in](native-app-sign-in.md) uses a distinct durable
+Hello flow to bind a WebView to explicit approval in a system browser. It creates
+a separate normal Identity session and does not transfer the browser session.
+
 Registration consent is also a shared application invariant. Configured core
 requirements and UI legal-document requirements are combined before password
 or external Identity registration. Transports submit only acceptance flags;

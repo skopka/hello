@@ -1,0 +1,32 @@
+@page
+@model NativeSignInBrowserModel
+@{ Layout = null; }
+<!doctype html><html lang="@System.Globalization.CultureInfo.CurrentUICulture.Name"><head><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="referrer" content="@(Model.ClientName is null ? "no-referrer" : "same-origin")" /><title>@Text["NativeSignIn.Title"]</title></head><body>
+@if (Model.ClientName is null)
+{
+    <form method="post" asp-page-handler="Attach" id="attach"><input type="hidden" name="launch" id="launch" /></form>
+    <p id="attach-error" role="alert" hidden>@Text["NativeSignIn.Invalid"]</p>
+    <script nonce="@Model.Nonce">
+        const value = new URLSearchParams(location.hash.slice(1)).get('launch');
+        history.replaceState(null, '', location.pathname + location.search);
+        if (value) {
+            const form = document.getElementById('attach');
+            document.getElementById('launch').value = value;
+            fetch(form.action, { method: 'POST', body: new FormData(form), credentials: 'same-origin' })
+                .then(response => {
+                    if (response.ok && new URL(response.url).origin === location.origin) location.replace(response.url);
+                    else document.getElementById('attach-error').hidden = false;
+                })
+                .catch(() => { document.getElementById('attach-error').hidden = false; });
+        } else {
+            location.replace('@Url.Page("/SkopkaHello/NativeSignIn/Browser", "Confirm")');
+        }
+    </script>
+}
+else
+{
+    <h1>@Text["NativeSignIn.Title"]</h1>
+    <p>@Text["NativeSignIn.Confirm", Model.ClientName, Model.AccountName!]</p>
+    <form method="post" asp-page-handler="Confirm"><button name="approve" value="true">@Text["NativeSignIn.Approve"]</button><button name="approve" value="false">@Text["NativeSignIn.Deny"]</button></form>
+}
+</body></html>

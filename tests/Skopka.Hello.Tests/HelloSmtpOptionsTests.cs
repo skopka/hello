@@ -116,6 +116,9 @@ public sealed class HelloSmtpOptionsTests
             provider.GetServices<IHostedService>(),
             service =>
                 service is SmtpHelloAccountMessageWorker);
+        using var scope = provider.CreateScope();
+        Assert.IsType<SmtpHelloEmailTransport>(
+            scope.ServiceProvider.GetRequiredService<IHelloEmailTransport>());
     }
 
     [Fact]

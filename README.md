@@ -19,7 +19,9 @@ Version `0.25.1` fixes Admin client localization and the empty validation summar
 
 Version `0.25.2` requires fresh primary authentication before authenticator enrollment reveals its secret or QR code. API clients must provide a password or proof at enrollment and the returned enrollment ticket at confirmation; see [security](docs/security.md).
 
-The current `0.25.2` vertical slice contains:
+Version `0.27.0` adds optional [native app sign-in](docs/native-app-sign-in.md), compact authorization-client administration, and a replaceable [email transport](docs/email-transport.md).
+
+The current `0.27.0` vertical slice contains:
 
 - atomic password registration;
 - passwordless SMS sign-in and atomic registration by verified phone;
@@ -45,7 +47,7 @@ The current `0.25.2` vertical slice contains:
   confirmed-contact channel;
 - channel-aware account-message provider routing and optional bounded
   background SMTP email delivery;
-- host-overridable English/Russian SMTP account-message dictionaries;
+- host-overridable English/Russian account-message dictionaries and a replaceable email transport;
 - short-lived JWT access tokens in JSON with versioned signing-key overlap;
 - rotating refresh tokens in `Secure`, `HttpOnly` cookies;
 - antiforgery protection for refresh and cookie logout;

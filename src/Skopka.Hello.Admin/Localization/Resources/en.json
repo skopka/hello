@@ -109,7 +109,7 @@
     "Admin.Clients.Revision": "Revision (required except for create)",
     "Admin.Clients.Type": "Client type",
     "Admin.Clients.Resource": "Resource",
-    "Admin.Clients.Scopes": "Scopes (one per line)",
+    "Admin.Clients.Scopes": "Allowed scopes",
     "Admin.Clients.Redirects": "Redirect URIs (one per line)",
     "Admin.Clients.LogoutRedirects": "Post-logout redirect URIs (one per line)",
     "Admin.Clients.Reauthentication": "Honor reauthentication prompts",
@@ -128,6 +128,7 @@
     "Admin.Clients.Public": "Public",
     "Admin.Clients.Confidential": "Confidential",
     "Admin.Clients.Yes": "Yes",
-    "Admin.Clients.No": "No"
+    "Admin.Clients.No": "No",
+    "Admin.Clients.InvalidScopes": "Select only scopes from the available catalog."
   }
 }

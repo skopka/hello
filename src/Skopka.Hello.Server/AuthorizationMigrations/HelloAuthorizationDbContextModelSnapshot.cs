@@ -17,7 +17,7 @@ namespace Skopka.Hello.Server.AuthorizationMigrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.10")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -228,6 +228,90 @@ namespace Skopka.Hello.Server.AuthorizationMigrations
                     b.HasIndex("ApplicationId", "Status", "Subject", "Type");
 
                     b.ToTable("tokens", "skopka_hello_oauth");
+                });
+
+            modelBuilder.Entity("Skopka.Hello.AuthorizationServer.HelloNativeAppFlow", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long?>("ApprovalExpiresAt")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("BrowserBinderHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("CompletionReceiptHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Callback")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("Challenge")
+                        .IsRequired()
+                        .HasMaxLength(43)
+                        .HasColumnType("character varying(43)");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long>("ClientRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ExpiresAt")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("LaunchExpiresAt")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("LaunchSecretHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ProtectedSource")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReturnUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("SessionMetadata")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("WebViewBinderHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.ToTable("native_app_flows", "skopka_hello");
                 });
 
             modelBuilder.Entity("OpenIddict.EntityFrameworkCore.Models.OpenIddictEntityFrameworkCoreAuthorization", b =>

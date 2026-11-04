@@ -1,6 +1,13 @@
 {
   "culture": "ru",
   "texts": {
+    "NativeSignIn.ReturnToApp": "Вернуться в приложение",
+    "NativeSignIn.Invalid": "Запрос на вход недействителен или срок его действия истёк. Начните заново в приложении.",
+    "NativeSignIn.RateLimited": "Слишком много запросов. Повторите попытку позже.",
+    "NativeSignIn.Title": "Вход в приложение",
+    "NativeSignIn.Confirm": "Разрешить приложению {0} вход как {1}?",
+    "NativeSignIn.Approve": "Разрешить",
+    "NativeSignIn.Deny": "Отклонить",
     "Layout.AccountNavigation": "Навигация по аккаунту",
     "Layout.ReturnToApplication": "Вернуться в приложение",
     "Layout.ReturnToApplicationShort": "Домой",

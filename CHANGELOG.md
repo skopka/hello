@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.27.0
+
+- Add a replaceable email transport for the built-in account-message renderer and delivery pipeline, including scoped transports and retryable/permanent delivery outcomes.
+- Add optional native app sign-in through a system browser, with a separate WebView session, durable single-use flow and explicit account approval.
+- Make authorization-client administration compact, with accessible creation and management dialogs and catalog-backed scope selection.
+
 ## 0.25.2
 
 - Require fresh primary authentication before revealing an authenticator enrollment secret or QR code: password accounts re-enter their password; passwordless accounts use a verified phone, passkey or linked external provider.

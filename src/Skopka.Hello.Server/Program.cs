@@ -70,9 +70,13 @@ var authorizationEnabled = authorizationSection.GetValue(
     "Enabled",
     false);
 
+var nativeSection = configuration.GetSection("SkopkaHello:NativeAppSignIn");
+var nativeEnabled = nativeSection.GetValue("Enabled", false);
+var authorizationStorageEnabled = authorizationEnabled || nativeEnabled;
+
 if (migrationCommand)
 {
-    if (authorizationEnabled)
+    if (authorizationStorageEnabled)
     {
         AddAuthorizationStorage(
             builder.Services,
@@ -87,7 +91,7 @@ if (migrationCommand)
     await using var migrationApplication = builder.Build();
     await ApplyDatabaseMigrationsAsync(
         connectionString,
-        authorizationEnabled,
+        authorizationStorageEnabled,
         migrationApplication.Services,
         CancellationToken.None);
     return;
@@ -343,11 +347,27 @@ if (crossDeviceEnabled)
     });
 }
 
+if (authorizationStorageEnabled)
+{
+    AddAuthorizationStorage(builder.Services, connectionString);
+}
+if (nativeEnabled && !authorizationEnabled)
+{
+    builder.Services.AddSkopkaHelloAuthorizationClients(
+        options => BindAuthorizationOptions(authorizationSection, options, publicOrigin));
+}
+if (nativeEnabled)
+{
+    if (!secureCookies || publicOrigin.Scheme != Uri.UriSchemeHttps)
+    {
+        throw new InvalidOperationException("Native app sign-in requires HTTPS and secure UI cookies.");
+    }
+    builder.Services.AddHelloNativeAppSignIn<HelloProfile, HelloAuthorizationDbContext>(
+        options => nativeSection.Bind(options));
+    builder.Services.AddHostedService<HelloNativeAppPruningWorker>();
+}
 if (authorizationEnabled)
 {
-    AddAuthorizationStorage(
-        builder.Services,
-        connectionString);
     builder.Services.AddSkopkaHelloAuthorizationServer<HelloProfile>(
         options => BindAuthorizationOptions(
             authorizationSection,
@@ -646,7 +666,7 @@ app.MapGet(
 app.MapGet(
     "/health/live",
     () => TypedResults.Ok(new { status = "healthy" }));
-if (authorizationEnabled)
+if (authorizationStorageEnabled)
 {
     app.MapGet(
         "/health/ready",

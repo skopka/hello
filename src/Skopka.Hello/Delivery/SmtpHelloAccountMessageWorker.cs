@@ -26,37 +26,33 @@ internal sealed partial class SmtpHelloAccountMessageWorker(
                 continue;
             }
 
-            try
+            for (var attempt = 0; attempt < 3; attempt++)
             {
-                var result = await transport.SendAsync(
-                    message,
-                    stoppingToken);
-                if (!result.IsSuccess)
+                string errorCode;
+                try
                 {
-                    AccountMessageDeliveryFailed(
-                        logger,
-                        options.ProviderId,
-                        message.MessageId,
-                        message.Kind,
-                        result.Errors.FirstOrDefault()?.Code
-                            ?? HelloDeliveryErrorCodes.Failed);
+                    var result = await transport.SendAsync(message, stoppingToken);
+                    if (result.IsSuccess) break;
+                    errorCode = result.Errors.Any(error => error.Code == HelloEmailTransportErrorCodes.Permanent)
+                        ? HelloEmailTransportErrorCodes.Permanent
+                        : HelloEmailTransportErrorCodes.Retryable;
                 }
-            }
-            catch (OperationCanceledException)
-                when (stoppingToken.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (Exception)
-            {
-                // A malformed provider response or an unexpected transport
-                // fault must not terminate delivery of later queued messages.
-                AccountMessageDeliveryFailed(
-                    logger,
-                    options.ProviderId,
-                    message.MessageId,
-                    message.Kind,
-                    HelloDeliveryErrorCodes.Failed);
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception)
+                {
+                    errorCode = HelloEmailTransportErrorCodes.Retryable;
+                }
+
+                AccountMessageDeliveryFailed(logger, options.ProviderId, message.MessageId, message.Kind, errorCode);
+                if (errorCode == HelloEmailTransportErrorCodes.Permanent || attempt == 2)
+                    break;
+                var delay = TimeSpan.FromSeconds(1 << attempt);
+                if (message.ExpiresAt <= DateTimeOffset.UtcNow + delay)
+                    break;
+                await Task.Delay(delay, stoppingToken);
             }
         }
     }

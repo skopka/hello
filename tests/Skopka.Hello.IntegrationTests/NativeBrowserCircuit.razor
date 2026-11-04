@@ -1,0 +1,30 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Web
+@inject AuthenticationStateProvider AuthenticationState
+
+<p id="circuit-user">@(userName ?? "anonymous")</p>
+<button id="circuit-button" disabled="@(!ready)" @onclick="Increment">Count @count</button>
+
+@code {
+    private string? userName;
+    private int count;
+    private bool ready;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationState.GetAuthenticationStateAsync();
+        userName = state.User.Identity?.IsAuthenticated == true
+            ? state.User.Identity.Name ?? "authenticated" : null;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            ready = true;
+            StateHasChanged();
+        }
+    }
+
+    private void Increment() => count++;
+}

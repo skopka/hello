@@ -316,6 +316,65 @@ public sealed class HelloUiRoutingTests
                 .AttributeRouteModel?.Template);
     }
 
+    [Theory]
+    [InlineData(false, HelloUiPages.All, false)]
+    [InlineData(true, HelloUiPages.None, false)]
+    [InlineData(true, HelloUiPages.Login, true)]
+    public void NativeRoutesRequireFeatureAndLogin(bool enabled, HelloUiPages pages, bool expected)
+    {
+        var convention = new HelloUiPageRouteModelConvention(
+            new HelloUiRoutePaths("/identity"), true, true, false, false,
+            pages, true, true, enabled);
+        foreach (var name in new[] { "Index", "Browser" })
+        {
+            var model = CreatePageRouteModel(
+                $"/Pages/SkopkaHello/NativeSignIn/{name}.cshtml",
+                $"/SkopkaHello/NativeSignIn/{name}", "original");
+            convention.Apply(model);
+            Assert.Equal(expected, model.Selectors.Count != 0);
+            if (expected)
+            {
+                var suffix = name == "Index" ? "" : "/browser";
+                Assert.Equal("identity/native-sign-in" + suffix,
+                    Assert.Single(model.Selectors).AttributeRouteModel?.Template);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NativeUiAdapterIsRegisteredOnlyWhenEnabled(bool enabled)
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Services.AddSkopkaHello<TestProfile>();
+        if (enabled)
+        {
+            builder.Services.AddSingleton(new HelloNativeAppSignInOptions { Enabled = true });
+        }
+        builder.Services.AddSkopkaHelloUi<TestProfile, TestProfileFactory>();
+
+        var descriptor = builder.Services.SingleOrDefault(item =>
+            item.ServiceType == typeof(IHelloUiNativeSignInApplication));
+        Assert.Equal(enabled, descriptor is not null);
+
+        if (!enabled)
+        {
+            // The minimal host has no Identity persistence or token services.
+            // Validate the optional registration separately, as the production
+            // provider does at startup, without those unrelated dependencies.
+            IServiceCollection optionalServices = new ServiceCollection();
+            foreach (var item in builder.Services.Where(item =>
+                item.ServiceType == typeof(IHelloUiNativeSignInApplication)))
+            {
+                optionalServices.Add(item);
+            }
+            using var provider = optionalServices.BuildServiceProvider(
+                new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+            Assert.Null(provider.GetService<IHelloUiNativeSignInApplication>());
+        }
+    }
+
     private static WebApplication CreateApplication(
         string pathPrefix,
         bool selfRegistrationEnabled,

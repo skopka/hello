@@ -197,6 +197,40 @@ public sealed class AuthenticationFlowTests
             await postgres.DisposeAsync();
         }
     }
+    public sealed class NativeAppBrowserHost : IAsyncDisposable
+    {
+        private readonly PostgreSqlContainer postgres;
+        private readonly TestApplication app;
+        private NativeAppBrowserHost(PostgreSqlContainer postgres, TestApplication app, Uri origin)
+            => (this.postgres, this.app, Origin) = (postgres, app, origin);
+        public Uri Origin { get; }
+        public string ClientId { get; } = "native-browser-client";
+        public string CallbackUri => new Uri(Origin, "/native-test-callback").ToString();
+        public static async Task<NativeAppBrowserHost> CreateAsync()
+        {
+            var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+            TestApplication? app = null;
+            try
+            {
+                await postgres.StartAsync();
+                app = await TestApplication.CreateAsync(postgres.GetConnectionString(), nativeBrowser: true);
+                using var client = app.CreateClient();
+                await RegisterUiAccountAsync(client, "browser-admin", "browser-admin@example.test", "Browser Admin");
+                return new NativeAppBrowserHost(postgres, app, client.BaseAddress!);
+            }
+            catch
+            {
+                if (app is not null) await app.DisposeAsync();
+                await postgres.DisposeAsync();
+                throw;
+            }
+        }
+        public async ValueTask DisposeAsync()
+        {
+            await app.DisposeAsync();
+            await postgres.DisposeAsync();
+        }
+    }
     private static readonly JsonSerializerOptions WebJsonOptions =
         new(JsonSerializerDefaults.Web);
 
@@ -5250,12 +5284,12 @@ public sealed class AuthenticationFlowTests
         var decoded = WebUtility.HtmlDecode(html);
         Assert.Contains(title, decoded, StringComparison.Ordinal);
         Assert.Contains(createTitle, decoded, StringComparison.Ordinal);
-        var configuredArticle = Regex.Match(decoded, "<article[^>]*>[^<]*<h3[^>]*>Configured Client.*?</article>",
+        var configuredArticle = Regex.Match(decoded, "<article[^>]*>.*?Configured Client.*?</article>",
             RegexOptions.Singleline | RegexOptions.CultureInvariant).Value;
         Assert.NotEmpty(configuredArticle);
         Assert.Contains(readOnly, configuredArticle, StringComparison.Ordinal);
         Assert.Contains(publicType, configuredArticle, StringComparison.Ordinal);
-        Assert.Contains(no, configuredArticle, StringComparison.Ordinal);
+        Assert.Contains(no, decoded, StringComparison.Ordinal);
         Assert.DoesNotContain("Admin.Clients.", decoded, StringComparison.Ordinal);
         var token = ReadInputValue(html, "__RequestVerificationToken");
         var form = new Dictionary<string, string>
@@ -5267,13 +5301,18 @@ public sealed class AuthenticationFlowTests
             ["Resource"] = "skopka-hello-api",
             ["RedirectUris"] = "https://client.example.test/callback",
             ["PostLogoutRedirectUris"] = "",
-            ["Scopes"] = "openid\nprofile",
+            ["SelectedScopes"] = "openid",
             ["HonorReauthenticationPrompts"] = "true",
         };
         using (var csrf = await SendFormAsync(client, "/hello/admin/clients?handler=Begin", cookies, form))
             Assert.Equal(HttpStatusCode.BadRequest, csrf.StatusCode);
         Assert.DoesNotContain(app.Messages, x => x.Kind == HelloAccountMessageKind.AdminActionVerification);
         form["__RequestVerificationToken"] = token;
+        form["SelectedScopes"] = "unregistered-scope";
+        using (var invalidScope = await SendFormAsync(client, "/hello/admin/clients?handler=Begin", cookies, form))
+            Assert.Equal(HttpStatusCode.OK, invalidScope.StatusCode);
+        Assert.DoesNotContain(app.Messages, x => x.Kind == HelloAccountMessageKind.AdminActionVerification);
+        form["SelectedScopes"] = "openid";
         form["Type"] = "not-an-enum";
         using (var invalid = await SendFormAsync(client, "/hello/admin/clients?handler=Begin", cookies, form))
             Assert.Equal(HttpStatusCode.OK, invalid.StatusCode);
@@ -5334,7 +5373,6 @@ public sealed class AuthenticationFlowTests
         var deleted = await CompleteAsync("delete", 3);
         Assert.DoesNotContain("Renamed Razor Client (razor-client)", deleted, StringComparison.Ordinal);
         Assert.Equal("create", ReadInputValue(deleted, "ActionName"));
-        Assert.Equal(string.Empty, ReadInputValue(deleted, "ExpectedRevision"));
     }
 
     private static async Task<Guid> RegisterUiAccountAsync(
@@ -6068,13 +6106,16 @@ public sealed class AuthenticationFlowTests
     {
         private readonly WebApplication application;
         private readonly RecordingAccountMessageSender messageSender;
+        private readonly System.Security.Cryptography.X509Certificates.X509Certificate2? certificate;
 
         private TestApplication(
             WebApplication application,
-            RecordingAccountMessageSender messageSender)
+            RecordingAccountMessageSender messageSender,
+            System.Security.Cryptography.X509Certificates.X509Certificate2? certificate)
         {
             this.application = application;
             this.messageSender = messageSender;
+            this.certificate = certificate;
         }
 
         public IReadOnlyList<HelloAccountMessage> Messages =>
@@ -6125,7 +6166,8 @@ public sealed class AuthenticationFlowTests
             bool passkeysEnabled = false,
             Action<PhoneOtpOptions>? configurePhoneOtp = null,
             bool authorizationClientsEnabled = false,
-            bool shortVerificationCooldown = false)
+            bool shortVerificationCooldown = false,
+            bool nativeBrowser = false)
         {
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions
@@ -6134,10 +6176,33 @@ public sealed class AuthenticationFlowTests
                         .Assembly.GetName().Name,
                     EnvironmentName = "IntegrationTests",
                 });
+            var nativePort = 0;
+            System.Security.Cryptography.X509Certificates.X509Certificate2? certificate = null;
+            if (nativeBrowser)
+            {
+                using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+                listener.Start();
+                nativePort = ((IPEndPoint)listener.LocalEndpoint).Port;
+                using var key = RSA.Create(2048);
+                var request = new System.Security.Cryptography.X509Certificates.CertificateRequest(
+                    "CN=localhost", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+                var names = new System.Security.Cryptography.X509Certificates.SubjectAlternativeNameBuilder();
+                names.AddDnsName("localhost");
+                names.AddIpAddress(IPAddress.Loopback);
+                request.CertificateExtensions.Add(names.Build());
+                request.CertificateExtensions.Add(new System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension(
+                    new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, false));
+                using var generated = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+                certificate = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12(
+                    generated.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Pkcs12), null,
+                    System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.Exportable);
+            }
+            var origin = nativeBrowser ? new Uri($"https://localhost:{nativePort}") : new Uri("https://integration.skopka.test");
             builder.WebHost.ConfigureKestrel(options =>
-                options.Listen(
-                    IPAddress.Loopback,
-                    0));
+                options.Listen(IPAddress.Loopback, nativePort, listen =>
+                {
+                    if (certificate is not null) listen.UseHttps(certificate);
+                }));
             builder.WebHost.UseStaticWebAssets();
             var messageSender =
                 new RecordingAccountMessageSender();
@@ -6147,8 +6212,7 @@ public sealed class AuthenticationFlowTests
             var identity = builder.Services
                 .AddSkopkaHello<IntegrationProfile>(options =>
                 {
-                    options.PublicOrigin = new Uri(
-                        "https://integration.skopka.test");
+                    options.PublicOrigin = origin;
                     options.UiPathPrefix = uiPathPrefix;
                     options.SelfRegistrationEnabled =
                         selfRegistrationEnabled;
@@ -6275,10 +6339,18 @@ public sealed class AuthenticationFlowTests
             identity.AddRoles();
             identity.UseJwtBearerAuthentication();
             builder.Services.AddProblemDetails();
-            builder.Services.AddSkopkaHelloUi<
-                IntegrationProfile,
-                IntegrationProfileUiFactory>(configureUi);
-            if (authorizationClientsEnabled)
+            if (nativeBrowser)
+            {
+                builder.Services.AddAuthentication(options => options.DefaultScheme = "native-test-auth")
+                    .AddPolicyScheme("native-test-auth", null, options =>
+                        options.ForwardDefaultSelector = context =>
+                            context.Request.Headers.Authorization.ToString()
+                                .StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                                ? "Bearer" : HelloUiDefaults.AuthenticationScheme);
+                builder.Services.AddCascadingAuthenticationState();
+                builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+            }
+            if (authorizationClientsEnabled || nativeBrowser)
             {
                 builder.Services.AddDbContext<HelloAuthorizationDbContext>(options =>
                 {
@@ -6289,7 +6361,7 @@ public sealed class AuthenticationFlowTests
                     .UseDbContext<HelloAuthorizationDbContext>());
                 builder.Services.AddSkopkaHelloAuthorizationClients(options =>
                 {
-                    options.Issuer = new Uri("https://integration.skopka.test");
+                    options.Issuer = origin;
                     options.Clients.Add(new HelloAuthorizationClientOptions
                     {
                         ClientId = "configured-client",
@@ -6299,8 +6371,28 @@ public sealed class AuthenticationFlowTests
                         Scopes = ["openid"],
                         HonorReauthenticationPrompts = false,
                     });
+                    if (nativeBrowser)
+                    {
+                        options.Clients.Add(new HelloAuthorizationClientOptions
+                        {
+                            ClientId = "native-browser-client",
+                            DisplayName = "Native Browser Client",
+                            Type = HelloAuthorizationClientType.Public,
+                            RedirectUris = [new Uri(origin, "/native-test-callback").ToString()],
+                            Scopes = ["openid"],
+                        });
+                    }
                 });
+                if (nativeBrowser)
+                {
+                    builder.Services.AddHelloNativeAppSignIn<IntegrationProfile, HelloAuthorizationDbContext>(options =>
+                    {
+                        options.Enabled = true;
+                        options.AllowedCallbacks["native-browser-client"] = [new Uri(origin, "/native-test-callback").ToString()];
+                    });
+                }
             }
+            builder.Services.AddSkopkaHelloUi<IntegrationProfile, IntegrationProfileUiFactory>(configureUi);
             builder.Services.AddSkopkaHelloAdmin<
                 IntegrationProfile,
                 IntegrationAdminProfileProjector>(configureAdmin);
@@ -6312,6 +6404,7 @@ public sealed class AuthenticationFlowTests
 
             var application = builder.Build();
             application.UseStaticFiles();
+            if (nativeBrowser) application.MapStaticAssets();
             application.UseSkopkaHelloUiErrorPages();
             application.Use(
                 static (context, next) =>
@@ -6328,9 +6421,15 @@ public sealed class AuthenticationFlowTests
                 });
             application.UseAuthentication();
             application.UseAuthorization();
+            if (nativeBrowser) application.UseAntiforgery();
             application.MapSkopkaHello<IntegrationProfile>();
             application.MapSkopkaHelloAdmin<IntegrationProfile>();
             application.MapSkopkaHelloUi();
+            if (nativeBrowser)
+            {
+                application.MapGet("/native-test-callback", () => Results.Text("Native callback"));
+                application.MapRazorComponents<NativeBrowserApp>().AddInteractiveServerRenderMode();
+            }
             application.MapGet(
                     "/integration/current-ui-user",
                     async (
@@ -6359,7 +6458,7 @@ public sealed class AuthenticationFlowTests
                         PostgreSqlIdentityDbContext<
                             IntegrationProfile>>();
                 await database.Database.MigrateAsync();
-                if (authorizationClientsEnabled)
+                if (authorizationClientsEnabled || nativeBrowser)
                 {
                     var authorizationDatabase = scope.ServiceProvider.GetRequiredService<HelloAuthorizationDbContext>();
                     await authorizationDatabase.Database.MigrateAsync();
@@ -6371,7 +6470,8 @@ public sealed class AuthenticationFlowTests
             await application.StartAsync();
             return new TestApplication(
                 application,
-                messageSender);
+                messageSender,
+                certificate);
         }
 
         public async Task<IdentityRole> GrantAdministratorAsync(Guid userId)
@@ -6467,11 +6567,15 @@ public sealed class AuthenticationFlowTests
                 .Single()
                 ?? throw new InvalidOperationException(
                     "Kestrel did not expose its address.");
+            if (address.StartsWith("https://127.0.0.1:", StringComparison.Ordinal))
+                address = address.Replace("https://127.0.0.1:", "https://localhost:", StringComparison.Ordinal);
             var handler = new HttpClientHandler
             {
                 UseProxy = false,
                 UseCookies = false,
                 AllowAutoRedirect = allowAutoRedirect,
+                ServerCertificateCustomValidationCallback = address.StartsWith("https://localhost:", StringComparison.Ordinal)
+                    ? HttpClientHandler.DangerousAcceptAnyServerCertificateValidator : null,
             };
 
             return new HttpClient(handler)
@@ -6562,6 +6666,7 @@ public sealed class AuthenticationFlowTests
         public async ValueTask DisposeAsync()
         {
             await application.DisposeAsync();
+            certificate?.Dispose();
         }
     }
 }

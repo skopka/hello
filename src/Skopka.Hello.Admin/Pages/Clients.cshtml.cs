@@ -42,7 +42,7 @@ public sealed class ClientsModel(
     [BindProperty]
     public string? PostLogoutRedirectUris { get; set; }
     [BindProperty]
-    public string? Scopes { get; set; }
+    public string[] SelectedScopes { get; set; } = [];
     [BindProperty]
     public bool HonorReauthenticationPrompts { get; set; } = true;
     [BindProperty]
@@ -55,7 +55,7 @@ public sealed class ClientsModel(
             new HelloAuthorizationClientInput(
                 ClientId ?? string.Empty, DisplayName ?? string.Empty, Type, Resource ?? string.Empty,
                 Lines(RedirectUris), Lines(PostLogoutRedirectUris),
-                Lines(Scopes), HonorReauthenticationPrompts),
+                SelectedScopes, HonorReauthenticationPrompts),
             ExpectedRevision);
 
     private static string[] Lines(string? text)
@@ -87,7 +87,7 @@ public sealed class ClientsModel(
         Resource = client.Resource;
         RedirectUris = string.Join("\n", client.RedirectUris);
         PostLogoutRedirectUris = string.Join("\n", client.PostLogoutRedirectUris);
-        Scopes = string.Join("\n", client.Scopes);
+        SelectedScopes = client.Scopes.ToArray();
         HonorReauthenticationPrompts = client.HonorReauthenticationPrompts;
         ExpectedRevision = client.Revision;
         return page;
@@ -108,6 +108,11 @@ public sealed class ClientsModel(
         }
         if (!ModelState.IsValid)
         {
+            return await LoadAsync(ct);
+        }
+        if (SelectedScopes.Any(scope => !Catalog.Scopes.Contains(scope, StringComparer.Ordinal)))
+        {
+            ModelState.AddModelError(string.Empty, text["Admin.Clients.InvalidScopes"]);
             return await LoadAsync(ct);
         }
         var result = await app.BeginAsync(
@@ -208,7 +213,7 @@ public sealed class ClientsModel(
         Resource = null;
         RedirectUris = null;
         PostLogoutRedirectUris = null;
-        Scopes = null;
+        SelectedScopes = [];
         HonorReauthenticationPrompts = true;
         ExpectedRevision = null;
         VerificationCode = null;

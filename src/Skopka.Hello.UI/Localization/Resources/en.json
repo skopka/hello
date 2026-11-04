@@ -1,6 +1,13 @@
 {
   "culture": "en",
   "texts": {
+    "NativeSignIn.ReturnToApp": "Return to app",
+    "NativeSignIn.Invalid": "This sign-in request is invalid or expired. Start again in your app.",
+    "NativeSignIn.RateLimited": "Too many requests. Try again later.",
+    "NativeSignIn.Title": "Sign in to your app",
+    "NativeSignIn.Confirm": "Allow {0} to sign in as {1}?",
+    "NativeSignIn.Approve": "Allow",
+    "NativeSignIn.Deny": "Deny",
     "Layout.AccountNavigation": "Account navigation",
     "Layout.ReturnToApplication": "Return to application",
     "Layout.ReturnToApplicationShort": "Home",

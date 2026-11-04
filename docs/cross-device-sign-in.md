@@ -148,3 +148,5 @@ is removed after the configured retention period.
 - Do not log device codes, verifier cookies, TOTP values, access/refresh
   tokens or QR contents. Security observer events cover creation, approval,
   denial, expiry and consumption without those secrets.
+
+For a WebView and system-browser handoff, see [native app sign-in](native-app-sign-in.md).

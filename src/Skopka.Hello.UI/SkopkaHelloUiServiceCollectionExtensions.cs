@@ -105,6 +105,19 @@ public static class SkopkaHelloUiServiceCollectionExtensions
                 Skopka.Hello.UI.HelloUiCrossDeviceApplication<TProfile>>();
         }
 
+        var nativeSignInEnabled = services.LastOrDefault(descriptor =>
+                descriptor.ServiceType
+                    == typeof(Skopka.Hello.HelloNativeAppSignInOptions))
+            ?.ImplementationInstance is
+                Skopka.Hello.HelloNativeAppSignInOptions
+        { Enabled: true };
+        if (nativeSignInEnabled)
+        {
+            services.TryAddScoped<
+                Skopka.Hello.UI.IHelloUiNativeSignInApplication,
+                Skopka.Hello.UI.HelloUiNativeSignInApplication<TProfile>>();
+        }
+
         // Registered when the identity builder registered the WebAuthn
         // service, which is the same question the API routes ask. A page that
         // offers a passkey to a host that has none would be a button leading

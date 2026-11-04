@@ -159,6 +159,29 @@
                     <dt>@Text["Admin.Clients.Revision"]</dt>
                     <dd>@client.Revision · @Text[client.Ownership == "administration" ? "Admin.Clients.Managed" : "Admin.Clients.ReadOnly"]</dd>
                     </div>
+                    @if (!(Model.CanManage && client.Ownership == "administration"))
+                    {
+                    <div>
+                    <dt>@Text["Admin.Clients.Resource"]</dt>
+                    <dd>@client.Resource</dd>
+                    </div>
+                    <div>
+                    <dt>@Text["Admin.Clients.Scopes"]</dt>
+                    <dd>@string.Join(", ", client.Scopes)</dd>
+                    </div>
+                    <div>
+                    <dt>@Text["Admin.Clients.RedirectsReadOnly"]</dt>
+                    <dd>@if (client.RedirectUris.Count == 0) { <span>—</span> } else { foreach (var uri in client.RedirectUris) { <div>@uri</div> } }</dd>
+                    </div>
+                    <div>
+                    <dt>@Text["Admin.Clients.LogoutRedirectsReadOnly"]</dt>
+                    <dd>@if (client.PostLogoutRedirectUris.Count == 0) { <span>—</span> } else { foreach (var uri in client.PostLogoutRedirectUris) { <div>@uri</div> } }</dd>
+                    </div>
+                    <div>
+                    <dt>@Text["Admin.Clients.Reauthentication"]</dt>
+                    <dd>@Text[client.HonorReauthenticationPrompts ? "Admin.Clients.Yes" : "Admin.Clients.No"]</dd>
+                    </div>
+                    }
                     </dl>
             @if (Model.CanManage && client.Ownership == "administration")
             {
@@ -219,28 +242,6 @@
                     <button class="btn btn-outline-secondary btn-sm" type="submit">@Text["Admin.Clients.Rotate"]</button>
                     </form> }</div>
             }
-            else { <dl class="admin-detail-list">
-                    <div>
-                    <dt>@Text["Admin.Clients.Resource"]</dt>
-                    <dd>@client.Resource</dd>
-                    </div>
-                    <div>
-                    <dt>@Text["Admin.Clients.Scopes"]</dt>
-                    <dd>@string.Join(", ", client.Scopes)</dd>
-                    </div>
-                    <div>
-                    <dt>@Text["Admin.Clients.Redirects"]</dt>
-                    <dd>@string.Join(", ", client.RedirectUris)</dd>
-                    </div>
-                    <div>
-                    <dt>@Text["Admin.Clients.LogoutRedirects"]</dt>
-                    <dd>@string.Join(", ", client.PostLogoutRedirectUris)</dd>
-                    </div>
-                    <div>
-                    <dt>@Text["Admin.Clients.Reauthentication"]</dt>
-                    <dd>@Text[client.HonorReauthenticationPrompts ? "Admin.Clients.Yes" : "Admin.Clients.No"]</dd>
-                    </div>
-                    </dl> }
         </div>
     </div>
                     </div>

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.27.1
+
+- Shorten the Admin client revision label and separate read-only URI labels from input hints in English and Russian.
+- Display read-only client addresses one per line, show an em dash for empty address lists, and keep client details in one continuous list.
+
 ## 0.27.0
 
 - Add a replaceable email transport for the built-in account-message renderer and delivery pipeline, including scoped transports and retryable/permanent delivery outcomes.

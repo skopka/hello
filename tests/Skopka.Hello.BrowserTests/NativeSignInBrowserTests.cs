@@ -24,8 +24,16 @@ public sealed class NativeSignInBrowserTests(BrowserFixture browser) : IClassFix
                 || path.StartsWith("/_blazor", StringComparison.Ordinal))
                 circuitDiagnostics.Enqueue($"{response.Request.Method} {path} {response.Status}");
         };
-        embedded.Console += (_, message) => circuitDiagnostics.Enqueue($"console: {message.Type}");
-        embedded.PageError += (_, _) => circuitDiagnostics.Enqueue("page error");
+        embedded.Console += (_, message) => circuitDiagnostics.Enqueue(
+            $"console: {message.Type} {ClassifyCircuitError(message.Text)}");
+        embedded.PageError += (_, message) => circuitDiagnostics.Enqueue(
+            $"page error: {ClassifyCircuitError(message)}");
+        embedded.RequestFailed += (_, request) =>
+        {
+            var path = new Uri(request.Url).AbsolutePath;
+            if (path.StartsWith("/_blazor", StringComparison.Ordinal))
+                circuitDiagnostics.Enqueue($"request failed: {path} {ClassifyCircuitError(request.Failure ?? string.Empty)}");
+        };
         await embedded.GotoAsync(new Uri(host.Origin, "/hello/native-sign-in").ToString());
         var verifier = Base64Url(RandomNumberGenerator.GetBytes(32));
         var state = Base64Url(RandomNumberGenerator.GetBytes(32));
@@ -128,6 +136,25 @@ public sealed class NativeSignInBrowserTests(BrowserFixture browser) : IClassFix
         await Assertions.Expect(external.Locator("body")).ToContainTextAsync("Browser Admin");
         var sourceAfter = await external.EvaluateAsync<string>("async () => (await (await fetch('/integration/current-ui-user')).json()).sessionId");
         Assert.Equal(sourceSession, sourceAfter);
+    }
+
+    // Classify browser diagnostics without recording URLs, tokens, or exception messages.
+    private static string ClassifyCircuitError(string message)
+    {
+        var networkError = System.Text.RegularExpressions.Regex.Match(
+            message, @"\bERR_[A-Z0-9_]{2,60}\b", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        if (networkError.Success) return networkError.Value;
+        foreach (var type in new[] { "TypeError", "ReferenceError", "SyntaxError", "SecurityError", "AbortError" })
+        {
+            if (message.Contains(type, StringComparison.Ordinal)) return type;
+        }
+        if (message.Contains("certificate", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("ERR_CERT", StringComparison.OrdinalIgnoreCase)) return "certificate";
+        if (message.Contains("WebSocket", StringComparison.OrdinalIgnoreCase)) return "websocket";
+        if (message.Contains("circuit", StringComparison.OrdinalIgnoreCase)) return "circuit";
+        if (message.Contains("SignalR", StringComparison.OrdinalIgnoreCase)) return "signalr";
+        if (message.Contains("connection", StringComparison.OrdinalIgnoreCase)) return "connection";
+        return "other";
     }
 
     private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');

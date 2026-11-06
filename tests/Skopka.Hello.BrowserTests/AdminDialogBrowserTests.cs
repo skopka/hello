@@ -3,6 +3,7 @@ using Skopka.Hello.IntegrationTests;
 
 namespace Skopka.Hello.BrowserTests;
 
+[Collection("Container-backed browser tests")]
 public sealed class AdminDialogBrowserTests(BrowserFixture browser) : IClassFixture<BrowserFixture>
 {
     [Fact]

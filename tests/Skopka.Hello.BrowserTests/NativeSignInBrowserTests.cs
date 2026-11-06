@@ -5,6 +5,7 @@ using Skopka.Hello.IntegrationTests;
 
 namespace Skopka.Hello.BrowserTests;
 
+[Collection("Container-backed browser tests")]
 public sealed class NativeSignInBrowserTests(BrowserFixture browser) : IClassFixture<BrowserFixture>
 {
     [Fact]

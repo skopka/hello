@@ -78,8 +78,12 @@ public sealed class NativeSignInBrowserTests(BrowserFixture browser) : IClassFix
         await attackerPage.EvaluateAsync("async () => { await fetch('?handler=Complete'); }");
         var attackerCookies = await attacker.CookiesAsync();
         Assert.DoesNotContain(attackerCookies, cookie => cookie.Name == "__Host-Skopka.Hello.UI");
+        // Subscribe before approval: the intermediate response can immediately navigate to the callback.
+        var callbackNavigation = external.WaitForURLAsync(
+            url => new Uri(url).AbsolutePath == new Uri(host.CallbackUri).AbsolutePath,
+            new() { WaitUntil = WaitUntilState.Commit });
         await external.Locator("button[name='approve'][value='true']").ClickAsync();
-        await external.WaitForURLAsync(url => new Uri(url).AbsolutePath == new Uri(host.CallbackUri).AbsolutePath);
+        await callbackNavigation;
         var fragment = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery("?" + new Uri(external.Url).Fragment.TrimStart('#'));
         Assert.Equal(state, fragment["state"].ToString());
         var receipt = fragment["receipt"].ToString();

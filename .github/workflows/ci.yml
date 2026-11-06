@@ -53,17 +53,29 @@ jobs:
           --no-restore
           --verify-no-changes
 
-      - name: Test
+      # Container-backed tests can change the host network while Chromium is navigating.
+      # Finish them before starting the browser project; do not drop either test set.
+      - name: Test non-browser projects
         id: test
         run: >
           dotnet test Skopka.Hello.slnx
+          --configuration Release
+          --no-build
+          --filter "FullyQualifiedName!~Skopka.Hello.BrowserTests"
+          --logger trx
+          --results-directory artifacts/test-results
+
+      - name: Test browser project
+        id: browser_test
+        run: >
+          dotnet test tests/Skopka.Hello.BrowserTests/Skopka.Hello.BrowserTests.csproj
           --configuration Release
           --no-build
           --logger trx
           --results-directory artifacts/test-results
 
       - name: Report failed tests
-        if: ${{ failure() && steps.test.outcome == 'failure' }}
+        if: ${{ failure() && (steps.test.outcome == 'failure' || steps.browser_test.outcome == 'failure') }}
         shell: bash
         run: |
           python3 - <<'PY'

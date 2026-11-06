@@ -15,7 +15,7 @@
     <Product>Skopka.Hello</Product>
     <Copyright>Copyright (c) Skopka contributors</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/skopka/hello</PackageProjectUrl>
+    <PackageProjectUrl>https://products.skopka.ru/hello/</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>identity;authentication;aspnetcore;security;skopka</PackageTags>
     <RepositoryType>git</RepositoryType>

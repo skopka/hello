@@ -10,6 +10,10 @@ provider integration, host composition and policy-separated administration.
 Identity users, credentials, roles, external logins,
 verification and refresh-session state stay in Skopka.Identity.
 
+## Documentation
+
+Documentation for version 0.27.1: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html).
+
 Version `0.25.0` adds optional hints under host-defined account profile
 fields; see [customization](docs/customization.md). It also adds
 step-up-protected management of OAuth clients; see the

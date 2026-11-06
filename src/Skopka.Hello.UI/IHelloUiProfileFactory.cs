@@ -7,6 +7,8 @@ public sealed record HelloUiRegistrationProfile(
     string? Locale)
 {
     public HelloRegistrationConsent? RegistrationConsent { get; init; }
+    /// <summary>Validated host-defined registration field values.</summary>
+    public IReadOnlyDictionary<string, string?> Values { get; init; } = new Dictionary<string, string?>();
 }
 
 public interface IHelloUiProfileFactory<TProfile>
@@ -40,4 +42,11 @@ public interface IHelloUiProfileEditor<TProfile>
     OperationResult<TProfile> Update(
         TProfile current,
         IReadOnlyDictionary<string, string?> values);
+}
+
+/// <summary>Supplies and validates host-owned fields for phone registration.</summary>
+public interface IHelloUiRegistrationFields
+{
+    IReadOnlyList<HelloUiProfileField> GetFields();
+    OperationResult<IReadOnlyDictionary<string, string?>> Validate(IReadOnlyDictionary<string, string?> values);
 }

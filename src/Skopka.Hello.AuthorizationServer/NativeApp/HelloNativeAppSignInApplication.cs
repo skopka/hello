@@ -399,8 +399,8 @@ internal sealed class HelloNativeAppSignInApplication<TProfile>(
         {
             return Fail<HelloNativeAppCompleted<TProfile>>();
         }
-        var user = await registry.ValidateAsync(new ValidateIdentitySessionCommand(source.UserId, source.SessionId), cancellationToken);
-        if (!user.IsSuccess || user.Value.SecurityStamp != source.Stamp || !Live(flow) || flow.ApprovalExpiresAt <= clock.GetUtcNow())
+        var user = await registry.ValidateWithAssuranceAsync(new ValidateIdentitySessionCommand(source.UserId, source.SessionId), cancellationToken);
+        if (!user.IsSuccess || user.Value.User.SecurityStamp != source.Stamp || !Live(flow) || flow.ApprovalExpiresAt <= clock.GetUtcNow())
         {
             return Fail<HelloNativeAppCompleted<TProfile>>();
         }
@@ -412,9 +412,10 @@ internal sealed class HelloNativeAppSignInApplication<TProfile>(
             return Fail<HelloNativeAppCompleted<TProfile>>();
         }
         var metadata = JsonSerializer.Deserialize<IdentitySessionMetadata>(flow.SessionMetadata);
-        var issued = await sessions.CreateAsync(new CreateIdentitySessionCommand(user.Value.Id,
-            user.Value.SecurityStamp,
-            metadata),
+        var issued = await sessions.CreateAsync(new CreateIdentitySessionCommand(user.Value.User.Id,
+            user.Value.User.SecurityStamp,
+            metadata)
+        { Assurance = user.Value.Assurance },
             cancellationToken);
         if (!issued.IsSuccess)
         {
@@ -427,7 +428,7 @@ internal sealed class HelloNativeAppSignInApplication<TProfile>(
             if (!await Save(flow, cancellationToken))
             {
                 await sessions.RevokeByIdAsync(
-                    new RevokeIdentitySessionByIdCommand(user.Value.Id, issued.Value.SessionId),
+                    new RevokeIdentitySessionByIdCommand(user.Value.User.Id, issued.Value.SessionId),
                     CancellationToken.None);
                 return Fail<HelloNativeAppCompleted<TProfile>>();
             }
@@ -435,11 +436,11 @@ internal sealed class HelloNativeAppSignInApplication<TProfile>(
         catch
         {
             await sessions.RevokeByIdAsync(
-                new RevokeIdentitySessionByIdCommand(user.Value.Id, issued.Value.SessionId),
+                new RevokeIdentitySessionByIdCommand(user.Value.User.Id, issued.Value.SessionId),
                 CancellationToken.None);
             throw;
         }
-        var accountUser = user.Value;
+        var accountUser = user.Value.User;
         var issuedSession = issued.Value;
         Audit("completed", accountUser.Id, nameof(CompleteAsync), flow.ClientId);
         return OperationResultFactory.Success(new HelloNativeAppCompleted<TProfile>(new HelloSignIn<TProfile>(new HelloAccount<TProfile>(accountUser.Id,

@@ -4,6 +4,60 @@
     ViewData["Title"] = Text["Login.Title"];
 }
 
+@if (Model.SecondFactorActive)
+{
+    <section class="hello-card hello-auth-card">
+        <h1>@Text["SecondFactor.Title"]</h1>
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div asp-validation-summary="All" class="hello-status hello-status-error" role="alert" tabindex="-1"></div>
+        }
+        @if (Model.SecondFactorView == "start-enroll" || Model.SecondFactorView == "start-verify")
+        {
+            <p>@Text[Model.SecondFactorView == "start-enroll" ? "SecondFactor.EnrollIntro" : "SecondFactor.VerifyIntro"]</p>
+            <form method="post" class="hello-form" asp-page-handler="SecondFactorStart">
+                <input type="hidden" asp-for="SecondFactorTicket" />
+                <input type="hidden" asp-for="ReturnUrl" />
+                <input type="hidden" name="mode" value="@(Model.SecondFactorView == "start-enroll" ? "enroll" : "verify")" />
+                <button class="hello-button" type="submit">@Text["SecondFactor.Continue"]</button>
+            </form>
+        }
+        else if (Model.SecondFactorView == "verify" || Model.SecondFactorView == "enroll")
+        {
+            @if (Model.SecondFactorSecret is not null)
+            {
+                <div class="hello-qr-code">
+                    <img src="@Model.SecondFactorQrCode" alt="@Text["SecondFactor.QrAlt"]" />
+                </div>
+                <p>@Text["SecondFactor.SecretHint"]</p>
+                <code>@Model.SecondFactorSecret</code>
+            }
+            <form method="post" class="hello-form" asp-page-handler="SecondFactorVerify">
+                <input type="hidden" asp-for="SecondFactorTicket" />
+                <input type="hidden" asp-for="ReturnUrl" />
+                <input type="hidden" name="mode" value="@(Model.SecondFactorView == "enroll" ? "enroll" : "verify")" />
+                <label asp-for="SecondFactorCode">@Text["SecondFactor.Code"]</label>
+                <p id="second-factor-hint">@Text["SecondFactor.CodeHint"]</p>
+                <input asp-for="SecondFactorCode" autocomplete="one-time-code" aria-describedby="second-factor-hint second-factor-error" />
+                <span id="second-factor-error" asp-validation-for="SecondFactorCode"></span>
+                <button class="hello-button" type="submit">@Text["SecondFactor.Continue"]</button>
+            </form>
+            <p><a asp-page="/SkopkaHello/Login">@Text["SecondFactor.Restart"]</a></p>
+        }
+        else if (Model.SecondFactorView == "recovery")
+        {
+            <p>@Text["SecondFactor.RecoveryHint"]</p>
+            <ul>@foreach (var code in Model.SecondFactorRecoveryCodes) { <li><code>@code</code></li> }</ul>
+            <form method="post" class="hello-form" asp-page-handler="SecondFactorAcknowledge">
+                <input type="hidden" asp-for="SecondFactorTicket" />
+                <input type="hidden" asp-for="ReturnUrl" />
+                <button class="hello-button" type="submit">@Text["SecondFactor.SavedCodes"]</button>
+            </form>
+        }
+    </section>
+}
+else
+{
 <section class="hello-card hello-auth-card">
     <p class="hello-eyebrow">@Text["Login.Eyebrow"]</p>
     <h1>@Text["Login.Title"]</h1>
@@ -117,6 +171,27 @@
                     <p>@Text["Phone.RegistrationPrompt"]</p>
                     <label asp-for="Phone.DisplayName">@Text["Field.DisplayName"]</label>
                     <input asp-for="Phone.DisplayName" autocomplete="name" />
+                    @foreach (var field in Model.PhoneRegistrationFields)
+                    {
+                        var key = $"Phone.Values[{field.Name}]";
+                        var id = $"phone-field-{field.Name}";
+                        <label for="@id">@field.Label</label>
+                        <input id="@id" name="@key" type="@field.InputType"
+                               value="@(Model.Phone.Values.GetValueOrDefault(field.Name) ?? field.Value)"
+                               autocomplete="@field.AutoComplete" required="@field.Required"
+                               maxlength="@field.MaximumLength" aria-describedby="@(field.Hint is null ? null : id + "-hint")" />
+                        @if (field.Hint is not null)
+                        {
+                            <small id="@(id + "-hint")">@field.Hint</small>
+                        }
+                        @if (ViewData.ModelState.TryGetValue(key, out var fieldState))
+                        {
+                            foreach (var error in fieldState.Errors)
+                            {
+                                <span class="hello-field-error" role="alert">@error.ErrorMessage</span>
+                            }
+                        }
+                    }
                     @if (UiOptions.Registration.IsVisible(HelloUiRegistrationField.Locale))
                     {
                         <label asp-for="Phone.Locale">@Text["Field.Locale"]</label>
@@ -343,4 +418,6 @@
 @if (Model.PasskeysEnabled)
 {
     <script src="/_content/Skopka.Hello.UI/js/passkey.js" defer></script>
+}
+
 }

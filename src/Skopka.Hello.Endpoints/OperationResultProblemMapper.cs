@@ -91,6 +91,13 @@ public static class OperationResultProblemMapper
         };
         problem.Extensions["code"] = mapping.Code;
         problem.Extensions["traceId"] = httpContext.TraceIdentifier;
+        if (mapping.Code == HelloSecondFactorErrorCodes.Required
+            && errors.FirstOrDefault()?.Details is HelloSecondFactorRequired continuation)
+        {
+            httpContext.Response.Headers.CacheControl = "no-store";
+            httpContext.Response.Headers["Referrer-Policy"] = "no-referrer";
+            problem.Extensions["secondFactor"] = new { continuation.Ticket, continuation.ExpiresAt };
+        }
         if (mapping.ValidationErrors.Count > 0)
         {
             problem.Extensions["errors"] = mapping.ValidationErrors;

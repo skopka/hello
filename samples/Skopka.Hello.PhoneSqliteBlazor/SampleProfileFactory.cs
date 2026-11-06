@@ -5,7 +5,7 @@ namespace Skopka.Hello.PhoneSqliteBlazor;
 
 public sealed class SampleProfileFactory
     : IHelloUiProfileFactory<SampleProfile>,
-      IHelloUiProfileEditor<SampleProfile>
+      IHelloUiProfileEditor<SampleProfile>, IHelloUiRegistrationFields
 {
     private const string DisplayNameField = "displayName";
     private const int MaximumDisplayNameLength = 200;
@@ -19,7 +19,8 @@ public sealed class SampleProfileFactory
         }
 
         return OperationResultFactory.Success(new SampleProfile(
-            profile.DisplayName.Trim(), profile.Locale?.Trim()));
+            profile.DisplayName.Trim(), profile.Locale?.Trim())
+        { SchoolClass = profile.Values.GetValueOrDefault("schoolClass")?.Trim() });
     }
 
     public string GetDisplayName(SampleProfile profile)
@@ -33,7 +34,16 @@ public sealed class SampleProfileFactory
             MaximumLength: MaximumDisplayNameLength)
         {
             Hint = "Shown on the private page after sign-in.",
-        }];
+        }, new HelloUiProfileField("schoolClass", "Класс", profile.SchoolClass,
+            MaximumLength: 40) { Hint = "Не школьник — оставьте пустым" }];
+
+    public IReadOnlyList<HelloUiProfileField> GetFields()
+        => [new HelloUiProfileField("schoolClass", "Класс", null, MaximumLength: 40)
+            { Hint = "Не школьник — оставьте пустым" }];
+
+    public OperationResult<IReadOnlyDictionary<string, string?>> Validate(
+        IReadOnlyDictionary<string, string?> values)
+        => OperationResultFactory.Success(values);
 
     public OperationResult<SampleProfile> Update(
         SampleProfile current,
@@ -45,8 +55,9 @@ public sealed class SampleProfileFactory
             return InvalidDisplayName();
         }
 
+        values.TryGetValue("schoolClass", out var schoolClass);
         return OperationResultFactory.Success(
-            current with { DisplayName = displayName.Trim() });
+            current with { DisplayName = displayName.Trim(), SchoolClass = schoolClass?.Trim() });
     }
 
     private static bool IsValidDisplayName(

@@ -91,8 +91,12 @@ public sealed class HelloTotpEnrollmentAuthorizationTests
     {
         var f = new Fixture();
         var enrollmentId = Guid.NewGuid();
+        var authorizedVersion = f.Version;
+        f.Version++; // Identity persists the pending enrollment and advances the user version.
+        Assert.Null(await f.Service.IssueEnrollmentTicketAsync(
+            "token", enrollmentId, f.Clock.Now.AddMinutes(10), authorizedVersion - 1, default));
         var ticket = await f.Service.IssueEnrollmentTicketAsync(
-            "token", enrollmentId, f.Clock.Now.AddMinutes(10), f.Version, default);
+            "token", enrollmentId, f.Clock.Now.AddMinutes(10), authorizedVersion, default);
         Assert.NotNull(ticket);
         Assert.Equal(f.Clock.Now.AddMinutes(5), ticket.ExpiresAt);
         Assert.True(await f.Service.ValidateEnrollmentTicketAsync("token", ticket.Ticket, enrollmentId, default));

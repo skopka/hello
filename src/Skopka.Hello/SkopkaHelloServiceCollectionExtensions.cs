@@ -71,6 +71,12 @@ public static class SkopkaHelloServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.IHelloIdentityApplication<TProfile>,
             Skopka.Hello.HelloIdentityApplication<TProfile>>();
+        services.TryAddSingleton<Skopka.Hello.HelloSecondFactorTickets>();
+        services.TryAddScoped<Skopka.Hello.IHelloSecondFactorApplication<TProfile>,
+            Skopka.Hello.HelloSecondFactorApplication<TProfile>>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<
+            Skopka.Identity.Sessions.IIdentitySessionAdmissionPolicy<TProfile>,
+            Skopka.Hello.HelloSecondFactorAdmission<TProfile>>());
         services.TryAddSingleton<Skopka.Hello.HelloTotpPasswordAttempts>();
         services.TryAddScoped<Skopka.Hello.HelloTotpEnrollmentAuthorization<TProfile>>();
         services.TryAddScoped<Skopka.Hello.IHelloTotpEnrollmentAuthorization<TProfile>>(
@@ -91,6 +97,8 @@ public static class SkopkaHelloServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.IHelloPhoneOtpApplication<TProfile>,
             Skopka.Hello.HelloPhoneOtpApplication<TProfile>>();
+        services.TryAddScoped<Skopka.Hello.IHelloPhoneBindingApplication<TProfile>,
+            Skopka.Hello.HelloPhoneBindingApplication<TProfile>>();
         services.TryAddEnumerable(
             ServiceDescriptor.Scoped<
                 Skopka.Hello.IHelloAccessTokenValidator<TProfile>,

@@ -47,6 +47,11 @@ public static class SkopkaHelloUiServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.UI.IHelloUiProfileFactory<TProfile>>(
             provider => provider.GetRequiredService<TProfileFactory>());
+        if (typeof(Skopka.Hello.UI.IHelloUiRegistrationFields).IsAssignableFrom(typeof(TProfileFactory)))
+        {
+            services.TryAddScoped<Skopka.Hello.UI.IHelloUiRegistrationFields>(provider =>
+                (Skopka.Hello.UI.IHelloUiRegistrationFields)provider.GetRequiredService<TProfileFactory>());
+        }
         if (typeof(Skopka.Hello.UI.IHelloUiProfileEditor<TProfile>)
             .IsAssignableFrom(typeof(TProfileFactory)))
         {
@@ -69,6 +74,8 @@ public static class SkopkaHelloUiServiceCollectionExtensions
                         .IHelloRegistrationConsentProfileEnricher<TProfile>)
                     provider.GetRequiredService<TProfileFactory>());
         }
+        services.TryAddScoped<Skopka.Hello.UI.IHelloUiSecondFactorApplication,
+            Skopka.Hello.UI.HelloUiSecondFactorApplication<TProfile>>();
         services.TryAddScoped<
             Skopka.Hello.UI.IHelloUiApplication,
             Skopka.Hello.UI.HelloUiApplication<TProfile>>();
@@ -80,6 +87,8 @@ public static class SkopkaHelloUiServiceCollectionExtensions
             services.TryAddScoped<
                 Skopka.Hello.UI.IHelloUiPhoneApplication,
                 Skopka.Hello.UI.HelloUiPhoneApplication<TProfile>>();
+            services.TryAddScoped<Skopka.Hello.UI.IHelloUiPhoneBindingApplication,
+                Skopka.Hello.UI.HelloUiPhoneBindingApplication<TProfile>>();
         }
         services.TryAddScoped<
             Skopka.Hello.UI.IHelloUiExternalApplication,

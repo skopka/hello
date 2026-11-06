@@ -41,6 +41,8 @@ public static class HelloAdminErrorCodes
 
 public static class HelloAdminSecurityEventTypes
 {
+    public const string AuthenticatorReset = "hello.admin.authenticator.reset";
+
     public const string RoleCreated = "hello.admin.role.created";
 
     public const string RoleUpdated = "hello.admin.role.updated";

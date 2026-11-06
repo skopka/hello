@@ -71,6 +71,7 @@ public sealed class NativeAppApplicationTests
         var complete = await app.CompleteAsync(begin.Value.FlowId, begin.Value.WebViewBinder, Verifier, approved.Value.CompletionReceipt!, null, default);
         Assert.True(complete.IsSuccess);
         Assert.Equal(1, host.Identity.Created);
+        Assert.Equal(IdentitySessionAssurance.TotpVerified, host.Identity.CreatedAssurance);
         Assert.False((await app.CompleteAsync(begin.Value.FlowId, begin.Value.WebViewBinder, Verifier, approved.Value.CompletionReceipt!, null, default)).IsSuccess);
         Assert.Equal(1, host.Identity.Created);
         Assert.All(host.Audit.Events, e =>
@@ -379,6 +380,7 @@ public sealed class NativeAppApplicationTests
         public bool FailCreate { get; set; }
         public string Stamp { get; set; } = "stamp";
         public int Created { get; set; }
+        public IdentitySessionAssurance CreatedAssurance { get; set; }
         public IdentityUser<Profile> User => new(UserId,
             UserFlags.None,
             "alice",
@@ -402,13 +404,17 @@ public sealed class NativeAppApplicationTests
                 "ValidateAsync" => Task.FromResult(self.Valid && ((ValidateIdentitySessionCommand)args![0]!).SessionId == self.SessionId ? OperationResultFactory.Success(self.User) : OperationResultFactory.Fail<IdentityUser<Profile>>(new Error("invalid",
                     "invalid",
                     ErrorType.Unauthorized))),
-                "CreateAsync" => Create(self),
+                "ValidateWithAssuranceAsync" => Task.FromResult(self.Valid && ((ValidateIdentitySessionCommand)args![0]!).SessionId == self.SessionId
+                    ? OperationResultFactory.Success(new IdentityValidatedSession<Profile>(self.User, IdentitySessionAssurance.TotpVerified))
+                    : OperationResultFactory.Fail<IdentityValidatedSession<Profile>>(new Error("invalid", "invalid", ErrorType.Unauthorized))),
+                "CreateAsync" => Create(self, (CreateIdentitySessionCommand)args![0]!),
                 "RevokeByIdAsync" => Task.FromResult(OperationResultFactory.Success()),
                 _ => throw new NotSupportedException(targetMethod.Name),
             };
         }
-        private static Task<OperationResult<IssuedIdentitySession>> Create(IdentityProxy self)
+        private static Task<OperationResult<IssuedIdentitySession>> Create(IdentityProxy self, CreateIdentitySessionCommand command)
         {
+            self.CreatedAssurance = command.Assurance;
             self.Created++;
             if (self.FailCreate) return Task.FromResult(OperationResultFactory.Fail<IssuedIdentitySession>(new Error("invalid",
                 "invalid",

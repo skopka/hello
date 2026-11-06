@@ -210,6 +210,16 @@ public interface IHelloAccessTokenValidator<TProfile>
     Task<OperationResult<IdentityUser<TProfile>>> ValidateAsync(
         string accessToken,
         CancellationToken cancellationToken);
+
+    /// <summary>Validates the token and returns its logical-session assurance; legacy validators report none.</summary>
+    async Task<OperationResult<IdentityValidatedSession<TProfile>>> ValidateWithAssuranceAsync(
+        string accessToken, CancellationToken cancellationToken)
+    {
+        var user = await ValidateAsync(accessToken, cancellationToken);
+        return user.IsSuccess
+            ? OperationResultFactory.Success(new IdentityValidatedSession<TProfile>(user.Value, IdentitySessionAssurance.None))
+            : OperationResultFactory.Fail<IdentityValidatedSession<TProfile>>(user.Errors);
+    }
 }
 
 public interface IHelloIdentityApplication<TProfile>

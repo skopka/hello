@@ -86,6 +86,9 @@ public sealed class PhoneSqliteBlazorBrowserTests(BrowserFixture browser)
                 .ClickAsync();
             await page.Locator("input[name='Phone.DisplayName']")
                 .FillAsync("Browser Guest");
+            var schoolClass = page.Locator("input[name='Phone.Values[schoolClass]']");
+            await Assertions.Expect(schoolClass).ToHaveAccessibleDescriptionAsync("Не школьник — оставьте пустым");
+            await schoolClass.FillAsync("7А");
             await page.Locator(
                 "form:has(input[name='Phone.DisplayName']) button[type='submit']")
                 .ClickAsync();
@@ -98,6 +101,11 @@ public sealed class PhoneSqliteBlazorBrowserTests(BrowserFixture browser)
             await Assertions.Expect(page.Locator(
                 "#hello-profile-displayName-hint.hello-field-hint"))
                 .ToBeVisibleAsync();
+            await Assertions.Expect(page.Locator("input[name='ProfileValues[schoolClass]']"))
+                .ToHaveValueAsync("7А");
+            await page.ReloadAsync();
+            await Assertions.Expect(page.Locator("input[name='ProfileValues[schoolClass]']"))
+                .ToHaveValueAsync("7А");
             await page.GotoAsync($"{address}/private");
             Assert.Equal($"{address}/private", page.Url);
             Assert.Contains("Закрытая страница",

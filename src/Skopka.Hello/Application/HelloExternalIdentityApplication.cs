@@ -280,6 +280,20 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
         }
 
         var user = validated.Value;
+        var assurance = IdentitySessionAssurance.None;
+        if (accessTokenValidators is not null)
+        {
+            foreach (var validator in accessTokenValidators)
+            {
+                var source = await validator.ValidateWithAssuranceAsync(command.AccessToken, cancellationToken);
+                if (source.IsSuccess && source.Value.User.Id == user.Id
+                    && source.Value.User.SecurityStamp == user.SecurityStamp)
+                {
+                    assurance = source.Value.Assurance;
+                    break;
+                }
+            }
+        }
         if (user.Version != command.ExpectedVersion)
         {
             return OperationResultFactory.Fail<HelloSignIn<TProfile>>(
@@ -356,7 +370,8 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
         var signedIn = await CreateSignInAsync(
             mutated.Value,
             command.SessionMetadata,
-            cancellationToken);
+            cancellationToken,
+            assurance);
         return signedIn.IsSuccess
             ? signedIn
             : RestartRequired<TProfile>(signedIn.Errors);
@@ -366,13 +381,15 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
         CreateSignInAsync(
             IdentityUser<TProfile> user,
             IdentitySessionMetadata metadata,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            IdentitySessionAssurance assurance = IdentitySessionAssurance.None)
     {
         var issued = await sessions.CreateAsync(
             new CreateIdentitySessionCommand(
                 user.Id,
                 user.SecurityStamp,
-                metadata),
+                metadata)
+            { Assurance = assurance },
             cancellationToken);
         return issued.IsSuccess
             ? OperationResultFactory.Success(

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Skopka.Hello.UI.Pages;
@@ -13,7 +14,8 @@ public sealed class AccountModel(
     IHelloSessionCookieManager sessionCookies,
     IHelloAccountMessageSender messageSender,
     SkopkaHelloUiOptions uiOptions,
-    IHelloUiLocalizer text)
+    IHelloUiLocalizer text,
+    IHelloUiPhoneBindingApplication? phoneBinding = null)
     : PageModel
 {
     public Guid UserId { get; private set; }
@@ -59,6 +61,39 @@ public sealed class AccountModel(
 
     [BindProperty]
     public Dictionary<string, string?> ProfileValues { get; set; } = [];
+
+    public bool PhoneBindingEnabled => phoneBinding is not null;
+
+    [BindProperty, ValidateNever]
+    public string? BindingPhone { get; set; }
+    [BindProperty, ValidateNever]
+    public string? BindingTicket { get; set; }
+    [BindProperty, ValidateNever]
+    public string? BindingCode { get; set; }
+
+    public async Task<IActionResult> OnPostBeginPhoneBindingAsync(CancellationToken cancellationToken)
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (phoneBinding is null) return NotFound();
+        ModelState.Clear();
+        var result = await phoneBinding.BeginAsync(BindingPhone ?? string.Empty, HttpContext, cancellationToken);
+        if (result.IsSuccess) BindingTicket = result.Value.Ticket;
+        else HelloUiModelState.AddErrors(ModelState, result.Errors, text);
+        return await LoadAccountAsync(true, cancellationToken);
+    }
+
+    public async Task<IActionResult> OnPostCompletePhoneBindingAsync(CancellationToken cancellationToken)
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        if (phoneBinding is null) return NotFound();
+        ModelState.Clear();
+        var result = await phoneBinding.CompleteAsync(BindingTicket ?? string.Empty, BindingCode ?? string.Empty, HttpContext, cancellationToken);
+        if (result.IsSuccess) return RedirectToPage();
+        if (result.Errors.Any(error => error.Code == Skopka.Identity.Errors.IdentityErrorCodes.DuplicatePhone))
+            ModelState.AddModelError(nameof(BindingCode), text["Errors.identity.phone.duplicate"].Value);
+        else HelloUiModelState.AddErrors(ModelState, result.Errors, text);
+        return await LoadAccountAsync(true, cancellationToken);
+    }
 
     public Task<IActionResult> OnGetAsync(
         CancellationToken cancellationToken)

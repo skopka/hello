@@ -134,7 +134,7 @@ internal sealed class HelloOidcApplication<TProfile>(
             {
                 await HelloOidcTicketService.DeleteExternalAsync(httpContext);
                 return Fail<HelloOidcCompletion<TProfile>>(
-                    signedIn.Errors);
+                    WithSecondFactorReturnUrl(signedIn.Errors, ticket.ReturnUrl));
             }
 
             if (!helloOptions.SelfRegistrationEnabled)
@@ -309,6 +309,13 @@ internal sealed class HelloOidcApplication<TProfile>(
         {
             await HelloOidcTicketService.DeletePendingAsync(httpContext);
             return result;
+        }
+
+        if (result.Errors.Any(error => error.Code == HelloSecondFactorErrorCodes.Required
+            && error.Details is HelloSecondFactorRequired))
+        {
+            await HelloOidcTicketService.DeletePendingAsync(httpContext);
+            return Fail<HelloSignIn<TProfile>>(WithSecondFactorReturnUrl(result.Errors, ticket.ReturnUrl));
         }
 
         if (result.Errors.Any(
@@ -929,6 +936,12 @@ internal sealed class HelloOidcApplication<TProfile>(
                 errors.First().Code,
                 code,
                 StringComparison.Ordinal);
+
+    private static Error[] WithSecondFactorReturnUrl(
+        IEnumerable<Error> errors, string? returnUrl)
+        => errors.Select(error => error.Details is HelloSecondFactorRequired pending
+            ? error with { Details = new HelloSecondFactorRequired(pending.Ticket, pending.ExpiresAt, returnUrl) }
+            : error).ToArray();
 
     private static OperationResult<T> Fail<T>(
         Error error)

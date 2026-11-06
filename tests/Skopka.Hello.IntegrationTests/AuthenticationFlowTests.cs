@@ -37,7 +37,7 @@ using Testcontainers.PostgreSql;
 
 namespace Skopka.Hello.IntegrationTests;
 
-public sealed class AuthenticationFlowTests
+public sealed partial class AuthenticationFlowTests
 {
     [Fact]
     public async Task AuthenticatorEnrollmentRequiresPasswordAndBindsConfirmationToSession()
@@ -152,7 +152,7 @@ public sealed class AuthenticationFlowTests
         public Guid RoleId { get; }
         public string? VerificationCode => app.Messages.LastOrDefault(x => x.Kind == HelloAccountMessageKind.AdminActionVerification)?.VerificationCode;
 
-        public static async Task<AdminBrowserHost> CreateAsync()
+        public static async Task<AdminBrowserHost> CreateAsync(bool requireSecondFactor = false)
         {
             var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
             TestApplication? app = null;
@@ -161,7 +161,8 @@ public sealed class AuthenticationFlowTests
                 await postgres.StartAsync();
                 app = await TestApplication.CreateAsync(postgres.GetConnectionString(), authorizationClientsEnabled: true,
                     configureHello: options => options.Totp.Enabled = true,
-                    configureUi: options => options.Localization.Enabled = true);
+                    configureUi: options => options.Localization.Enabled = true,
+                    requireSecondFactor: requireSecondFactor);
                 using var client = app.CreateClient();
                 var actor = await RegisterUiAccountAsync(client, "browser-admin", "browser-admin@example.test", "Browser Admin");
                 var target = await RegisterUiAccountAsync(client, "browser-target", "browser-target@example.test", "Browser Target");
@@ -547,6 +548,111 @@ public sealed class AuthenticationFlowTests
         Assert.Equal(HttpStatusCode.Accepted, valid.StatusCode);
         var message = await app.WaitForMessageAsync(HelloAccountMessageKind.PhoneSignInVerification);
         Assert.Equal("+79991234575", message.RecipientAddress);
+    }
+
+    [Fact]
+    public async Task PhoneBindingRequiresOriginalOnlineSessionAndConsumesProof()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(postgres.GetConnectionString(),
+            configureHello: options => options.PhoneOtpEnabled = true);
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        const string password = "correct horse battery staple";
+        foreach (var name in new[] { "binding-first", "binding-other" })
+        {
+            using var registered = await client.PostAsJsonAsync("/auth/register", new
+            {
+                userName = name,
+                email = name + "@example.test",
+                phone = (string?)null,
+                profile = new { displayName = name, locale = "en" },
+                password
+            });
+            Assert.Equal(HttpStatusCode.Created, registered.StatusCode);
+        }
+        var first = await LoginAsync(client, "binding-first@example.test", password);
+        var other = await LoginAsync(client, "binding-other@example.test", password);
+        using var begun = await SendAuthorizedJsonAsync(client, HttpMethod.Post, "/account/phone/binding",
+            first.AccessToken, new { phone = "+79991234578" });
+        Assert.Equal(HttpStatusCode.OK, begun.StatusCode);
+        Assert.Contains("no-store", begun.Headers.CacheControl?.ToString());
+        using var payload = JsonDocument.Parse(await begun.Content.ReadAsStringAsync());
+        var ticket = payload.RootElement.GetProperty("ticket").GetString();
+        var message = await app.WaitForMessageAsync(HelloAccountMessageKind.PhoneSignInVerification);
+        Assert.NotNull(message.VerificationCode);
+        using var stolen = await SendAuthorizedJsonAsync(client, HttpMethod.Post, "/account/phone/binding/complete",
+            other.AccessToken, new { ticket, code = message.VerificationCode });
+        Assert.False(stolen.IsSuccessStatusCode);
+        using var wrong = await SendAuthorizedJsonAsync(client, HttpMethod.Post, "/account/phone/binding/complete",
+            first.AccessToken, new { ticket, code = message.VerificationCode == "000000" ? "111111" : "000000" });
+        Assert.False(wrong.IsSuccessStatusCode);
+        using var done = await SendAuthorizedJsonAsync(client, HttpMethod.Post, "/account/phone/binding/complete",
+            first.AccessToken, new { ticket, code = message.VerificationCode });
+        Assert.Equal(HttpStatusCode.NoContent, done.StatusCode);
+        using var account = await GetMeAsync(client, first.AccessToken);
+        Assert.Equal("+79991234578", account.RootElement.GetProperty("phone").GetString());
+        Assert.True(account.RootElement.GetProperty("phoneConfirmed").GetBoolean());
+        using var replay = await SendAuthorizedJsonAsync(client, HttpMethod.Post, "/account/phone/binding/complete",
+            first.AccessToken, new { ticket, code = message.VerificationCode });
+        Assert.False(replay.IsSuccessStatusCode);
+    }
+
+    [Fact]
+    public async Task PhoneBindingHidesOccupiedNumberUntilCorrectCodeAndRejectsStaleTicket()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(postgres.GetConnectionString(),
+            configureHello: options => options.PhoneOtpEnabled = true, shortVerificationCooldown: true);
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        const string password = "correct horse battery staple";
+        foreach (var (name, phone) in new[] { ("binding-target", (string?)null), ("binding-owner", "+79991234579") })
+        {
+            using var registered = await client.PostAsJsonAsync("/auth/register", new
+            {
+                userName = name,
+                email = name + "@example.test",
+                phone,
+                profile = new { displayName = name, locale = "en" },
+                password
+            });
+            Assert.Equal(HttpStatusCode.Created, registered.StatusCode);
+        }
+        var login = await LoginAsync(client, "binding-target@example.test", password);
+        using var started = await SendAuthorizedJsonAsync(client, HttpMethod.Post, "/account/phone/binding",
+            login.AccessToken, new { phone = "+79991234579" });
+        Assert.Equal(HttpStatusCode.OK, started.StatusCode);
+        using var startJson = JsonDocument.Parse(await started.Content.ReadAsStringAsync());
+        var ticket = startJson.RootElement.GetProperty("ticket").GetString();
+        var message = await app.WaitForMessageAsync(HelloAccountMessageKind.PhoneSignInVerification);
+        Assert.NotNull(message.VerificationCode);
+        var wrongCode = message.VerificationCode == "000000" ? "111111" : "000000";
+        using var wrong = await SendAuthorizedJsonAsync(client, HttpMethod.Post, "/account/phone/binding/complete",
+            login.AccessToken, new { ticket, code = wrongCode });
+        Assert.NotEqual(HttpStatusCode.Conflict, wrong.StatusCode);
+        Assert.DoesNotContain(IdentityErrorCodes.DuplicatePhone, await wrong.Content.ReadAsStringAsync());
+        using var conflict = await SendAuthorizedJsonAsync(client, HttpMethod.Post, "/account/phone/binding/complete",
+            login.AccessToken, new { ticket, code = message.VerificationCode });
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        Assert.Contains(IdentityErrorCodes.DuplicatePhone, await conflict.Content.ReadAsStringAsync());
+
+        using var staleStart = await SendAuthorizedJsonAsync(client, HttpMethod.Post, "/account/phone/binding",
+            login.AccessToken, new { phone = "+79991234580" });
+        Assert.Equal(HttpStatusCode.OK, staleStart.StatusCode);
+        using var staleJson = JsonDocument.Parse(await staleStart.Content.ReadAsStringAsync());
+        var staleTicket = staleJson.RootElement.GetProperty("ticket").GetString();
+        var staleMessage = app.Messages.Last(entry => entry.Kind == HelloAccountMessageKind.PhoneSignInVerification);
+        using var before = await GetMeAsync(client, login.AccessToken);
+        var version = before.RootElement.GetProperty("version").GetInt64();
+        using var changed = await SendAuthorizedJsonAsync(client, HttpMethod.Put, "/account/user-name",
+            login.AccessToken, new { expectedVersion = version, userName = "binding-renamed" });
+        Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
+        using var stale = await SendAuthorizedJsonAsync(client, HttpMethod.Post, "/account/phone/binding/complete",
+            login.AccessToken, new { ticket = staleTicket, code = staleMessage.VerificationCode });
+        Assert.False(stale.IsSuccessStatusCode);
+        using var after = await GetMeAsync(client, login.AccessToken);
+        Assert.Equal(JsonValueKind.Null, after.RootElement.GetProperty("phone").ValueKind);
     }
 
     [Fact]
@@ -5327,24 +5433,102 @@ public sealed class AuthenticationFlowTests
         async Task<string> CompleteAsync(string action, long? revision)
         {
             form["ActionName"] = action;
+            form["Offset"] = action == "update" ? "50" : "0";
             if (revision.HasValue) form["ExpectedRevision"] = revision.Value.ToString(CultureInfo.InvariantCulture);
             else form.Remove("ExpectedRevision");
             var count = app.Messages.Count(x => x.Kind == HelloAccountMessageKind.AdminActionVerification);
             using var begin = await SendFormAsync(client, "/hello/admin/clients?handler=Begin", cookies, form);
-            Assert.Equal(HttpStatusCode.OK, begin.StatusCode);
-            var beginHtml = await begin.Content.ReadAsStringAsync();
+            Assert.Equal(HttpStatusCode.Redirect, begin.StatusCode);
+            var beginLocation = Assert.IsType<Uri>(begin.Headers.Location).OriginalString;
+            Assert.StartsWith("/hello/admin/clients", beginLocation, StringComparison.Ordinal);
+            Assert.DoesNotContain("handler=", beginLocation, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("challenge", beginLocation, StringComparison.OrdinalIgnoreCase);
+            MergeCookies(cookies, begin);
+            using var pending = await SendAsync(client, HttpMethod.Get, beginLocation, cookies);
+            Assert.Equal(HttpStatusCode.OK, pending.StatusCode);
+            Assert.True(pending.Headers.CacheControl?.NoStore);
+            Assert.Equal("no-cache", pending.Headers.Pragma.ToString());
+            Assert.Equal("no-referrer", pending.Headers.GetValues("Referrer-Policy").Single());
+            MergeCookies(cookies, pending);
+            var beginHtml = await pending.Content.ReadAsStringAsync();
             var actionLabel = action switch { "create" => create, "update" => update, "delete" => delete, _ => rotate };
             Assert.Contains($"{actionLabel}: razor-client", WebUtility.HtmlDecode(beginHtml), StringComparison.Ordinal);
             Assert.DoesNotContain("Admin.Clients.", WebUtility.HtmlDecode(beginHtml), StringComparison.Ordinal);
             var challenge = ReadInputValue(beginHtml, "challengeId");
+            Assert.Equal(form["Offset"], ReadInputValue(beginHtml, "Offset"));
+            Assert.Equal(form["ActionName"], ReadInputValue(beginHtml, "ActionName"));
+            Assert.Equal(form["ClientId"], ReadInputValue(beginHtml, "ClientId"));
+            Assert.Equal(form["DisplayName"], ReadInputValue(beginHtml, "DisplayName"));
+            Assert.Equal(Enum.Parse<HelloAuthorizationClientType>(form["Type"]),
+                Enum.Parse<HelloAuthorizationClientType>(ReadInputValue(beginHtml, "Type")));
+            Assert.Equal(form["Resource"], ReadInputValue(beginHtml, "Resource"));
+            Assert.Equal(form["RedirectUris"], ReadInputValue(beginHtml, "RedirectUris"));
+            Assert.Equal(form["PostLogoutRedirectUris"], ReadInputValue(beginHtml, "PostLogoutRedirectUris"));
+            Assert.Equal(form["SelectedScopes"], ReadInputValue(beginHtml, "SelectedScopes"));
+            Assert.Equal(bool.Parse(form["HonorReauthenticationPrompts"]),
+                bool.Parse(ReadInputValue(beginHtml, "HonorReauthenticationPrompts")));
+            Assert.Equal(revision?.ToString(CultureInfo.InvariantCulture) ?? "", ReadInputValue(beginHtml, "ExpectedRevision"));
+            using (var refresh = await SendAsync(client, HttpMethod.Get, beginLocation, cookies))
+            {
+                Assert.Equal(HttpStatusCode.OK, refresh.StatusCode);
+                var refreshedHtml = await refresh.Content.ReadAsStringAsync();
+                Assert.Equal(challenge, ReadInputValue(refreshedHtml, "challengeId"));
+                MergeCookies(cookies, refresh);
+            }
             form["__RequestVerificationToken"] = ReadInputValue(beginHtml, "__RequestVerificationToken");
             var issued = app.Messages.Where(x => x.Kind == HelloAccountMessageKind.AdminActionVerification).ToArray();
             Assert.Equal(count + 1, issued.Length);
             form["challengeId"] = challenge;
             form["VerificationCode"] = Assert.IsType<string>(issued[^1].VerificationCode);
+            if (action == "create")
+            {
+                var validCode = form["VerificationCode"];
+                form["VerificationCode"] = validCode == "000000" ? "000001" : "000000";
+                using var wrongCode = await SendFormAsync(client, "/hello/admin/clients?handler=Complete", cookies, form);
+                Assert.Equal(HttpStatusCode.OK, wrongCode.StatusCode);
+                MergeCookies(cookies, wrongCode);
+                var wrongHtml = await wrongCode.Content.ReadAsStringAsync();
+                Assert.Contains("id=\"admin-client-pending\"", wrongHtml, StringComparison.Ordinal);
+                Assert.Equal(challenge, ReadInputValue(wrongHtml, "challengeId"));
+                form["VerificationCode"] = validCode;
+            }
             using var complete = await SendFormAsync(client, "/hello/admin/clients?handler=Complete", cookies, form);
-            Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
-            var completeHtml = await complete.Content.ReadAsStringAsync();
+            Assert.Equal(HttpStatusCode.Redirect, complete.StatusCode);
+            var completeLocation = Assert.IsType<Uri>(complete.Headers.Location).OriginalString;
+            Assert.StartsWith("/hello/admin/clients", completeLocation, StringComparison.Ordinal);
+            Assert.DoesNotContain("handler=", completeLocation, StringComparison.OrdinalIgnoreCase);
+            MergeCookies(cookies, complete);
+            var tempDataContext = new DefaultHttpContext { RequestServices = app.Services };
+            tempDataContext.Request.Headers.Cookie = string.Join("; ", cookies
+                .Where(pair => pair.Value.Length > 0)
+                .Select(pair => $"{pair.Key}={pair.Value}"));
+            var tempData = app.Services.GetRequiredService<Microsoft.AspNetCore.Mvc.ViewFeatures.ITempDataProvider>()
+                .LoadTempData(tempDataContext);
+            string? secretToken = null;
+            if (action is "create" or "rotate")
+            {
+                secretToken = Assert.IsType<string>(tempData["ClientsSecretStateToken"]);
+                Assert.True(app.Services.GetRequiredService<HelloUiPrgStateStore>()
+                    .TryGet<object>(secretToken, out _));
+            }
+            using var completedPage = await SendAsync(client, HttpMethod.Get, completeLocation, cookies);
+            Assert.Equal(HttpStatusCode.OK, completedPage.StatusCode);
+            Assert.True(completedPage.Headers.CacheControl?.NoStore);
+            Assert.Equal("no-cache", completedPage.Headers.Pragma.ToString());
+            Assert.Equal("no-referrer", completedPage.Headers.GetValues("Referrer-Policy").Single());
+            MergeCookies(cookies, completedPage);
+            var completeHtml = await completedPage.Content.ReadAsStringAsync();
+            if (secretToken is not null)
+            {
+                var shownSecret = Regex.Match(completeHtml, "<pre>([^<]+)</pre>").Groups[1].Value;
+                Assert.False(string.IsNullOrWhiteSpace(shownSecret));
+                Assert.DoesNotContain(tempData.Values, value => Equals(value, shownSecret));
+                Assert.False(app.Services.GetRequiredService<HelloUiPrgStateStore>()
+                    .TryGet<object>(secretToken, out _));
+                using var refresh = await SendAsync(client, HttpMethod.Get, completeLocation, cookies);
+                Assert.DoesNotContain(shownSecret, await refresh.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+                MergeCookies(cookies, refresh);
+            }
             Assert.Contains(completed, WebUtility.HtmlDecode(completeHtml), StringComparison.Ordinal);
             Assert.DoesNotContain("Admin.Clients.", WebUtility.HtmlDecode(completeHtml), StringComparison.Ordinal);
             form["__RequestVerificationToken"] = ReadInputValue(completeHtml, "__RequestVerificationToken");
@@ -5365,7 +5549,7 @@ public sealed class AuthenticationFlowTests
         }
         form["DisplayName"] = "Renamed Razor Client";
         var updated = await CompleteAsync("update", 1);
-        Assert.Contains("Renamed Razor Client", updated, StringComparison.Ordinal);
+        Assert.Contains(completed, WebUtility.HtmlDecode(updated), StringComparison.Ordinal);
         var rotated = await CompleteAsync("rotate", 2);
         var newSecret = Regex.Match(rotated, "<pre>([^<]+)</pre>").Groups[1].Value;
         Assert.False(string.IsNullOrWhiteSpace(newSecret));
@@ -6121,6 +6305,8 @@ public sealed class AuthenticationFlowTests
         public IReadOnlyList<HelloAccountMessage> Messages =>
             messageSender.Messages;
 
+        public IServiceProvider Services => application.Services;
+
         public async Task<HelloAccountMessage> WaitForMessageAsync(
             HelloAccountMessageKind kind)
         {
@@ -6167,7 +6353,9 @@ public sealed class AuthenticationFlowTests
             Action<PhoneOtpOptions>? configurePhoneOtp = null,
             bool authorizationClientsEnabled = false,
             bool shortVerificationCooldown = false,
-            bool nativeBrowser = false)
+            bool nativeBrowser = false,
+            bool requireSecondFactor = false,
+            Action<IServiceCollection>? configureServices = null)
         {
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions
@@ -6236,6 +6424,10 @@ public sealed class AuthenticationFlowTests
                 })
                 .UseDataProtectionActionTokens()
                 .UseDataProtectionTotp();
+            if (requireSecondFactor)
+            {
+                builder.Services.AddSingleton<IHelloSignInSecondFactorPolicy<IntegrationProfile>, AlwaysRequireSecondFactor>();
+            }
             if (configurePhoneOtp is not null)
             {
                 identity.ConfigurePhoneOtp(configurePhoneOtp);
@@ -6402,6 +6594,7 @@ public sealed class AuthenticationFlowTests
                 HelloAdminDefaults.AdministratorRole,
                 HelloUiDefaults.AuthenticationScheme);
 
+            configureServices?.Invoke(builder.Services);
             var application = builder.Build();
             application.UseStaticFiles();
             if (nativeBrowser) application.MapStaticAssets();

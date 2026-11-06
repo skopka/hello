@@ -34,6 +34,12 @@ public sealed class ExternalCompleteModel(
             cancellationToken);
         if (!result.IsSuccess)
         {
+            var required = result.Errors.FirstOrDefault(error => error.Code == HelloSecondFactorErrorCodes.Required)?.Details as HelloSecondFactorRequired;
+            if (required is not null && prgState is not null)
+            {
+                TempData["SecondFactorStateToken"] = prgState.Store(required);
+                return RedirectToPage("/SkopkaHello/Login", new { ReturnUrl = required.ReturnUrl });
+            }
             HelloUiModelState.AddErrors(
                 ModelState,
                 result.Errors,

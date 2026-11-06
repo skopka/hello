@@ -18,6 +18,14 @@ internal sealed class HelloOAuthAccessTokenValidator<TProfile>(
     : IHelloAccessTokenValidator<TProfile>
 {
     public async Task<OperationResult<IdentityUser<TProfile>>> ValidateAsync(
+        string accessToken, CancellationToken cancellationToken)
+    {
+        var result = await ValidateWithAssuranceAsync(accessToken, cancellationToken);
+        return result.IsSuccess ? OperationResultFactory.Success(result.Value.User)
+            : OperationResultFactory.Fail<IdentityUser<TProfile>>(result.Errors);
+    }
+
+    public async Task<OperationResult<IdentityValidatedSession<TProfile>>> ValidateWithAssuranceAsync(
         string accessToken,
         CancellationToken cancellationToken)
     {
@@ -37,7 +45,7 @@ internal sealed class HelloOAuthAccessTokenValidator<TProfile>(
                 accessToken,
                 StringComparison.Ordinal))
         {
-            return Invalid();
+            return InvalidWithAssurance();
         }
 
         var authentication = await httpContext.AuthenticateAsync(
@@ -60,16 +68,16 @@ internal sealed class HelloOAuthAccessTokenValidator<TProfile>(
                 out var sessionId)
             || sessionId == Guid.Empty)
         {
-            return Invalid();
+            return InvalidWithAssurance();
         }
 
-        return await sessions.ValidateAsync(
+        return await sessions.ValidateWithAssuranceAsync(
             new ValidateIdentitySessionCommand(userId, sessionId),
             cancellationToken);
     }
 
-    private static OperationResult<IdentityUser<TProfile>> Invalid()
-        => OperationResultFactory.Fail<IdentityUser<TProfile>>(
+    private static OperationResult<IdentityValidatedSession<TProfile>> InvalidWithAssurance()
+        => OperationResultFactory.Fail<IdentityValidatedSession<TProfile>>(
             new Error(
                 IdentityErrorCodes.AccessTokenInvalid,
                 "The access token is invalid or expired.",

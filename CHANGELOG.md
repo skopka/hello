@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.28.0
+
+- Redirect successful client administration submissions to a GET and show generated secrets once from server-side state.
+- Add host-required authenticator verification before issuing a session, with recovery-code support and first-factor-authorized enrollment for accounts without an authenticator.
+- Add host-defined phone registration fields and verified phone binding through the existing phone sign-in code flow.
+- Bind administrative authenticator reset to the user version and exact enrollment, remove recovery codes and invalidate existing sessions.
+- Require Skopka.Identity 0.17.0 and its session-assurance migration. Existing sessions have no asserted second factor; accounts subject to the host rule must sign in again.
+
 ## 0.27.1
 
 - Shorten the Admin client revision label and separate read-only URI labels from input hints in English and Russian.

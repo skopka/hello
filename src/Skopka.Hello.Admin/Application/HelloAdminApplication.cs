@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Identity;
 using Skopka.Identity.Errors;
@@ -13,7 +14,7 @@ using Skopka.Identity.Verification;
 
 namespace Skopka.Hello.Admin;
 
-internal sealed class HelloAdminApplication<TProfile>(
+internal sealed partial class HelloAdminApplication<TProfile>(
     IIdentityUserQueryService<TProfile> userQueries,
     IIdentityUserService<TProfile> users,
     IIdentitySessionService<TProfile> sessions,
@@ -25,7 +26,9 @@ internal sealed class HelloAdminApplication<TProfile>(
     HelloDeliveryOptions deliveryOptions,
     SkopkaHelloAdminOptions options,
     HelloStepUpMethodResolver<TProfile>? stepUpMethodResolver = null,
-    IIdentityTotpService<TProfile>? totp = null)
+    IIdentityTotpService<TProfile>? totp = null,
+    IHelloSecurityEventSink? securityEvents = null,
+    ILogger<HelloAdminApplication<TProfile>>? logger = null)
     : IHelloAdminApplication
 {
     private readonly HelloStepUpMethodResolver<TProfile> stepUpMethods =
@@ -127,6 +130,17 @@ internal sealed class HelloAdminApplication<TProfile>(
                 HelloAdminSecurity.SelfMutationForbidden());
         }
 
+        Guid? enrollmentId = null;
+        if (command.Action == HelloAdminUserAction.ResetAuthenticator)
+        {
+            var snapshot = await GetResetEnrollmentAsync(command.TargetUserId, command.Parameters.ExpectedVersion!.Value, cancellationToken);
+            if (!snapshot.IsSuccess)
+            {
+                return OperationResultFactory.Fail<HelloStepUpChallenge>(snapshot.Errors);
+            }
+            enrollmentId = snapshot.Value;
+        }
+
         var selected = await stepUpMethods.SelectAsync(
             actor.Value,
             cancellationToken);
@@ -145,7 +159,8 @@ internal sealed class HelloAdminApplication<TProfile>(
                     command.TargetUserId,
                     command.Action,
                     command.Parameters,
-                    selected.Value),
+                    selected.Value,
+                    enrollmentId),
                 selected.Value.Method,
                 command.ClientKey),
             cancellationToken);
@@ -212,6 +227,17 @@ internal sealed class HelloAdminApplication<TProfile>(
                 HelloAdminSecurity.SelfMutationForbidden());
         }
 
+        Guid? enrollmentId = null;
+        if (command.Action == HelloAdminUserAction.ResetAuthenticator)
+        {
+            var snapshot = await GetResetEnrollmentAsync(command.TargetUserId, command.Parameters.ExpectedVersion!.Value, cancellationToken);
+            if (!snapshot.IsSuccess)
+            {
+                return RestartRequired(snapshot.Errors);
+            }
+            enrollmentId = snapshot.Value;
+        }
+
         var verified = await verification.VerifyAsync(
             new VerifyVerificationChallengeCommand(
                 command.ChallengeId,
@@ -245,7 +271,8 @@ internal sealed class HelloAdminApplication<TProfile>(
                     command.TargetUserId,
                     command.Action,
                     command.Parameters,
-                    selected.Value),
+                    selected.Value,
+                    enrollmentId),
                 command.ChallengeId,
                 verified.Value.Token),
             cancellationToken);
@@ -259,6 +286,7 @@ internal sealed class HelloAdminApplication<TProfile>(
             command.TargetUserId,
             command.Action,
             command.Parameters,
+            enrollmentId,
             cancellationToken);
         return mutated.IsSuccess
             || mutated.Errors.Any(error => string.Equals(
@@ -275,6 +303,7 @@ internal sealed class HelloAdminApplication<TProfile>(
             Guid targetUserId,
             HelloAdminUserAction action,
             HelloAdminUserActionParameters parameters,
+            Guid? enrollmentId,
             CancellationToken cancellationToken)
     {
         switch (action)
@@ -375,8 +404,8 @@ internal sealed class HelloAdminApplication<TProfile>(
                                 ErrorType.Failure));
                     }
 
-                    var reset = await totp.DisableAsync(
-                        targetUserId,
+                    var reset = await totp.ResetAsync(
+                        new ResetTotpCommand(targetUserId, parameters.ExpectedVersion!.Value, enrollmentId!.Value),
                         cancellationToken);
                     if (!reset.IsSuccess)
                     {
@@ -384,6 +413,7 @@ internal sealed class HelloAdminApplication<TProfile>(
                             HelloAdminUserActionResult>(reset.Errors);
                     }
 
+                    ObserveAuthenticatorReset(actorUserId, targetUserId);
                     var revoked = await RevokeSessionsAsync(
                         targetUserId,
                         cancellationToken);
@@ -406,6 +436,66 @@ internal sealed class HelloAdminApplication<TProfile>(
                 throw new ArgumentOutOfRangeException(nameof(action));
         }
     }
+
+    private async Task<OperationResult<Guid>> GetResetEnrollmentAsync(
+        Guid userId, long expectedVersion, CancellationToken cancellationToken)
+    {
+        var queried = await userQueries.QueryAsync(
+            new IdentityUserQuery(Search: userId.ToString("D"), PageSize: 1), cancellationToken);
+        if (!queried.IsSuccess) return OperationResultFactory.Fail<Guid>(queried.Errors);
+        var target = queried.Value.Items.SingleOrDefault(user => user.Id == userId && user.DeletedAt is null);
+        if (target is null) return OperationResultFactory.Fail<Guid>(HelloAdminSecurity.UserNotFound());
+        if (target.Version != expectedVersion) return OperationResultFactory.Fail<Guid>(HelloAdminSecurity.ConcurrencyConflict());
+        if (totp is null)
+        {
+            return OperationResultFactory.Fail<Guid>(new Error(
+                IdentityErrorCodes.VerificationMethodUnavailable,
+                "Authenticator support is not configured.", ErrorType.Failure));
+        }
+
+        var status = await totp.GetStatusAsync(userId, cancellationToken);
+        if (!status.IsSuccess)
+        {
+            return OperationResultFactory.Fail<Guid>(status.Errors);
+        }
+        if (!status.Value.IsEnabled || status.Value.EnrollmentId is null)
+        {
+            return OperationResultFactory.Fail<Guid>(new Error(
+                IdentityErrorCodes.TotpNotEnabled,
+                "An authenticator is not enabled.", ErrorType.Conflict));
+        }
+        return OperationResultFactory.Success(status.Value.EnrollmentId.Value);
+    }
+
+    private void ObserveAuthenticatorReset(Guid actorUserId, Guid targetUserId)
+    {
+        var eventId = Guid.NewGuid();
+        try
+        {
+            var result = securityEvents?.Write(new HelloSecurityEventEnvelope(
+                eventId, HelloAdminSecurityEventTypes.AuthenticatorReset,
+                targetUserId, actorUserId, null, null, DateTimeOffset.UtcNow,
+                new Dictionary<string, string>()));
+            if (result is not null && !result.IsSuccess && logger is not null)
+            {
+                SecurityEventSinkFailed(logger, eventId, null);
+            }
+        }
+        catch (Exception exception)
+        {
+            if (logger is not null)
+            {
+                SecurityEventSinkFailed(logger, eventId, exception);
+            }
+        }
+    }
+
+    [LoggerMessage(
+        EventId = 2102,
+        Level = LogLevel.Error,
+        Message = "Admin authenticator reset security-event sink failed for event {eventId}.")]
+    private static partial void SecurityEventSinkFailed(
+        ILogger logger, Guid eventId, Exception? exception);
 
     private async Task<OperationResult<HelloAdminUserActionResult>>
         ConfirmEmailAsync(

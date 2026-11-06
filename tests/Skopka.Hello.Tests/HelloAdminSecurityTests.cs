@@ -80,6 +80,24 @@ public sealed class HelloAdminSecurityTests
             StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void ResetBindingIncludesExactEnrollment()
+    {
+        var actor = Guid.NewGuid();
+        var target = Guid.NewGuid();
+        var enrollment = Guid.NewGuid();
+        var parameters = new HelloAdminUserActionParameters(ExpectedVersion: 2);
+        var binding = HelloAdminSecurity.CreateBinding(actor, target,
+            HelloAdminUserAction.ResetAuthenticator, parameters,
+            HelloDeliveryChannel.Email, "admin@example.test", enrollment);
+        Assert.NotEqual(binding, HelloAdminSecurity.CreateBinding(actor, target,
+            HelloAdminUserAction.ResetAuthenticator, parameters,
+            HelloDeliveryChannel.Email, "admin@example.test", Guid.NewGuid()));
+        Assert.NotEqual(binding, HelloAdminSecurity.CreateBinding(actor, target,
+            HelloAdminUserAction.ResetAuthenticator, parameters with { ExpectedVersion = 3 },
+            HelloDeliveryChannel.Email, "admin@example.test", enrollment));
+    }
+
     [Theory]
     [InlineData(HelloAdminSecurity.BlockAction, "hello:admin.user.block")]
     [InlineData(HelloAdminSecurity.UnblockAction, "hello:admin.user.unblock")]
@@ -140,17 +158,20 @@ public sealed class HelloAdminSecurityTests
     }
 
     [Fact]
-    public void ResetAuthenticatorRequiresNoTargetVersionOrReason()
+    public void ResetAuthenticatorRequiresTargetVersionAndNoReason()
     {
         Assert.Null(HelloAdminSecurity.Validate(
             Guid.NewGuid(),
             HelloAdminUserAction.ResetAuthenticator,
-            new HelloAdminUserActionParameters()));
+            new HelloAdminUserActionParameters(ExpectedVersion: 1)));
 
+        Assert.NotNull(HelloAdminSecurity.Validate(
+            Guid.NewGuid(), HelloAdminUserAction.ResetAuthenticator,
+            new HelloAdminUserActionParameters()));
         var error = HelloAdminSecurity.Validate(
             Guid.NewGuid(),
             HelloAdminUserAction.ResetAuthenticator,
-            new HelloAdminUserActionParameters(Reason: "manual"));
+            new HelloAdminUserActionParameters(ExpectedVersion: 1, Reason: "manual"));
 
         Assert.NotNull(error);
         Assert.Equal("identity.validation.failed", error.Code);

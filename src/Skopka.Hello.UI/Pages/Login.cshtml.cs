@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Skopka.Identity.Authentication;
+using QRCoder;
 
 namespace Skopka.Hello.UI.Pages;
 
@@ -17,9 +18,26 @@ public sealed class LoginModel(
     IHelloUiCrossDeviceApplication? crossDevice = null,
     IHelloUiWebAuthnApplication? passkeys = null,
     IHelloUiPhoneApplication? phoneApplication = null,
-    SkopkaHelloOptions? helloOptions = null)
+    SkopkaHelloOptions? helloOptions = null,
+    IHelloUiSecondFactorApplication? secondFactor = null,
+    HelloUiPrgStateStore? prgState = null)
     : PageModel
 {
+    [TempData]
+    public string? SecondFactorStateToken { get; set; }
+
+    [BindProperty]
+    public string? SecondFactorTicket { get; set; }
+
+    [BindProperty]
+    public string? SecondFactorCode { get; set; }
+
+    public bool SecondFactorActive { get; private set; }
+    public string SecondFactorView { get; private set; } = string.Empty;
+    public string? SecondFactorSecret { get; private set; }
+    public string? SecondFactorQrCode { get; private set; }
+    public IReadOnlyList<string> SecondFactorRecoveryCodes { get; private set; } = [];
+
     [BindProperty]
     public InputModel Input { get; set; } = new();
 
@@ -71,6 +89,8 @@ public sealed class LoginModel(
 
     public bool PhoneEnabled => phoneApplication is not null;
 
+    public IReadOnlyList<HelloUiProfileField> PhoneRegistrationFields => phoneApplication?.RegistrationFields ?? [];
+
     public bool PasswordEnabled => helloOptions?.PasswordSignInEnabled ?? true;
 
     [BindProperty]
@@ -86,6 +106,7 @@ public sealed class LoginModel(
         public string RegistrationToken { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
         public string? Locale { get; set; }
+        public Dictionary<string, string?> Values { get; set; } = [];
         [Required(ErrorMessage = "Validation.Required")]
         [Display(Name = "Field.AcceptTermsOfService")]
         public bool AcceptTermsOfService { get; set; }
@@ -145,6 +166,7 @@ public sealed class LoginModel(
             cancellationToken);
         if (!signedIn.IsSuccess)
         {
+            if (StartSecondFactor(signedIn.Errors)) return RedirectToPage("/SkopkaHello/Login", new { ReturnUrl });
             HelloUiModelState.AddErrors(ModelState, signedIn.Errors, text);
             return Page();
         }
@@ -178,8 +200,23 @@ public sealed class LoginModel(
 
     public async Task<IActionResult> OnGetAsync(
         bool registered,
-        bool passwordReset)
+        bool passwordReset,
+        CancellationToken cancellationToken = default)
     {
+        if (prgState is not null && secondFactor is not null
+            && prgState.TryTake<HelloSecondFactorRequired>(SecondFactorStateToken, out var pending))
+        {
+            HelloUiSensitivePage.ApplyResponseHeaders(Response);
+            var status = await secondFactor.InspectAsync(pending!.Ticket, cancellationToken);
+            if (status.IsSuccess)
+            {
+                SecondFactorActive = true;
+                SecondFactorTicket = pending.Ticket;
+                SecondFactorView = status.Value.Stage == HelloSecondFactorStage.Enroll ? "start-enroll" : "start-verify";
+                return Page();
+            }
+        }
+
         var authentication = await HttpContext.AuthenticateAsync(
             HelloUiDefaults.AuthenticationScheme);
         if (authentication.Succeeded)
@@ -232,6 +269,7 @@ public sealed class LoginModel(
             cancellationToken);
         if (!result.IsSuccess)
         {
+            if (StartSecondFactor(result.Errors)) return RedirectToPage("/SkopkaHello/Login", new { ReturnUrl });
             HelloUiModelState.AddErrors(
                 ModelState,
                 result.Errors,
@@ -248,6 +286,133 @@ public sealed class LoginModel(
             ? LocalRedirect(ReturnUrl)
             : LocalRedirect(
                 uiOptions.GetAuthenticatedRedirectPath(routes));
+    }
+
+    private bool StartSecondFactor(IReadOnlyCollection<Skopka.Abstraction.OperationResult.Error> errors)
+    {
+        var required = errors.FirstOrDefault(error => error.Code == HelloSecondFactorErrorCodes.Required)?.Details as HelloSecondFactorRequired;
+        if (required is null || prgState is null || secondFactor is null) return false;
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        SecondFactorStateToken = prgState.Store(required);
+        return true;
+    }
+
+    public async Task<IActionResult> OnPostSecondFactorStartAsync(string mode, CancellationToken cancellationToken)
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        ModelState.Clear();
+        SecondFactorActive = true;
+        var transport = sessionCookies.ValidateTransport(HttpContext);
+        if (!transport.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, transport.Errors, text);
+            return Page();
+        }
+        if (secondFactor is null) return NotFound();
+        if (mode == "enroll")
+        {
+            var result = await secondFactor.BeginEnrollmentAsync(SecondFactorTicket ?? string.Empty, HttpContext, cancellationToken);
+            if (result.IsSuccess)
+            {
+                SecondFactorTicket = result.Value.Ticket;
+                SecondFactorSecret = result.Value.Secret;
+                using (var generator = new QRCodeGenerator())
+                using (var qr = generator.CreateQrCode(result.Value.ProvisioningUri, QRCodeGenerator.ECCLevel.M))
+                using (var png = new PngByteQRCode(qr))
+                {
+                    SecondFactorQrCode = "data:image/png;base64," + Convert.ToBase64String(png.GetGraphic(5));
+                }
+                SecondFactorView = "enroll";
+                ModelState.Clear();
+                return Page();
+            }
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
+            SecondFactorView = "start-enroll";
+        }
+        else
+        {
+            var result = await secondFactor.BeginVerificationAsync(SecondFactorTicket ?? string.Empty, HttpContext, cancellationToken);
+            if (result.IsSuccess)
+            {
+                SecondFactorTicket = result.Value.Ticket;
+                SecondFactorView = "verify";
+                ModelState.Clear();
+                return Page();
+            }
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
+            SecondFactorView = "start-verify";
+        }
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostSecondFactorVerifyAsync(string mode, CancellationToken cancellationToken)
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        ModelState.Clear();
+        SecondFactorActive = true;
+        var transport = sessionCookies.ValidateTransport(HttpContext);
+        if (!transport.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, transport.Errors, text);
+            return Page();
+        }
+        if (secondFactor is null) return NotFound();
+        if (mode == "enroll")
+        {
+            var result = await secondFactor.ConfirmEnrollmentAsync(SecondFactorTicket ?? string.Empty, SecondFactorCode ?? string.Empty, HttpContext, cancellationToken);
+            if (result.IsSuccess)
+            {
+                SecondFactorTicket = result.Value.Ticket;
+                SecondFactorRecoveryCodes = result.Value.RecoveryCodes;
+                SecondFactorView = "recovery";
+                ModelState.Clear();
+                return Page();
+            }
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text, _ => nameof(SecondFactorCode));
+            SecondFactorView = "enroll";
+            return Page();
+        }
+        var signedIn = await secondFactor.CompleteVerificationAsync(SecondFactorTicket ?? string.Empty, SecondFactorCode ?? string.Empty, HttpContext, cancellationToken);
+        if (!signedIn.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, signedIn.Errors, text, _ => nameof(SecondFactorCode));
+            SecondFactorView = "verify";
+            return Page();
+        }
+        return await FinishSecondFactorAsync(signedIn.Value);
+    }
+
+    public async Task<IActionResult> OnPostSecondFactorAcknowledgeAsync(CancellationToken cancellationToken)
+    {
+        HelloUiSensitivePage.ApplyResponseHeaders(Response);
+        ModelState.Clear();
+        var transport = sessionCookies.ValidateTransport(HttpContext);
+        if (!transport.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, transport.Errors, text);
+            return Page();
+        }
+        if (secondFactor is null) return NotFound();
+        var result = await secondFactor.AcknowledgeAsync(SecondFactorTicket ?? string.Empty, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, result.Errors, text);
+            return Page();
+        }
+        return await FinishSecondFactorAsync(result.Value);
+    }
+
+    private async Task<IActionResult> FinishSecondFactorAsync(HelloUiSignIn signIn)
+    {
+        var transport = sessionCookies.ValidateTransport(HttpContext);
+        if (!transport.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, transport.Errors, text);
+            return Page();
+        }
+        await HelloUiSession.EstablishAsync(HttpContext, sessionCookies, signIn);
+        return Url.IsLocalUrl(ReturnUrl) ? LocalRedirect(ReturnUrl)
+            : LocalRedirect(uiOptions.GetAuthenticatedRedirectPath(routes));
     }
 
     public async Task<IActionResult> OnPostPhoneRequestAsync(
@@ -302,6 +467,7 @@ public sealed class LoginModel(
             Phone.RequestId, Phone.Code, HttpContext, cancellationToken);
         if (!result.IsSuccess)
         {
+            if (StartSecondFactor(result.Errors)) return RedirectToPage("/SkopkaHello/Login", new { ReturnUrl });
             HelloUiModelState.AddErrors(ModelState, result.Errors, text);
             return Page();
         }
@@ -348,21 +514,37 @@ public sealed class LoginModel(
             return Page();
         }
 
+        if (Request.Form.Any(pair => pair.Key.StartsWith("Phone.Values[", StringComparison.Ordinal)
+            && pair.Value.Count != 1))
+        {
+            ModelState.AddModelError(string.Empty, text["Errors.hello.ui.registration_fields_invalid"].Value);
+            return Page();
+        }
+
         ModelState.SetModelValue("Phone.AcceptTermsOfService", Phone.AcceptTermsOfService.ToString(), Phone.AcceptTermsOfService.ToString());
         ModelState.SetModelValue("Phone.AcceptPrivacyPolicy", Phone.AcceptPrivacyPolicy.ToString(), Phone.AcceptPrivacyPolicy.ToString());
         ModelState.SetModelValue("Phone.Locale", Phone.Locale, Phone.Locale);
-        var result = await phoneApplication.RegisterAsync(
+        var result = await phoneApplication.RegisterWithValuesAsync(
             Phone.RegistrationToken,
             Phone.DisplayName,
             Phone.Locale,
             Phone.AcceptTermsOfService,
             Phone.AcceptPrivacyPolicy,
+            Phone.Values,
             HttpContext,
             cancellationToken);
         if (!result.IsSuccess)
         {
+            if (StartSecondFactor(result.Errors)) return RedirectToPage("/SkopkaHello/Login", new { ReturnUrl });
+            foreach (var field in PhoneRegistrationFields)
+            {
+                var key = $"Phone.Values[{field.Name}]";
+                var value = Phone.Values.GetValueOrDefault(field.Name);
+                ModelState.SetModelValue(key, value, value);
+            }
             HelloUiModelState.AddErrors(ModelState, result.Errors, text,
-                field => $"Phone.{field}");
+                field => PhoneRegistrationFields.Any(item => item.Name == field)
+                    ? $"Phone.Values[{field}]" : $"Phone.{field}");
             return Page();
         }
 

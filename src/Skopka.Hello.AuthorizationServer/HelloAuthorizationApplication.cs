@@ -54,7 +54,7 @@ internal sealed class HelloAuthorizationApplication<TProfile>(
         string clientName,
         CancellationToken cancellationToken)
     {
-        var source = await sessions.ValidateAsync(
+        var source = await sessions.ValidateWithAssuranceAsync(
             new ValidateIdentitySessionCommand(userId, sourceSessionId),
             cancellationToken);
         if (!source.IsSuccess)
@@ -65,17 +65,18 @@ internal sealed class HelloAuthorizationApplication<TProfile>(
 
         var registered = await sessions.RegisterAsync(
             new RegisterIdentitySessionCommand(
-                source.Value.Id,
-                source.Value.SecurityStamp,
-                new IdentitySessionMetadata(clientName)),
+                source.Value.User.Id,
+                source.Value.User.SecurityStamp,
+                new IdentitySessionMetadata(clientName))
+            { Assurance = source.Value.Assurance },
             cancellationToken);
         return registered.IsSuccess
             ? OperationResultFactory.Success(
                 new HelloAuthorizationSubject(
-                    source.Value.Id,
+                    source.Value.User.Id,
                     registered.Value.SessionId,
                     await ProjectClaimsAsync(
-                        source.Value,
+                        source.Value.User,
                         cancellationToken)))
             : OperationResultFactory.Fail<HelloAuthorizationSubject>(
                 registered.Errors);

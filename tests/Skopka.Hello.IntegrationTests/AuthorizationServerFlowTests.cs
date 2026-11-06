@@ -104,6 +104,7 @@ public sealed class AuthorizationServerFlowTests
         Assert.NotEqual(
             TestSessionRegistry.SourceSessionId,
             host.Sessions.LastRegisteredSessionId);
+        Assert.Equal(IdentitySessionAssurance.TotpVerified, host.Sessions.LastRegisteredAssurance);
 
         var refreshed = await ExchangeAsync(
             host.Client,
@@ -1427,6 +1428,14 @@ public sealed class AuthorizationServerFlowTests
             [SourceSessionId];
 
         public Guid LastRegisteredSessionId { get; private set; }
+        public IdentitySessionAssurance LastRegisteredAssurance { get; private set; }
+
+        public Task<OperationResult<IdentityValidatedSession<TestProfile>>> ValidateWithAssuranceAsync(
+            ValidateIdentitySessionCommand command, CancellationToken ct)
+            => Task.FromResult(command.UserId == UserId && activeSessions.Contains(command.SessionId)
+                ? OperationResultFactory.Success(new IdentityValidatedSession<TestProfile>(CreateUser(),
+                    command.SessionId == SourceSessionId ? IdentitySessionAssurance.TotpVerified : LastRegisteredAssurance))
+                : OperationResultFactory.Fail<IdentityValidatedSession<TestProfile>>(InvalidSession()));
 
         public Task<OperationResult<IdentitySessionInfo>> RegisterAsync(
             RegisterIdentitySessionCommand command,
@@ -1440,6 +1449,7 @@ public sealed class AuthorizationServerFlowTests
             }
 
             LastRegisteredSessionId = Guid.NewGuid();
+            LastRegisteredAssurance = command.Assurance;
             activeSessions.Add(LastRegisteredSessionId);
             var now = DateTimeOffset.UtcNow;
             return Task.FromResult(OperationResultFactory.Success(

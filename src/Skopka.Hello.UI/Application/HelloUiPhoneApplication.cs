@@ -9,6 +9,13 @@ public sealed record HelloUiPhoneVerification(
 
 public interface IHelloUiPhoneApplication
 {
+    IReadOnlyList<HelloUiProfileField> RegistrationFields => [];
+
+    Task<OperationResult<HelloUiSignIn>> RegisterWithValuesAsync(
+        string registrationToken, string displayName, string? locale, bool acceptTerms, bool acceptPrivacy,
+        IReadOnlyDictionary<string, string?> values, HttpContext httpContext, CancellationToken cancellationToken)
+        => RegisterAsync(registrationToken, displayName, locale, acceptTerms, acceptPrivacy, httpContext, cancellationToken);
+
     Task<OperationResult<HelloPhoneCodeRequest>> RequestAsync(
         string phone,
         HttpContext httpContext,
@@ -36,9 +43,12 @@ internal sealed class HelloUiPhoneApplication<TProfile>(
     IHelloRequestContext requestContext,
     IHelloRegistrationConsentPolicy consentPolicy,
     SkopkaHelloOptions options,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IHelloUiRegistrationFields? registrationFields = null)
     : IHelloUiPhoneApplication
 {
+    public IReadOnlyList<HelloUiProfileField> RegistrationFields => registrationFields?.GetFields() ?? [];
+
     public Task<OperationResult<HelloPhoneCodeRequest>> RequestAsync(
         string phone,
         HttpContext httpContext,
@@ -84,7 +94,20 @@ internal sealed class HelloUiPhoneApplication<TProfile>(
         bool acceptPrivacy,
         HttpContext httpContext,
         CancellationToken cancellationToken)
+        => await RegisterWithValuesAsync(registrationToken, displayName, locale, acceptTerms, acceptPrivacy,
+            new Dictionary<string, string?>(), httpContext, cancellationToken);
+
+    public async Task<OperationResult<HelloUiSignIn>> RegisterWithValuesAsync(
+        string registrationToken, string displayName, string? locale, bool acceptTerms, bool acceptPrivacy,
+        IReadOnlyDictionary<string, string?> values, HttpContext httpContext, CancellationToken cancellationToken)
     {
+        var fields = RegistrationFields;
+        var validation = HelloUiRegistrationFieldsValidator.Validate(fields, values);
+        if (!validation.IsSuccess)
+            return OperationResultFactory.Fail<HelloUiSignIn>(validation.Errors);
+        var checkedValues = registrationFields?.Validate(values);
+        if (checkedValues is not null && !checkedValues.IsSuccess)
+            return OperationResultFactory.Fail<HelloUiSignIn>(checkedValues.Errors);
         var consent = consentPolicy.Validate(
             new HelloRegistrationConsent(
                 acceptTerms,
@@ -101,6 +124,7 @@ internal sealed class HelloUiPhoneApplication<TProfile>(
             displayName, locale)
         {
             RegistrationConsent = consent.Value,
+            Values = checkedValues?.Value ?? values,
         });
         if (!profile.IsSuccess)
         {

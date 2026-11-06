@@ -461,6 +461,39 @@ public sealed class ExternalOidcFlowTests
     }
 
     [Fact]
+    public async Task ExternalRegistrationWithRequiredFactorReturnsContinuationWithoutSession()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        await postgres.StartAsync();
+        await using var authority = await TestOidcAuthority.CreateAsync();
+        await using var hello = await TestHelloApplication.CreateAsync(postgres.GetConnectionString(), authority, requireSecondFactor: true);
+        using var client = hello.CreateClient();
+        Dictionary<string, string> cookies = new(StringComparer.Ordinal);
+        await CompleteHeadlessProviderCallbackAsync(client, authority, cookies, "/app/auth-callback");
+        var antiforgery = cookies[AntiforgeryRequestCookieName];
+        using var completion = await SendHelloJsonAsync(client, HttpMethod.Post, HelloOidcDefaults.ApiCompletionPath, cookies, antiforgeryToken: antiforgery);
+        Assert.Equal(HttpStatusCode.OK, completion.StatusCode);
+        using var registration = await SendHelloJsonAsync(client, HttpMethod.Post, HelloOidcDefaults.ApiRegistrationPath, cookies,
+            new
+            {
+                userName = "external-required",
+                email = "external@example.test",
+                phone = (string?)null,
+                profile = new { displayName = "External", locale = "en" },
+                acceptTermsOfService = true,
+                acceptPrivacyPolicy = true
+            }, antiforgery);
+        Assert.Equal(HttpStatusCode.Unauthorized, registration.StatusCode);
+        using var problem = System.Text.Json.JsonDocument.Parse(await registration.Content.ReadAsStringAsync());
+        Assert.Equal(HelloSecondFactorErrorCodes.Required, problem.RootElement.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(problem.RootElement.GetProperty("secondFactor").GetProperty("ticket").GetString()));
+        Assert.DoesNotContain(RefreshCookieName, cookies.Keys);
+        var state = await hello.ReadIdentityStateAsync();
+        Assert.Equal(1, state.UserCount);
+        Assert.Equal(0, state.SessionCount);
+    }
+
+    [Fact]
     public async Task HeadlessBrowserFlowRegistersAndReusesExternalIdentity()
     {
         await using var postgres = new PostgreSqlBuilder(
@@ -1634,6 +1667,13 @@ public sealed class ExternalOidcFlowTests
         }
     }
 
+    private sealed class RequiredExternalFactor : IHelloSignInSecondFactorPolicy<IntegrationProfile>
+    {
+        public RequiredExternalFactor() { }
+        public Task<bool> RequiresAsync(Skopka.Identity.Users.IdentityUser<IntegrationProfile> user, CancellationToken cancellationToken)
+            => Task.FromResult(true);
+    }
+
     private sealed class TestHelloApplication : IAsyncDisposable
     {
         private readonly WebApplication application;
@@ -1685,7 +1725,8 @@ public sealed class ExternalOidcFlowTests
 
         public static async Task<TestHelloApplication> CreateAsync(
             string connectionString,
-            TestOidcAuthority authority)
+            TestOidcAuthority authority,
+            bool requireSecondFactor = false)
         {
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions
@@ -1720,6 +1761,13 @@ public sealed class ExternalOidcFlowTests
                         options.Audience =
                             "skopka-hello-oidc-integration";
                     });
+            if (requireSecondFactor)
+            {
+                builder.Services.AddSingleton<IHelloSignInSecondFactorPolicy<IntegrationProfile>, RequiredExternalFactor>();
+                var rateKeys = new Dictionary<string, byte[]> { ["v1"] = RandomNumberGenerator.GetBytes(32) };
+                identity.UseHmacRateLimiting("v1", rateKeys);
+                foreach (var key in rateKeys.Values) CryptographicOperations.ZeroMemory(key);
+            }
             var verificationKeys =
                 new Dictionary<string, byte[]>
                 {

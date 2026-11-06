@@ -7,7 +7,7 @@ using Skopka.Hello.IntegrationTests;
 namespace Skopka.Hello.BrowserTests;
 
 [Collection("Container-backed browser tests")]
-public sealed class TotpEnrollmentBrowserTests(BrowserFixture browser) : IClassFixture<BrowserFixture>
+public sealed partial class TotpEnrollmentBrowserTests(BrowserFixture browser) : IClassFixture<BrowserFixture>
 {
     [Theory]
     [InlineData("en")]

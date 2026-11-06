@@ -25,7 +25,15 @@ Version `0.25.2` requires fresh primary authentication before authenticator enro
 
 Version `0.27.0` adds optional [native app sign-in](docs/native-app-sign-in.md), compact authorization-client administration, and a replaceable [email transport](docs/email-transport.md).
 
-The current `0.27.0` vertical slice contains:
+The `0.28.0` candidate adds host-required second-factor sign-in, host-defined phone
+registration fields, verified phone binding and guarded administrator authenticator
+reset. See [mandatory second factor](docs/mandatory-second-factor.md),
+[phone registration and binding](docs/phone-binding.md), and the
+[upgrade guide from 0.25.1](docs/upgrade-0.28.0.md).
+It requires Skopka.Identity `0.17.0`. These versions are prepared locally;
+the documentation site above still describes the published release.
+
+The current `0.28.0` vertical slice contains:
 
 - atomic password registration;
 - passwordless SMS sign-in and atomic registration by verified phone;

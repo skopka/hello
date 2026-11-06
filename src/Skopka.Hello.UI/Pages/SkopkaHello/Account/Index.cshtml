@@ -161,6 +161,32 @@
         </form>
     }
 
+    @if (Model.PhoneBindingEnabled && HelloUiAccountOptions.IsEditable(UiOptions.Account.Phone))
+    {
+        <section id="phone-binding" aria-labelledby="phone-binding-title">
+        <h2 id="phone-binding-title">@Text["PhoneBinding.Title"]</h2>
+        <p>@Text["PhoneBinding.Description"]</p>
+        @if (string.IsNullOrEmpty(Model.BindingTicket))
+        {
+            <form method="post" asp-page-handler="BeginPhoneBinding" class="hello-form">
+                <label asp-for="BindingPhone">@Text["Field.Phone"]</label>
+                <input asp-for="BindingPhone" type="tel" autocomplete="tel" required />
+                <button class="hello-button hello-button-secondary" type="submit">@Text["Phone.RequestCode"]</button>
+            </form>
+        }
+        else
+        {
+            <form method="post" asp-page-handler="CompletePhoneBinding" class="hello-form">
+                <input asp-for="BindingTicket" type="hidden" />
+                <label asp-for="BindingCode">@Text["Phone.Code"]</label>
+                <input asp-for="BindingCode" autocomplete="one-time-code" required />
+                <span asp-validation-for="BindingCode" class="hello-field-error"></span>
+                <button class="hello-button hello-button-secondary" type="submit">@Text["Phone.VerifyCode"]</button>
+            </form>
+        }
+        </section>
+    }
+
     @if (Model.ProfileFields.Count > 0)
     {
         <h2>@Text["Account.EditableProfile"]</h2>

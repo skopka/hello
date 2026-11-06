@@ -135,7 +135,8 @@ internal static class HelloAdminSecurity
         HelloAdminUserAction action,
         HelloAdminUserActionParameters parameters,
         HelloDeliveryChannel channel,
-        string destination)
+        string destination,
+        Guid? enrollmentId = null)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentException.ThrowIfNullOrWhiteSpace(destination);
@@ -163,6 +164,10 @@ internal static class HelloAdminSecurity
             reasonHash,
             ((int)channel).ToString(CultureInfo.InvariantCulture),
             destinationHash);
+        if (enrollmentId is not null)
+        {
+            value = string.Join('|', value, enrollmentId.Value.ToString("D"));
+        }
         return Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     }
@@ -172,14 +177,16 @@ internal static class HelloAdminSecurity
         Guid targetUserId,
         HelloAdminUserAction action,
         HelloAdminUserActionParameters parameters,
-        HelloStepUpMethodSelection selection)
+        HelloStepUpMethodSelection selection,
+        Guid? enrollmentId = null)
         => CreateBinding(
             actorUserId,
             targetUserId,
             action,
             parameters,
             selection.Channel,
-            selection.Destination ?? "totp");
+            selection.Destination ?? "totp",
+            enrollmentId);
 
     public static Error? Validate(
         Guid targetUserId,
@@ -203,8 +210,7 @@ internal static class HelloAdminSecurity
                 $"Reason cannot exceed {MaximumReasonLength} characters.");
         }
 
-        var requiresVersion = action is not HelloAdminUserAction.RevokeSessions
-            and not HelloAdminUserAction.ResetAuthenticator;
+        var requiresVersion = action is not HelloAdminUserAction.RevokeSessions;
         if (requiresVersion && parameters.ExpectedVersion is null)
         {
             return Validation(

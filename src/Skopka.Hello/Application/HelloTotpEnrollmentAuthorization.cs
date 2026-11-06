@@ -199,9 +199,10 @@ internal sealed class HelloTotpEnrollmentAuthorization<TProfile>(
         CancellationToken ct)
     {
         var (user, snapshot) = await Context(token, ct);
-        // Do not turn an authorization for an earlier credential snapshot into
-        // an authorization for a newer one.
-        if (user is null || snapshot is null || snapshot.Version != expectedVersion)
+        // Beginning this exact pending enrollment advances the user version once.
+        // Any concurrent mutation adds another increment and invalidates the proof.
+        if (user is null || snapshot is null || expectedVersion == long.MaxValue
+            || snapshot.Version != expectedVersion + 1)
         {
             return null;
         }

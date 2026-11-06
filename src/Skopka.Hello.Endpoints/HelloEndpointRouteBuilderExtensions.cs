@@ -43,6 +43,10 @@ public static class HelloEndpointRouteBuilderExtensions
 
         if (helloOptions.PhoneOtpEnabled)
         {
+            endpoints.MapPost("/account/phone/binding", BeginPhoneBindingAsync<TProfile>)
+                .RequireAuthorization().WithName("SkopkaHelloBeginPhoneBinding");
+            endpoints.MapPost("/account/phone/binding/complete", CompletePhoneBindingAsync<TProfile>)
+                .RequireAuthorization().WithName("SkopkaHelloCompletePhoneBinding");
             endpoints.MapPost(
                     "/auth/phone/request",
                     RequestPhoneCodeAsync<TProfile>)
@@ -434,6 +438,7 @@ public static class HelloEndpointRouteBuilderExtensions
             .RequireAuthorization()
             .WithName("SkopkaHelloCompleteAccountDeletion");
 
+        endpoints.MapHelloSecondFactor<TProfile>();
         return endpoints;
     }
 
@@ -1739,6 +1744,29 @@ public static class HelloEndpointRouteBuilderExtensions
             : OperationResultProblemMapper.ToResult(
                 result,
                 httpContext);
+    }
+
+    private static async Task<IResult> BeginPhoneBindingAsync<TProfile>(
+        BeginPhoneBindingRequest request, IHelloPhoneBindingApplication<TProfile> application,
+        IHelloRequestContext context, HttpContext httpContext, CancellationToken ct)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var token = ReadBearerToken(httpContext);
+        if (token is null) return InvalidSession(httpContext);
+        var result = await application.BeginAsync(token, request.Phone, context.CreateClientKey(httpContext), ct);
+        return result.IsSuccess ? TypedResults.Ok(result.Value) : OperationResultProblemMapper.ToResult(result, httpContext);
+    }
+
+    private static async Task<IResult> CompletePhoneBindingAsync<TProfile>(
+        CompletePhoneBindingRequest request, IHelloPhoneBindingApplication<TProfile> application,
+        IHelloRequestContext context, HttpContext httpContext, CancellationToken ct)
+    {
+        ApplySensitiveResponseHeaders(httpContext);
+        var token = ReadBearerToken(httpContext);
+        if (token is null) return InvalidSession(httpContext);
+        var result = await application.CompleteAsync(token, request.Ticket, request.Code,
+            context.CreateClientKey(httpContext), ct);
+        return result.IsSuccess ? TypedResults.NoContent() : OperationResultProblemMapper.ToResult(result, httpContext);
     }
 
     private static async Task<IResult> BeginTotpPhoneProofAsync<TProfile>(

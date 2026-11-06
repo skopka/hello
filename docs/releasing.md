@@ -84,3 +84,28 @@ Normal branch pushes and pull requests never publish; their package artifacts
 are retained by CI for 14 days, and CI builds the Server image without pushing
 it. Both CI and the release integration suite require Docker Engine for
 PostgreSQL Testcontainers and the container build.
+
+## Products documentation
+
+Before the release, update the applicable package README, repository docs and
+XML comments for consumer-visible APIs, options, defaults, behavior, packages
+and UI. In the same work, update the Russian and English Products guides,
+overview and examples. If a change has no documentation impact, record the
+explicit reason. Use the canonical workflow at
+`H:\Rep\skopka\products\docs\documentation-workflow.md`.
+
+In `H:\Rep\skopka\products`, review the Products README, `hello/index.md`,
+`en/hello/index.md`, `guides/ru/hello.md` and its subpages,
+`guides/en/hello.md` and its subpages, `api-index/hello/index.md`, and the table
+of contents as needed. Verify examples and snippets against the supported
+version.
+
+After the GitHub tag and the coordinated NuGet package set are available, update the Hello
+pin in `scripts/fetch-sources.sh` to the release tag and its full commit SHA.
+Then run `sh scripts/build.sh` and verify the generated API and links against that pin.
+Do not present unreleased `main` as the current release. Publish Products using
+its existing authorization and workflow; if it is not published, report that
+status clearly. After deployment, verify the public Russian and English
+overviews, guide and API pages, and README/NuGet links at
+https://products.skopka.ru. Record the release version, tag, full SHA, Products
+commit and live-check results in the final release record.

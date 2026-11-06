@@ -182,3 +182,12 @@ The system browser explicitly approves an account; completion requires the
 original WebView binder and S256 verifier plus a one-use receipt delivered in
 the callback fragment. Status never returns the receipt. Keep callback, launch,
 receipt and verifier secrets out of logs; the source browser session is unchanged.
+
+## Consumer documentation
+
+Before releasing any consumer-visible API, option, default, behavior, package or
+UI change, update the relevant package README, repository docs and XML comments,
+and the Russian and English Products guides, overview and examples in the same
+work. If there is no documentation impact, state the explicit reason. Follow the
+Products documentation workflow in `H:\Rep\skopka\products\docs\documentation-workflow.md`
+and the release steps in `docs/releasing.md`.

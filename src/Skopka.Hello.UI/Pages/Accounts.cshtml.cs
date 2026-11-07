@@ -119,7 +119,7 @@ public sealed class AccountsModel(
         => Url.IsLocalUrl(ReturnUrl)
             ? LocalRedirect(ReturnUrl!)
             : LocalRedirect(
-                uiOptions.GetAuthenticatedRedirectPath(routes));
+                HelloUiSite.Redirect(HttpContext, uiOptions, routes));
 
     private void NormalizeReturnUrl()
     {

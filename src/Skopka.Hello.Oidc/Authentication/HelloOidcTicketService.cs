@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Identity.ExternalLogins;
 
@@ -66,6 +67,7 @@ internal sealed class HelloOidcTicketService(
         }
 
         var properties = authenticated.Properties.Items;
+        if (!SiteMatches(httpContext, properties)) return InvalidLinkRequest();
         if (!properties.TryGetValue(
                 HelloOidcProperties.Provider,
                 out var providerId)
@@ -139,6 +141,7 @@ internal sealed class HelloOidcTicketService(
         };
         properties.Items[HelloOidcProperties.Provider] =
             request.ProviderId;
+        properties.Items[HelloOidcProperties.SiteId] = httpContext.RequestServices.GetService<IHelloSiteContext>()?.Current?.Id;
         properties.Items[HelloOidcProperties.ReturnUrl] =
             request.ReturnUrl;
         properties.Items[HelloOidcProperties.FlowId] =
@@ -223,6 +226,7 @@ internal sealed class HelloOidcTicketService(
             ExpiresUtc = ticket.ExpiresAt,
         };
         properties.Items[HelloOidcProperties.Intent] = ticket.Intent;
+        properties.Items[HelloOidcProperties.SiteId] = httpContext.RequestServices.GetService<IHelloSiteContext>()?.Current?.Id;
         properties.Items[HelloOidcProperties.Provider] =
             ticket.Login.Provider;
         properties.Items[HelloOidcProperties.ReturnUrl] =
@@ -273,6 +277,16 @@ internal sealed class HelloOidcTicketService(
         => httpContext.SignOutAsync(
             HelloOidcDefaults.LinkRequestCookieScheme);
 
+    private static bool SiteMatches(HttpContext httpContext, IDictionary<string, string?> properties)
+    {
+        var sites = httpContext.RequestServices.GetService<IHelloSiteContext>();
+        if (httpContext.RequestServices.GetService<SkopkaHelloOptions>()?.Sites.Count is not > 0)
+            return true;
+        return sites?.Current is { ExternalSignInEnabled: true } site
+            && site.IsEnabled(HelloSiteFeatures.ExternalIdentity)
+            && properties.TryGetValue(HelloOidcProperties.SiteId, out var siteId) && siteId == site.Id;
+    }
+
     private async Task<OperationResult<HelloOidcTicket>> ReadAsync(
         HttpContext httpContext,
         string authenticationScheme,
@@ -295,6 +309,7 @@ internal sealed class HelloOidcTicketService(
         }
 
         var properties = authenticated.Properties.Items;
+        if (!SiteMatches(httpContext, properties)) return Invalid();
         if (!properties.TryGetValue(
                 HelloOidcProperties.Intent,
                 out var intent)

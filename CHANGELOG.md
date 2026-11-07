@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.29.0
+
+- Add host-issued one-use access links with independent lifetime and site-bound password and authenticator setup, plus optional revocation of previous credentials and sessions.
+- Support multiple configured public origins with per-site feature and sign-in controls, trusted session scope, host account admission and account-specific session lifetimes. Existing sessions without a site context require a fresh sign-in when explicit sites are enabled.
+- Add per-account self-service authorization and a host-owned mandatory registration-continuation gate for Razor and API requests.
+- Add bounded host SMS through the configured delivery channel and shared budgets, plus authenticated delegated registration after phone proof.
+- Require Skopka.Identity 0.18.0 and apply its session-context, access-link and device-flow migrations before enabling these features.
+
 ## 0.28.4
 
 - Give the account phone-binding code button its own localization key, `PhoneBinding.RequestCode` ("Send code" / "Получить код"), so hosts can override it independently of the sign-in button.

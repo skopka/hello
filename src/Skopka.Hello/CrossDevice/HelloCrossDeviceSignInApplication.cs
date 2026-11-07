@@ -14,7 +14,8 @@ internal sealed class HelloCrossDeviceSignInApplication<TProfile>(
     IIdentityStepUpService<TProfile> stepUp,
     IIdentityVerificationService<TProfile> verification,
     IIdentitySessionService<TProfile> sessions,
-    IEnumerable<IHelloAccessTokenValidator<TProfile>> accessTokenValidators)
+    IEnumerable<IHelloAccessTokenValidator<TProfile>> accessTokenValidators,
+    IHelloSiteContext? sites = null)
     : IHelloCrossDeviceSignInApplication<TProfile>
 {
     public async Task<OperationResult<HelloCrossDeviceSignInRequest>>
@@ -23,6 +24,7 @@ internal sealed class HelloCrossDeviceSignInApplication<TProfile>(
             CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
+        if (!SiteEnabled) return OperationResultFactory.Fail<HelloCrossDeviceSignInRequest>(HelloSiteAccess.Unavailable());
         if (command.ReturnUrl is not null
             && !HelloLocalReturnUrl.IsLocal(command.ReturnUrl))
         {
@@ -40,7 +42,8 @@ internal sealed class HelloCrossDeviceSignInApplication<TProfile>(
                     command.ClientId,
                     command.ReturnUrl,
                     command.SessionMetadata),
-                command.ClientKey),
+                command.ClientKey)
+            { Scope = sites?.Current?.Id },
             cancellationToken);
         return result.IsSuccess
             ? OperationResultFactory.Success(
@@ -186,6 +189,7 @@ internal sealed class HelloCrossDeviceSignInApplication<TProfile>(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
+        if (!SiteEnabled) return OperationResultFactory.Fail(HelloSiteAccess.Unavailable());
         var user = await ValidateTokenAsync(
             command.AccessToken,
             cancellationToken);
@@ -219,11 +223,25 @@ internal sealed class HelloCrossDeviceSignInApplication<TProfile>(
             return OperationResultFactory.Fail(decision.Errors);
         }
 
+        IdentitySessionContext? sourceContext = null;
+        foreach (var validator in accessTokenValidators)
+        {
+            var source = await validator.ValidateWithAssuranceAsync(command.AccessToken, cancellationToken);
+            if (source.IsSuccess && source.Value.User.Id == user.Value.Id
+                && source.Value.User.SecurityStamp == user.Value.SecurityStamp)
+            {
+                sourceContext = source.Value.Context;
+                break;
+            }
+        }
+        if (sites is not null && sourceContext?.Scope != sites.Current?.Id)
+            return OperationResultFactory.Fail(HelloSiteAccess.Denied());
         return await deviceAuthorization.ApproveAsync(
             new ApproveDeviceAuthorizationRequestCommand(
                 command.DeviceCode,
                 user.Value.Id,
-                decision.Value),
+                decision.Value)
+            { Context = sourceContext },
             cancellationToken);
     }
 
@@ -253,6 +271,7 @@ internal sealed class HelloCrossDeviceSignInApplication<TProfile>(
             string browserVerifier,
             CancellationToken cancellationToken)
     {
+        if (!SiteEnabled) return OperationResultFactory.Fail<HelloCompletedCrossDeviceSignIn<TProfile>>(HelloSiteAccess.Unavailable());
         var consumed = await deviceAuthorization.ConsumeAsync(
             new ConsumeDeviceAuthorizationRequestCommand(
                 deviceCode,
@@ -350,6 +369,9 @@ internal sealed class HelloCrossDeviceSignInApplication<TProfile>(
             session.AccessTokenExpiresAt,
             session.RefreshToken,
             session.RefreshTokenExpiresAt);
+
+    private bool SiteEnabled => sites is null || sites.Current is { CrossDeviceSignInEnabled: true } site
+        && site.IsEnabled(HelloSiteFeatures.Login);
 
     private static Error InvalidReturnUrl()
         => new(

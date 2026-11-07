@@ -2,6 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Skopka.Hello;
+using Skopka.Identity.Errors;
+using Microsoft.Extensions.DependencyInjection;
+using Skopka.Abstraction.OperationResult;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -30,6 +33,14 @@ public sealed partial class AuthenticationFlowTests
                 password
             });
             Assert.Equal(HttpStatusCode.Created, registered.StatusCode);
+        }
+        var actor = await LoginAsync(client, "ui-binding@example.test", password);
+        using (var scope = app.Services.CreateScope())
+        {
+            var delegated = scope.ServiceProvider.GetRequiredService<IHelloDelegatedPhoneRegistration<IntegrationProfile>>();
+            var denied = await delegated.BeginAsync(actor.AccessToken, "+79991234581", null, CancellationToken.None);
+            Assert.False(denied.IsSuccess);
+            Assert.DoesNotContain(app.Messages, entry => entry.Kind == HelloAccountMessageKind.PhoneSignInVerification);
         }
         var cookies = await LoginThroughUiAsync(client, "ui-binding@example.test", password, null, "/identity/account");
         using var page = await SendAsync(client, HttpMethod.Get, "/identity/account", cookies);
@@ -152,6 +163,168 @@ public sealed partial class AuthenticationFlowTests
         using var after = await GetMeAsync(client, login.AccessToken);
         Assert.Equal(version, after.RootElement.GetProperty("version").GetInt64());
         Assert.Equal(JsonValueKind.Null, after.RootElement.GetProperty("phone").ValueKind);
+    }
+
+    [Fact]
+    public async Task DelegatedRegistrationRequiresActorAndProofAndNeverSwitchesSession()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(postgres.GetConnectionString(),
+            configureHello: options => options.PhoneOtpEnabled = true,
+            configureServices: services => services.AddSingleton<IHelloDelegatedPhoneRegistrationPolicy<IntegrationProfile>, AllowDelegatedRegistration>());
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        const string password = "correct horse battery staple";
+        foreach (var name in new[] { "parent", "other-parent" })
+        {
+            using var registered = await client.PostAsJsonAsync("/auth/register", new { userName = name, email = name + "@example.test", phone = (string?)null, profile = new { displayName = name, locale = "en" }, password });
+            Assert.Equal(HttpStatusCode.Created, registered.StatusCode);
+        }
+        using var occupied = await client.PostAsJsonAsync("/auth/register", new { userName = "owner", email = "owner@example.test", phone = "+79991234586", profile = new { displayName = "Owner", locale = "en" }, password });
+        Assert.Equal(HttpStatusCode.Created, occupied.StatusCode);
+        var parent = await LoginAsync(client, "parent@example.test", password);
+        var other = await LoginAsync(client, "other-parent@example.test", password);
+        using var initial = await GetMeAsync(client, parent.AccessToken);
+        var parentId = initial.RootElement.GetProperty("id").GetGuid();
+        using var scope = app.Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IHelloDelegatedPhoneRegistration<IntegrationProfile>>();
+        var begun = await service.BeginAsync(parent.AccessToken, "+79991234585", "parent-client", CancellationToken.None);
+        Assert.True(begun.IsSuccess);
+        var sms = await app.WaitForMessageAsync(HelloAccountMessageKind.PhoneSignInVerification);
+        var child = new IntegrationProfile("Child", "en");
+        var stolen = await service.CompleteAsync(other.AccessToken, begun.Value.Ticket, sms.VerificationCode!, "parent-client", child, false, false, CancellationToken.None);
+        Assert.False(stolen.IsSuccess);
+        var wrong = await service.CompleteAsync(parent.AccessToken, begun.Value.Ticket, sms.VerificationCode == "000000" ? "111111" : "000000", "parent-client", child, false, false, CancellationToken.None);
+        Assert.False(wrong.IsSuccess);
+        Assert.DoesNotContain(wrong.Errors, error => error.Code == IdentityErrorCodes.DuplicatePhone);
+        var created = await service.CompleteAsync(parent.AccessToken, begun.Value.Ticket, sms.VerificationCode!, "parent-client", child, false, false, CancellationToken.None);
+        Assert.True(created.IsSuccess);
+        Assert.Equal("+79991234585", created.Value.Phone);
+        Assert.True(created.Value.PhoneConfirmed);
+        Assert.NotEqual(parentId, created.Value.Id);
+        var replay = await service.CompleteAsync(parent.AccessToken, begun.Value.Ticket, sms.VerificationCode!, "parent-client", child, false, false, CancellationToken.None);
+        Assert.False(replay.IsSuccess);
+        var occupiedStart = await service.BeginAsync(parent.AccessToken, "+79991234586", "parent-client", CancellationToken.None);
+        Assert.True(occupiedStart.IsSuccess);
+        var occupiedSms = app.Messages.Last(entry => entry.Kind == HelloAccountMessageKind.PhoneSignInVerification);
+        var occupiedWrong = await service.CompleteAsync(parent.AccessToken, occupiedStart.Value.Ticket,
+            occupiedSms.VerificationCode == "000000" ? "111111" : "000000", "parent-client", child, false, false, CancellationToken.None);
+        Assert.False(occupiedWrong.IsSuccess);
+        Assert.DoesNotContain(occupiedWrong.Errors, error => error.Code == IdentityErrorCodes.DuplicatePhone);
+        var occupiedCorrect = await service.CompleteAsync(parent.AccessToken, occupiedStart.Value.Ticket, occupiedSms.VerificationCode!, "parent-client", child, false, false, CancellationToken.None);
+        Assert.False(occupiedCorrect.IsSuccess);
+        Assert.Contains(occupiedCorrect.Errors, error => error.Code == IdentityErrorCodes.DuplicatePhone);
+        using var stillParent = await GetMeAsync(client, parent.AccessToken);
+        Assert.Equal(parentId, stillParent.RootElement.GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task HostSmsSharesGlobalBudgetWithPhoneOtp()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(postgres.GetConnectionString(),
+            configureHello: options => { options.PhoneOtpEnabled = true; options.DailySmsBudget = 1; });
+        using var scope = app.Services.CreateScope();
+        var sender = scope.ServiceProvider.GetRequiredService<IHelloSmsSender>();
+        var sent = await sender.SendAsync("+79991234587", "Consent: https://example.test/consent", "client", CancellationToken.None);
+        Assert.True(sent.IsSuccess);
+        Assert.Contains(app.Messages, entry => entry.Kind == HelloAccountMessageKind.HostSms && entry.Text == "Consent: https://example.test/consent");
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        using var otp = await client.PostAsJsonAsync("/auth/phone/request", new { phone = "+79991234588" });
+        Assert.False(otp.IsSuccessStatusCode);
+        Assert.DoesNotContain(app.Messages, entry => entry.Kind == HelloAccountMessageKind.PhoneSignInVerification);
+    }
+
+    [Fact]
+    public async Task SiteSpecificLoginUiHidesMethodsAndRejectsDirectPosts()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(postgres.GetConnectionString(), uiPathPrefix: "/identity",
+            nativeBrowser: true,
+            configureHello: options =>
+            {
+                options.PhoneOtpEnabled = true;
+                options.Sites.Add(new HelloSiteOptions { Id = "staff", PublicOrigin = new Uri("https://staff.example.test"), PhoneOtpEnabled = false, SelfRegistrationEnabled = false, EnabledFeatures = HelloSiteFeatures.Login, ApplicationHomeUrl = "/staff-home", AuthenticatedRedirectPath = "/staff-home" });
+                options.Sites.Add(new HelloSiteOptions { Id = "main", PublicOrigin = new Uri("https://main.example.test"), PasswordSignInEnabled = false });
+            });
+        using var staff = app.CreateClient(allowAutoRedirect: false);
+        staff.DefaultRequestHeaders.Host = "staff.example.test";
+        using var staffPage = await staff.GetAsync("/identity/login");
+        Assert.Equal(HttpStatusCode.OK, staffPage.StatusCode);
+        var html = await staffPage.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("name=\"Phone.PhoneNumber\"", html);
+        Assert.DoesNotContain("href=\"/identity/register", html);
+        Assert.Contains("/staff-home", html);
+        using var registration = await staff.GetAsync("/identity/register");
+        Assert.Equal(HttpStatusCode.NotFound, registration.StatusCode);
+        var csrf = ReadInputValue(html, "__RequestVerificationToken");
+        var cookies = new Dictionary<string, string>(StringComparer.Ordinal);
+        MergeCookies(cookies, staffPage);
+        using var phonePost = await SendFormAsync(staff, "/identity/login?handler=PhoneRequest", cookies,
+            new Dictionary<string, string> { ["Phone.PhoneNumber"] = "+79991234589", ["__RequestVerificationToken"] = csrf });
+        Assert.Equal(HttpStatusCode.NotFound, phonePost.StatusCode);
+        using var main = app.CreateClient(allowAutoRedirect: false);
+        main.DefaultRequestHeaders.Host = "main.example.test";
+        using var mainPage = await main.GetAsync("/identity/login");
+        var mainHtml = await mainPage.Content.ReadAsStringAsync();
+        Assert.Contains("name=\"Phone.PhoneNumber\"", mainHtml);
+        Assert.DoesNotContain("name=\"Input.Password\"", mainHtml);
+    }
+
+    [Fact]
+    public async Task AccessLinkUiInspectsWithoutConsumptionAndCompletesOnce()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(postgres.GetConnectionString(), uiPathPrefix: "/identity", accessLinksEnabled: true);
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        using var registered = await client.PostAsJsonAsync("/auth/register", new { userName = "access-link-user", email = "access-link@example.test", phone = (string?)null, profile = new { displayName = "Link user", locale = "en" }, password = "correct horse battery staple" });
+        Assert.Equal(HttpStatusCode.Created, registered.StatusCode);
+        using var registration = JsonDocument.Parse(await registered.Content.ReadAsStringAsync());
+        var userId = registration.RootElement.GetProperty("id").GetGuid();
+        var version = registration.RootElement.GetProperty("version").GetInt64();
+        using var scope = app.Services.CreateScope();
+        var links = scope.ServiceProvider.GetRequiredService<IHelloAccessLinks<IntegrationProfile>>();
+        var issued = await links.IssueAsync(userId, version, "default", false, CancellationToken.None);
+        Assert.True(issued.IsSuccess);
+        Assert.Equal("integration.skopka.test", issued.Value.Url.Host);
+        var cookies = new Dictionary<string, string>(StringComparer.Ordinal);
+        using var page = await SendAsync(client, HttpMethod.Get, issued.Value.Url.PathAndQuery, cookies);
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        MergeCookies(cookies, page);
+        Assert.Equal("no-referrer", page.Headers.GetValues("Referrer-Policy").Single());
+        Assert.Contains("no-store", page.Headers.CacheControl?.ToString());
+        var html = await page.Content.ReadAsStringAsync();
+        var csrf = ReadInputValue(html, "__RequestVerificationToken");
+        Assert.Empty(issued.Value.Url.Query);
+        var token = Uri.UnescapeDataString(issued.Value.Url.Fragment["#token=".Length..]);
+        using var inspect = await SendFormAsync(client, "/identity/access-link?handler=Inspect", cookies,
+            new Dictionary<string, string> { ["Token"] = token, ["__RequestVerificationToken"] = csrf });
+        Assert.Contains("Set a password", await inspect.Content.ReadAsStringAsync());
+        using var secondInspect = await SendFormAsync(client, "/identity/access-link?handler=Inspect", cookies,
+            new Dictionary<string, string> { ["Token"] = token, ["__RequestVerificationToken"] = csrf });
+        Assert.Contains("Set a password", await secondInspect.Content.ReadAsStringAsync());
+        using var begun = await SendFormAsync(client, "/identity/access-link?handler=Begin", cookies,
+            new Dictionary<string, string> { ["Token"] = token, ["__RequestVerificationToken"] = csrf });
+        var enrollmentHtml = await begun.Content.ReadAsStringAsync();
+        var ticket = ReadInputValue(enrollmentHtml, "EnrollmentTicket");
+        csrf = ReadInputValue(enrollmentHtml, "__RequestVerificationToken");
+        var secret = System.Text.RegularExpressions.Regex.Match(enrollmentHtml, "<code>([A-Z2-7]+)</code>").Groups[1].Value;
+        Assert.NotEmpty(secret);
+        using var completed = await SendFormAsync(client, "/identity/access-link?handler=Complete", cookies,
+            new Dictionary<string, string> { ["Token"] = token, ["EnrollmentTicket"] = ticket, ["Password"] = "another strong password 123", ["ConfirmPassword"] = "another strong password 123", ["Code"] = ComputeTotp(secret), ["__RequestVerificationToken"] = csrf });
+        Assert.Contains("recovery codes", (await completed.Content.ReadAsStringAsync()), StringComparison.OrdinalIgnoreCase);
+        using var replay = await SendFormAsync(client, "/identity/access-link?handler=Inspect", cookies,
+            new Dictionary<string, string> { ["Token"] = token, ["__RequestVerificationToken"] = csrf });
+        Assert.Contains("invalid, expired or already used", await replay.Content.ReadAsStringAsync());
+    }
+
+    private sealed class AllowDelegatedRegistration : IHelloDelegatedPhoneRegistrationPolicy<IntegrationProfile>
+    {
+        public Task<OperationResult> AuthorizeAsync(HelloAccount<IntegrationProfile> actor, CancellationToken cancellationToken)
+            => Task.FromResult(OperationResultFactory.Success());
     }
 
 }

@@ -34,7 +34,8 @@ public interface IHelloOidcChallengeService
 internal sealed class HelloOidcChallengeService(
     HelloOidcProviderCatalog providers,
     HelloOidcOptions options,
-    HelloUiRoutePaths uiRoutes)
+    HelloUiRoutePaths uiRoutes,
+    IHelloSiteContext? sites = null)
     : IHelloOidcChallengeService
 {
     public OperationResult<HelloOidcChallenge> CreateTotp(
@@ -153,6 +154,10 @@ internal sealed class HelloOidcChallengeService(
         Guid? sessionId,
         bool headless)
     {
+        if (sites is not null && (sites.Current is not { } site
+            || !site.ExternalSignInEnabled || !site.IsEnabled(HelloSiteFeatures.ExternalIdentity)
+            || intent == HelloOidcProperties.SignInIntent && !site.IsEnabled(HelloSiteFeatures.Login)))
+            return OperationResultFactory.Fail<HelloOidcChallenge>(HelloOidcErrors.ProviderUnavailable());
         if (!providers.TryGet(providerId, out var provider))
         {
             return OperationResultFactory.Fail<HelloOidcChallenge>(
@@ -169,6 +174,7 @@ internal sealed class HelloOidcChallengeService(
             RedirectUri = redirectUri,
         };
         properties.Items[HelloOidcProperties.Intent] = intent;
+        properties.Items[HelloOidcProperties.SiteId] = sites?.Current?.Id;
         properties.Items[HelloOidcProperties.Provider] = provider.Id;
         properties.Items[HelloOidcProperties.ReturnUrl] = returnUrl;
         properties.Items[HelloOidcProperties.FlowId] =

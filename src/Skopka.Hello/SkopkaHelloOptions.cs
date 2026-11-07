@@ -5,6 +5,9 @@ namespace Skopka.Hello;
 
 public sealed class SkopkaHelloOptions
 {
+    /// <summary>Optional explicit public sites. When present, requests from unlisted origins are rejected.</summary>
+    public IList<HelloSiteOptions> Sites { get; } = new List<HelloSiteOptions>();
+
     public HelloTotpOptions Totp { get; } = new();
 
     public HelloWebAuthnOptions WebAuthn { get; } = new();
@@ -70,6 +73,12 @@ public sealed class SkopkaHelloOptions
 
     public void Validate()
     {
+        foreach (var site in Sites) site.Validate();
+        if (Sites.Select(site => site.Id).Distinct(StringComparer.Ordinal).Count() != Sites.Count
+            || Sites.Select(site => site.PublicOrigin.Authority).Distinct(StringComparer.OrdinalIgnoreCase).Count() != Sites.Count)
+            throw new InvalidOperationException("Site ids and origins must be unique.");
+        if (Sites.Count != 0 && !SecureCookies)
+            throw new InvalidOperationException("Multiple public sites require secure host-only cookies.");
         if (DefaultPhoneRegion is not null
             && !string.Equals(DefaultPhoneRegion, "RU", StringComparison.OrdinalIgnoreCase))
         {

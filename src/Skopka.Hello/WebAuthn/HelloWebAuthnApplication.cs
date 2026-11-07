@@ -23,7 +23,8 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
     SkopkaHelloOptions options,
     IIdentityWebAuthnService<TProfile>? credentials = null,
     WebAuthnOptions? webAuthn = null,
-    IEnumerable<IHelloAccessTokenValidator<TProfile>>? accessTokenValidators = null)
+    IEnumerable<IHelloAccessTokenValidator<TProfile>>? accessTokenValidators = null,
+    IHelloSiteContext? siteContext = null)
     : IHelloWebAuthnApplication<TProfile>
 {
     public async Task<OperationResult<HelloWebAuthnRegistrationChallenge>>
@@ -56,7 +57,7 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
         var issued = tickets.Issue(
             HelloWebAuthnCeremony.Registration,
             user.Value.Id,
-            options.WebAuthn.ChallengeLifetime);
+            options.WebAuthn.ChallengeLifetime, siteContext?.Current?.Id);
         return OperationResultFactory.Success(
             new HelloWebAuthnRegistrationChallenge(
                 issued.Ticket,
@@ -133,6 +134,11 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
     {
         ArgumentNullException.ThrowIfNull(command);
         cancellationToken.ThrowIfCancellationRequested();
+        if (siteContext is not null && (siteContext.Current is not { } site
+            || !HelloSiteAccess.AllowsMethod(site, HelloAuthenticationMethods.Passkey)))
+        {
+            return Task.FromResult(OperationResultFactory.Fail<HelloWebAuthnAssertionChallenge>(HelloSiteAccess.Denied()));
+        }
         if (Unavailable<HelloWebAuthnAssertionChallenge>() is { } disabled)
         {
             return Task.FromResult(disabled);
@@ -144,7 +150,7 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
         var issued = tickets.Issue(
             HelloWebAuthnCeremony.SignIn,
             null,
-            options.WebAuthn.ChallengeLifetime);
+            options.WebAuthn.ChallengeLifetime, siteContext?.Current?.Id);
         return Task.FromResult(OperationResultFactory.Success(
             new HelloWebAuthnAssertionChallenge(
                 issued.Ticket,
@@ -159,6 +165,11 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
+        if (siteContext is not null && (siteContext.Current is not { } site
+            || !HelloSiteAccess.AllowsMethod(site, HelloAuthenticationMethods.Passkey)))
+        {
+            return OperationResultFactory.Fail<HelloSignIn<TProfile>>(HelloSiteAccess.Denied());
+        }
         if (Unavailable<HelloSignIn<TProfile>>() is { } disabled)
         {
             return disabled;
@@ -193,7 +204,10 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
             new CreateIdentitySessionCommand(
                 authenticated.Value.Id,
                 authenticated.Value.SecurityStamp,
-                command.SessionMetadata),
+                command.SessionMetadata)
+            {
+                Context = HelloSiteAccess.Session(siteContext, HelloAuthenticationMethods.Passkey)
+            },
             cancellationToken);
         return issued.IsSuccess
             ? OperationResultFactory.Success(new HelloSignIn<TProfile>(
@@ -307,6 +321,9 @@ internal sealed class HelloWebAuthnApplication<TProfile>(
         {
             return Invalid<HelloWebAuthnTicket>();
         }
+
+        if (siteContext is not null && (siteContext.Current is null || payload.SiteId != siteContext.Current.Id))
+            return Invalid<HelloWebAuthnTicket>();
 
         var spent = await flows.TryConsumeAsync(
             payload.FlowId,

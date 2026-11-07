@@ -125,7 +125,7 @@ public sealed class HelloCrossDeviceSignInOptions
                 "Cross-device sign-in requires TOTP to be enabled.");
         }
 
-        if (helloOptions.PublicOrigin is not { Scheme: "https" })
+        if (helloOptions.Sites.Count == 0 && helloOptions.PublicOrigin is not { Scheme: "https" })
         {
             throw new InvalidOperationException(
                 "Cross-device sign-in requires an HTTPS PublicOrigin so approval QR links do not depend on the request Host header.");

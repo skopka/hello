@@ -22,5 +22,7 @@ internal sealed class HelloUiPageApplicationModelConvention
         model.Filters.Add(
             new ServiceFilterAttribute(
                 typeof(HelloUiRequestCultureFilter)));
+        if (model.RelativePath.StartsWith("/Pages/SkopkaHello/", StringComparison.Ordinal))
+            model.Filters.Add(new ServiceFilterAttribute(typeof(HelloUiSiteFilter)));
     }
 }

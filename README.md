@@ -12,7 +12,7 @@ verification and refresh-session state stay in Skopka.Identity.
 
 ## Documentation
 
-Documentation: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html). Repository guides describe version `0.28.4`; the documentation site is updated separately.
+Documentation: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html). Repository guides describe version `0.29.0`; the documentation site is updated separately.
 
 Version `0.25.0` adds optional hints under host-defined account profile
 fields; see [customization](docs/customization.md). It also adds
@@ -25,12 +25,16 @@ Version `0.25.2` requires fresh primary authentication before authenticator enro
 
 Version `0.27.0` adds optional [native app sign-in](docs/native-app-sign-in.md), compact authorization-client administration, and a replaceable [email transport](docs/email-transport.md).
 
+For host-issued setup and recovery links, see [access links](docs/access-links.md).
+Trusted host SMS and delegated phone registration are described in
+[host SMS](docs/host-sms.md).
+
 Version `0.28.0` adds host-required second-factor sign-in, host-defined phone
 registration fields, verified phone binding and guarded administrator authenticator
 reset. See [mandatory second factor](docs/mandatory-second-factor.md),
 [phone registration and binding](docs/phone-binding.md), and the
 [upgrade guide from 0.25.1](docs/upgrade-0.28.0.md).
-This release line requires Skopka.Identity `0.17.0`.
+Version `0.28.0` requires Skopka.Identity `0.17.0`.
 
 Version `0.28.1` prepares the Razor password and phone second-factor step
 before redirecting to its input or enrollment screen and preserves it across
@@ -48,7 +52,16 @@ returns successful binding to the phone section with a one-time confirmation.
 
 Version `0.28.4` gives the account phone-binding button its own localization key, `PhoneBinding.RequestCode` (Send code / Получить код), independent of the sign-in label. See [phone binding](docs/phone-binding.md) for customization.
 
-The current `0.28.4` vertical slice contains:
+Version `0.29.0` requires Skopka.Identity `0.18.0` and adds
+[multiple public sites and account admission](docs/public-sites.md),
+[per-account editing](docs/account-policy.md),
+[mandatory host onboarding](docs/registration-continuation.md),
+[host-issued access links](docs/access-links.md), and
+[host SMS and delegated phone registration](docs/host-sms.md).
+The [host policy example](samples/Skopka.Hello.HostPolicies/README.md)
+shows the integration contracts.
+
+The current `0.29.0` vertical slice contains:
 
 - atomic password registration;
 - passwordless SMS sign-in and atomic registration by verified phone;

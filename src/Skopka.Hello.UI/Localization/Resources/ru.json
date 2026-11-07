@@ -398,6 +398,19 @@
     "Errors.identity.device_authorization.state_invalid": "Запрос входа с другого устройства больше нельзя изменить или завершить.",
     "Errors.identity.device_authorization.step_up_invalid": "Нужно свежее подтверждение через аутентификатор.",
     "Errors.hello.cross_device.return_url_invalid": "Запрошенный адрес возврата запрещён.",
-    "Errors.hello.account_switching.account_unavailable": "Сохранённый аккаунт недоступен или сессия истекла. Войдите снова."
+    "Errors.hello.account_switching.account_unavailable": "Сохранённый аккаунт недоступен или сессия истекла. Войдите снова.",
+    "AccessLink.ConfirmPassword": "Повторите пароль",
+    "AccessLink.PasswordMismatch": "Пароли не совпадают.",
+    "AccessLink.JavaScriptRequired": "Для открытия ссылки необходим JavaScript.",
+    "AccessLink.Title": "Настройка доступа к аккаунту",
+    "AccessLink.Invalid": "Ссылка недействительна, истекла или уже использована.",
+    "AccessLink.Instructions": "Задайте пароль и подключите приложение-аутентификатор.",
+    "AccessLink.Begin": "Продолжить",
+    "AccessLink.AuthenticatorInstructions": "Отсканируйте QR-код в приложении-аутентификаторе или введите ключ вручную.",
+    "AccessLink.QrAlt": "QR-код для настройки аутентификатора",
+    "AccessLink.Password": "Новый пароль",
+    "AccessLink.Code": "Код аутентификатора",
+    "AccessLink.Complete": "Настроить доступ",
+    "AccessLink.RecoveryInstructions": "Сохраните резервные коды в безопасном месте. Повторно они не показываются."
   }
 }

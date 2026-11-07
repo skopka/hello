@@ -195,7 +195,7 @@ internal sealed class HelloAccountEmailTextCatalog
     {
         foreach (var kind in Enum.GetValues<HelloAccountMessageKind>())
         {
-            if (kind == HelloAccountMessageKind.PhoneSignInVerification)
+            if (kind is HelloAccountMessageKind.PhoneSignInVerification or HelloAccountMessageKind.HostSms)
             {
                 continue;
             }

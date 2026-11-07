@@ -415,7 +415,7 @@ internal sealed class HelloNativeAppSignInApplication<TProfile>(
         var issued = await sessions.CreateAsync(new CreateIdentitySessionCommand(user.Value.User.Id,
             user.Value.User.SecurityStamp,
             metadata)
-        { Assurance = user.Value.Assurance },
+        { Assurance = user.Value.Assurance, Context = user.Value.Context },
             cancellationToken);
         if (!issued.IsSuccess)
         {

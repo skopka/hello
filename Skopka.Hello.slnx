@@ -9,6 +9,7 @@
     <Project Path="src/Skopka.Hello.UI/Skopka.Hello.UI.csproj" />
   </Folder>
   <Folder Name="/samples/">
+    <Project Path="samples/Skopka.Hello.HostPolicies/Skopka.Hello.HostPolicies.csproj" />
     <Project Path="samples/Skopka.Hello.Sample/Skopka.Hello.Sample.csproj" />
     <Project Path="samples/Skopka.Hello.PhoneSqliteBlazor/Skopka.Hello.PhoneSqliteBlazor.csproj" />
   </Folder>

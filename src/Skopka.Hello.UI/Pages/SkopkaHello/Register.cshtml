@@ -12,6 +12,7 @@
     </p>
 
     <form method="post" class="hello-form">
+        <input asp-for="ReturnUrl" type="hidden" />
         <div asp-validation-summary="ModelOnly"
              class="hello-validation"
              role="alert"></div>
@@ -117,6 +118,6 @@
 
     <p class="hello-card-footer">
         @Text["Register.AlreadyRegistered"]
-        <a asp-page="/SkopkaHello/Login">@Text["Layout.SignIn"]</a>
+        <a asp-page="/SkopkaHello/Login" asp-route-returnUrl="@Model.ReturnUrl">@Text["Layout.SignIn"]</a>
     </p>
 </section>

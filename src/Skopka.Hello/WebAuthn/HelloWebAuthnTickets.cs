@@ -17,7 +17,10 @@ internal sealed record HelloWebAuthnTicket(
     HelloWebAuthnCeremony Ceremony,
     Guid? UserId,
     byte[] Challenge,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt)
+{
+    public string? SiteId { get; init; }
+}
 
 /// <summary>
 /// Seals a challenge into a string the browser carries and hands back.
@@ -56,21 +59,23 @@ internal sealed class HelloWebAuthnTickets
     public (string Ticket, HelloWebAuthnTicket Payload) Issue(
         HelloWebAuthnCeremony ceremony,
         Guid? userId,
-        TimeSpan lifetime)
+        TimeSpan lifetime,
+        string? siteId = null)
     {
         var payload = new HelloWebAuthnTicket(
             Guid.NewGuid(),
             ceremony,
             userId,
             RandomNumberGenerator.GetBytes(32),
-            time.GetUtcNow().Add(lifetime));
+            time.GetUtcNow().Add(lifetime))
+        { SiteId = siteId };
         var ticket = protector.Protect(JsonSerializer.Serialize(
             new Wire(
                 payload.FlowId,
                 (int)payload.Ceremony,
                 payload.UserId,
                 Base64Url.EncodeToString(payload.Challenge),
-                payload.ExpiresAt.ToUnixTimeSeconds()),
+                payload.ExpiresAt.ToUnixTimeSeconds(), payload.SiteId),
             Json));
         return (ticket, payload);
     }
@@ -124,7 +129,8 @@ internal sealed class HelloWebAuthnTickets
             expected,
             wire.UserId,
             Base64Url.DecodeFromChars(wire.Challenge),
-            expiresAt);
+            expiresAt)
+        { SiteId = wire.SiteId };
     }
 
     private sealed record Wire(
@@ -132,5 +138,6 @@ internal sealed class HelloWebAuthnTickets
         [property: JsonPropertyName("c")] int Ceremony,
         [property: JsonPropertyName("u")] Guid? UserId,
         [property: JsonPropertyName("h")] string Challenge,
-        [property: JsonPropertyName("e")] long ExpiresAt);
+        [property: JsonPropertyName("e")] long ExpiresAt,
+        [property: JsonPropertyName("s")] string? SiteId = null);
 }

@@ -29,7 +29,9 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
     HelloStepUpMethodResolver<TProfile>? stepUpMethodResolver = null,
     IHelloRegistrationConsentPolicy? registrationConsentPolicy = null,
     IHelloRegistrationConsentProfileEnricher<TProfile>?
-        registrationConsentProfileEnricher = null)
+        registrationConsentProfileEnricher = null,
+    IHelloRegistrationContinuation<TProfile>? registrationContinuation = null,
+    IHelloSiteContext? siteContext = null)
     : IHelloExternalIdentityApplication<TProfile>
 {
     private readonly HelloStepUpMethodResolver<TProfile> stepUpMethods =
@@ -47,6 +49,10 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
+
+        if (!HelloSiteAccess.Allows(siteContext, HelloSiteFeatures.Login | HelloSiteFeatures.ExternalIdentity)
+            || siteContext is not null && siteContext.Current?.ExternalSignInEnabled != true)
+            return OperationResultFactory.Fail<HelloSignIn<TProfile>>(HelloSiteAccess.Denied());
 
         var resolved = await externalLogins.ResolveAsync(
             command.Login,
@@ -66,7 +72,10 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        if (!options.SelfRegistrationEnabled)
+        if (!options.SelfRegistrationEnabled
+            || !HelloSiteAccess.Allows(siteContext, HelloSiteFeatures.Registration | HelloSiteFeatures.ExternalIdentity)
+            || siteContext is not null && (siteContext.Current?.SelfRegistrationEnabled != true
+                || siteContext.Current.ExternalSignInEnabled != true))
         {
             return OperationResultFactory.Fail<
                 HelloSignIn<TProfile>>(
@@ -110,6 +119,13 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
             }
 
             profile = enriched.Value;
+        }
+
+        if (registrationContinuation is not null)
+        {
+            var prepared = await registrationContinuation.PrepareProfileAsync(profile, HelloRegistrationKind.External, cancellationToken);
+            if (!prepared.IsSuccess) return OperationResultFactory.Fail<HelloSignIn<TProfile>>(prepared.Errors);
+            profile = prepared.Value;
         }
 
         var phone = command.Phone;
@@ -281,6 +297,7 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
 
         var user = validated.Value;
         var assurance = IdentitySessionAssurance.None;
+        IdentitySessionContext? sourceContext = null;
         if (accessTokenValidators is not null)
         {
             foreach (var validator in accessTokenValidators)
@@ -290,6 +307,7 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
                     && source.Value.User.SecurityStamp == user.SecurityStamp)
                 {
                     assurance = source.Value.Assurance;
+                    sourceContext = source.Value.Context;
                     break;
                 }
             }
@@ -371,7 +389,8 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
             mutated.Value,
             command.SessionMetadata,
             cancellationToken,
-            assurance);
+            assurance,
+            sourceContext);
         return signedIn.IsSuccess
             ? signedIn
             : RestartRequired<TProfile>(signedIn.Errors);
@@ -382,14 +401,15 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
             IdentityUser<TProfile> user,
             IdentitySessionMetadata metadata,
             CancellationToken cancellationToken,
-            IdentitySessionAssurance assurance = IdentitySessionAssurance.None)
+            IdentitySessionAssurance assurance = IdentitySessionAssurance.None,
+            IdentitySessionContext? sourceContext = null)
     {
         var issued = await sessions.CreateAsync(
             new CreateIdentitySessionCommand(
                 user.Id,
                 user.SecurityStamp,
                 metadata)
-            { Assurance = assurance },
+            { Assurance = assurance, Context = sourceContext ?? HelloSiteAccess.Session(siteContext, HelloAuthenticationMethods.External) },
             cancellationToken);
         return issued.IsSuccess
             ? OperationResultFactory.Success(

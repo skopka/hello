@@ -69,7 +69,17 @@ internal static class HelloAccountMessageValidator
             return Invalid();
         }
 
-        if (!isActionMessage && !isVerificationMessage)
+        var isHostSms = message.Kind == HelloAccountMessageKind.HostSms;
+        if (isHostSms && (message.Channel != HelloDeliveryChannel.Sms
+            || string.IsNullOrWhiteSpace(message.Text) || message.Text.Length > 480
+            || message.ActionUrl is not null || message.VerificationCode is not null
+            || message.TemplateVariant is not null))
+        {
+            return Invalid();
+        }
+        if (!isHostSms && message.Text is not null) return Invalid();
+
+        if (!isActionMessage && !isVerificationMessage && !isHostSms)
         {
             return Invalid();
         }

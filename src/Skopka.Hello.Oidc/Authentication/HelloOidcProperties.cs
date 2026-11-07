@@ -3,6 +3,7 @@ namespace Skopka.Hello.Oidc;
 internal static class HelloOidcProperties
 {
     public const string Intent = "hello:oidc:intent";
+    public const string SiteId = "hello:oidc:site";
     public const string Provider = "hello:oidc:provider";
     public const string ReturnUrl = "hello:oidc:return_url";
     public const string UserId = "hello:oidc:user_id";

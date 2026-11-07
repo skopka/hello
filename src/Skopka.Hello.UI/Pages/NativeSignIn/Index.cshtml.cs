@@ -122,12 +122,12 @@ public sealed class NativeSignInModel : PageModel
         Response.Cookies.Delete(Cookie, CookieOptions());
         return Url.IsLocalUrl(result.Value.ReturnUrl)
             ? LocalRedirect(result.Value.ReturnUrl!)
-            : LocalRedirect(Request.PathBase + options.GetAuthenticatedRedirectPath(routes));
+            : LocalRedirect(Request.PathBase + HelloUiSite.Redirect(HttpContext, options, routes));
     }
 
     private bool OriginValid()
     {
-        var configured = HttpContext.RequestServices.GetRequiredService<SkopkaHelloOptions>().PublicOrigin;
+        var configured = HttpContext.RequestServices.GetRequiredService<IHelloSiteContext>().Current?.PublicOrigin;
         return configured is not null && Request.IsHttps && Request.Headers.Origin.Count == 1
             && Uri.TryCreate(Request.Headers.Origin.ToString(), UriKind.Absolute, out var origin)
             && origin.AbsolutePath == "/" && origin.Query.Length == 0

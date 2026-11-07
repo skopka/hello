@@ -40,16 +40,16 @@ semantic-version tag:
 ```shell
 git switch main
 git pull --ff-only
-git tag -a v0.28.4 -m "Skopka.Hello 0.28.4"
-git push origin v0.28.4
+git tag -a v0.29.0 -m "Skopka.Hello 0.29.0"
+git push origin v0.29.0
 ```
 
 The workflow removes the leading `v` and uses the remainder as the assembly and
 NuGet package version. The tag's base version must equal `VersionPrefix` in
 `Directory.Build.props`. Tags must use SemVer with no leading zeroes and
 without build metadata; stable and prerelease versions are supported. Before
-any publication, one job restores, verifies formatting, builds, runs the unit
-and PostgreSQL Testcontainers integration tests, audits dependencies, packs
+any publication, one job restores, verifies formatting, builds, runs the unit,
+PostgreSQL Testcontainers integration and Chromium browser tests, audits dependencies, packs
 the complete solution, verifies the exact six package and symbol package
 filenames and restores a standalone consumer from those package files. The
 tagged commit must be reachable from `origin/main`.

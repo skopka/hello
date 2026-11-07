@@ -29,9 +29,12 @@ internal sealed class HelloPhoneBindingApplication<TProfile>(
     IEnumerable<IHelloAccessTokenValidator<TProfile>> validators,
     HelloPhoneInputPolicy phonePolicy,
     IDataProtectionProvider protection,
-    TimeProvider clock) : IHelloPhoneBindingApplication<TProfile>
+    TimeProvider clock, IHelloAccountPolicy<TProfile>? accountPolicy = null,
+    IHelloSiteContext? sites = null) : IHelloPhoneBindingApplication<TProfile>
 {
     private readonly IDataProtector protector = protection.CreateProtector("Skopka.Hello.PhoneBinding.v1");
+    private bool SiteEnabled => sites is null || sites.Current is { PhoneOtpEnabled: true } site
+        && site.IsEnabled(HelloSiteFeatures.Account);
     private sealed record Ticket(Guid UserId, string TokenHash, long Version, string Phone,
         Guid ChallengeId, DateTimeOffset ExpiresAt);
     private static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
@@ -52,8 +55,11 @@ internal sealed class HelloPhoneBindingApplication<TProfile>(
         string phone, string? clientKey, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(accessToken)) return OperationResultFactory.Fail<HelloPhoneBindingChallenge>(Invalid());
+        if (!SiteEnabled) return OperationResultFactory.Fail<HelloPhoneBindingChallenge>(HelloSiteAccess.Unavailable());
         var user = await ValidateAsync(accessToken, cancellationToken);
         if (!user.IsSuccess) return OperationResultFactory.Fail<HelloPhoneBindingChallenge>(user.Errors);
+        var permission = await HelloAccountPolicy.RequireEditAsync(accountPolicy, user.Value, HelloAccountArea.Phone, cancellationToken);
+        if (!permission.IsSuccess) return OperationResultFactory.Fail<HelloPhoneBindingChallenge>(permission.Errors);
         var normalized = phonePolicy.Normalize(phone, otpRequest: true);
         if (!normalized.IsSuccess) return OperationResultFactory.Fail<HelloPhoneBindingChallenge>(normalized.Errors);
         var issued = await sender.RequestCodeAsync(normalized.Value, clientKey, null, cancellationToken);
@@ -69,12 +75,15 @@ internal sealed class HelloPhoneBindingApplication<TProfile>(
     {
         if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(ticket) || ticket.Length > 8192)
             return OperationResultFactory.Fail<HelloAccount<TProfile>>(Invalid());
+        if (!SiteEnabled) return OperationResultFactory.Fail<HelloAccount<TProfile>>(HelloSiteAccess.Unavailable());
         Ticket? pending;
         try { pending = JsonSerializer.Deserialize<Ticket>(protector.Unprotect(ticket)); }
         catch (Exception ex) when (ex is CryptographicException or JsonException or FormatException or ArgumentException)
         { return OperationResultFactory.Fail<HelloAccount<TProfile>>(Invalid()); }
         var user = await ValidateAsync(accessToken, cancellationToken);
         if (!user.IsSuccess) return OperationResultFactory.Fail<HelloAccount<TProfile>>(user.Errors);
+        var permission = await HelloAccountPolicy.RequireEditAsync(accountPolicy, user.Value, HelloAccountArea.Phone, cancellationToken);
+        if (!permission.IsSuccess) return OperationResultFactory.Fail<HelloAccount<TProfile>>(permission.Errors);
         if (pending is null || pending.ExpiresAt <= clock.GetUtcNow() || pending.UserId != user.Value.Id
             || pending.Version != user.Value.Version || pending.TokenHash != Hash(accessToken))
             return OperationResultFactory.Fail<HelloAccount<TProfile>>(Invalid());

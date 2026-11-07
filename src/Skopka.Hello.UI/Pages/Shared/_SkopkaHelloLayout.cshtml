@@ -1,3 +1,4 @@
+@inject HelloUiSite Site
 @inject IHelloUiExternalApplication ExternalIdentity
 @inject IHelloUiApplication HelloApplication
 @{
@@ -27,7 +28,7 @@
         currentPage,
         "/SkopkaHello/Account/ExternalLogins",
         StringComparison.OrdinalIgnoreCase);
-    var crossDeviceApprovalAvailable = isAuthenticated
+    var crossDeviceApprovalAvailable = Site.Current?.CrossDeviceSignInEnabled == true && isAuthenticated
         && await HelloUiCrossDeviceApprovalAvailability.IsAvailableAsync(
             Context,
             HelloApplication,
@@ -52,13 +53,13 @@
 </head>
 <body class="@(isAuthenticated ? "hello-authenticated" : null)">
     <header class="hello-header">
-        @if ((UiOptions.EnabledPages & HelloUiPages.Account) != 0)
+        @if (Site.IsEnabled(HelloUiPages.Account))
         {
             <a class="hello-brand" asp-page="/SkopkaHello/Index">
                 Skopka.Hello
             </a>
         }
-        else if ((UiOptions.EnabledPages & HelloUiPages.Login) != 0)
+        else if (Site.IsEnabled(HelloUiPages.Login))
         {
             <a class="hello-brand" asp-page="/SkopkaHello/Login">
                 Skopka.Hello
@@ -72,12 +73,12 @@
                         ? "hello-account-nav"
                         : "hello-public-nav")"
              aria-label="@Text["Layout.AccountNavigation"]">
-            @if (UiOptions.ApplicationHomeUrl is not null
+            @if (Site.Home is not null
                 && (!isLoginPage
                     || UiOptions.ApplicationHomeLinkOnLoginEnabled))
             {
                 <a class="hello-nav-item"
-                   href="@UiOptions.ApplicationHomeUrl">
+                   href="@Site.Home">
                     <svg class="hello-nav-icon"
                          viewBox="0 0 24 24"
                          aria-hidden="true">
@@ -96,7 +97,7 @@
             }
             @if (isAuthenticated)
             {
-                @if ((UiOptions.EnabledPages & HelloUiPages.Account) != 0)
+                @if (Site.IsEnabled(HelloUiPages.Account))
                 {
                     <a class="hello-nav-item@(isAccountPage ? " active" : string.Empty)"
                        aria-current="@(isAccountPage ? "page" : null)"
@@ -109,7 +110,7 @@
                         </svg>
                         <span class="hello-nav-label">@Text["Layout.Account"]</span>
                     </a>
-                    @if ((UiOptions.EnabledPages & HelloUiPages.Sessions) != 0)
+                    @if (Site.IsEnabled(HelloUiPages.Sessions))
                     {
                         <a class="hello-nav-item@(isSessionsPage ? " active" : string.Empty)"
                            aria-current="@(isSessionsPage ? "page" : null)"
@@ -145,7 +146,7 @@
                             </span>
                         </a>
                     }
-                    @if ((UiOptions.EnabledPages & HelloUiPages.ExternalIdentity) != 0
+                    @if (Site.IsEnabled(HelloUiPages.ExternalIdentity)
                         && ExternalIdentity.IsConfigured)
                     {
                         <a class="hello-nav-item@(isSignInMethodsPage ? " active" : string.Empty)"
@@ -188,7 +189,7 @@
             else
             {
                 @if (!isLoginPage
-                    && (UiOptions.EnabledPages & HelloUiPages.Login) != 0)
+                    && Site.IsEnabled(HelloUiPages.Login))
                 {
                     <a class="hello-nav-item"
                        asp-page="/SkopkaHello/Login">
@@ -196,8 +197,10 @@
                     </a>
                 }
                 @if (HelloOptions.PasswordSignInEnabled
+            && Site.Current?.PasswordSignInEnabled == true
                     && HelloOptions.SelfRegistrationEnabled
-                    && (UiOptions.EnabledPages & HelloUiPages.Registration) != 0)
+            && Site.Current?.SelfRegistrationEnabled == true
+                    && Site.IsEnabled(HelloUiPages.Registration))
                 {
                     <a class="hello-nav-item"
                        asp-page="/SkopkaHello/Register">

@@ -19,8 +19,19 @@ internal sealed class HelloUiRazorPagesOptionsSetup(
         ArgumentNullException.ThrowIfNull(options);
         uiOptions.ValidateRoutes(routes);
         ValidateRegistrationConsentConfiguration();
+        if (helloOptions.Sites.Count != 0 && !uiOptions.SecureCookies)
+            throw new InvalidOperationException("Explicit public sites require secure UI cookies.");
+        foreach (var site in helloOptions.Sites)
+        {
+            if (site.EnabledFeatures.HasFlag(HelloSiteFeatures.Login)
+                && !site.EnabledFeatures.HasFlag(HelloSiteFeatures.Account)
+                && site.AuthenticatedRedirectPath is null && uiOptions.AuthenticatedRedirectPath is null)
+                throw new InvalidOperationException("A login-only site requires an authenticated redirect path.");
+            if (string.Equals(site.AuthenticatedRedirectPath, routes.LoginPath, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("A site's authenticated redirect cannot point to the Login page.");
+        }
         if (services.GetService<HelloNativeAppSignInOptions>()?.Enabled == true
-            && (helloOptions.PublicOrigin is null || helloOptions.PublicOrigin.Scheme != Uri.UriSchemeHttps
+            && (helloOptions.Sites.Count == 0 && (helloOptions.PublicOrigin is null || helloOptions.PublicOrigin.Scheme != Uri.UriSchemeHttps)
                 || !helloOptions.SecureCookies || !uiOptions.SecureCookies))
         {
             throw new InvalidOperationException("Native app sign-in requires an HTTPS PublicOrigin and secure session cookies.");
@@ -41,7 +52,8 @@ internal sealed class HelloUiRazorPagesOptionsSetup(
                 uiOptions.EnabledPages,
                 uiOptions.ContactConfirmation.EmailEnabled,
                 uiOptions.ContactConfirmation.PhoneEnabled,
-                services.GetService<HelloNativeAppSignInOptions>()?.Enabled == true));
+                services.GetService<HelloNativeAppSignInOptions>()?.Enabled == true,
+                services.GetService<IServiceProviderIsService>()?.IsService(typeof(IHelloUiAccessLinks)) == true));
         options.Conventions.Add(
             new HelloUiPageApplicationModelConvention());
     }

@@ -10,6 +10,7 @@ public enum HelloRegistrationKind
     Password = 0,
     External = 1,
     PhoneOtp = 2,
+    DelegatedPhoneOtp = 3,
 }
 
 public sealed record HelloRegistrationAdmissionContext(

@@ -21,6 +21,8 @@ public static class SkopkaHelloUiServiceCollectionExtensions
         services.AddProblemDetails();
         AddRegistrationConsentRequirement(services, options);
         AddLocalizationServices(services);
+        services.TryAddScoped<Skopka.Hello.UI.HelloUiSite>();
+        services.TryAddScoped<Skopka.Hello.UI.HelloUiSiteFilter>();
 
         return services;
     }
@@ -42,6 +44,8 @@ public static class SkopkaHelloUiServiceCollectionExtensions
         services.AddProblemDetails();
         AddRegistrationConsentRequirement(services, options);
         AddLocalizationServices(services);
+        services.TryAddScoped<Skopka.Hello.UI.HelloUiSite>();
+        services.TryAddScoped<Skopka.Hello.UI.HelloUiSiteFilter>();
 
         services.TryAddScoped<TProfileFactory>();
         services.TryAddScoped<
@@ -74,6 +78,8 @@ public static class SkopkaHelloUiServiceCollectionExtensions
                         .IHelloRegistrationConsentProfileEnricher<TProfile>)
                     provider.GetRequiredService<TProfileFactory>());
         }
+        if (services.Any(descriptor => descriptor.ServiceType == typeof(Skopka.Hello.IHelloAccessLinks<TProfile>)))
+            services.TryAddScoped<Skopka.Hello.UI.IHelloUiAccessLinks, Skopka.Hello.UI.HelloUiAccessLinks<TProfile>>();
         services.TryAddScoped<Skopka.Hello.UI.IHelloUiSecondFactorApplication,
             Skopka.Hello.UI.HelloUiSecondFactorApplication<TProfile>>();
         services.TryAddScoped<

@@ -30,6 +30,8 @@ public static class SkopkaHelloServiceCollectionExtensions
             new Skopka.Hello.HelloUiRoutePaths(
                 options.UiPathPrefix));
         services.AddHttpContextAccessor();
+        services.TryAddSingleton<Skopka.Hello.HelloSiteCatalog>();
+        services.TryAddScoped<Skopka.Hello.IHelloSiteContext, Skopka.Hello.HelloSiteContext>();
         services.AddAntiforgery(antiforgery =>
         {
             antiforgery.HeaderName = options.AntiforgeryHeaderName;
@@ -71,9 +73,15 @@ public static class SkopkaHelloServiceCollectionExtensions
         services.TryAddScoped<
             Skopka.Hello.IHelloIdentityApplication<TProfile>,
             Skopka.Hello.HelloIdentityApplication<TProfile>>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<
+            Skopka.Identity.Credentials.IPasswordValidator<TProfile>,
+            Skopka.Hello.HelloSelfServicePasswordValidator<TProfile>>());
         services.TryAddSingleton<Skopka.Hello.HelloSecondFactorTickets>();
         services.TryAddScoped<Skopka.Hello.IHelloSecondFactorApplication<TProfile>,
             Skopka.Hello.HelloSecondFactorApplication<TProfile>>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<
+            Skopka.Identity.Sessions.IIdentitySessionAdmissionPolicy<TProfile>,
+            Skopka.Hello.HelloSiteSessionAdmission<TProfile>>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<
             Skopka.Identity.Sessions.IIdentitySessionAdmissionPolicy<TProfile>,
             Skopka.Hello.HelloSecondFactorAdmission<TProfile>>());
@@ -99,6 +107,9 @@ public static class SkopkaHelloServiceCollectionExtensions
             Skopka.Hello.HelloPhoneOtpApplication<TProfile>>();
         services.TryAddScoped<Skopka.Hello.IHelloPhoneBindingApplication<TProfile>,
             Skopka.Hello.HelloPhoneBindingApplication<TProfile>>();
+        services.TryAddScoped<Skopka.Hello.IHelloSmsSender, Skopka.Hello.HelloSmsSender<TProfile>>();
+        services.TryAddScoped<Skopka.Hello.IHelloDelegatedPhoneRegistration<TProfile>,
+            Skopka.Hello.HelloDelegatedPhoneRegistration<TProfile>>();
         services.TryAddEnumerable(
             ServiceDescriptor.Scoped<
                 Skopka.Hello.IHelloAccessTokenValidator<TProfile>,

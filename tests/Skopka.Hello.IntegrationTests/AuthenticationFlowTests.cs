@@ -152,7 +152,7 @@ public sealed partial class AuthenticationFlowTests
         public Guid RoleId { get; }
         public string? VerificationCode => app.Messages.LastOrDefault(x => x.Kind == HelloAccountMessageKind.AdminActionVerification)?.VerificationCode;
 
-        public static async Task<AdminBrowserHost> CreateAsync(bool requireSecondFactor = false)
+        public static async Task<AdminBrowserHost> CreateAsync(bool requireSecondFactor = false, bool accessLinksEnabled = false)
         {
             var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
             TestApplication? app = null;
@@ -162,7 +162,8 @@ public sealed partial class AuthenticationFlowTests
                 app = await TestApplication.CreateAsync(postgres.GetConnectionString(), authorizationClientsEnabled: true,
                     configureHello: options => options.Totp.Enabled = true,
                     configureUi: options => options.Localization.Enabled = true,
-                    requireSecondFactor: requireSecondFactor);
+                    requireSecondFactor: requireSecondFactor,
+                    accessLinksEnabled: accessLinksEnabled);
                 using var client = app.CreateClient();
                 var actor = await RegisterUiAccountAsync(client, "browser-admin", "browser-admin@example.test", "Browser Admin");
                 var target = await RegisterUiAccountAsync(client, "browser-target", "browser-target@example.test", "Browser Target");
@@ -190,6 +191,18 @@ public sealed partial class AuthenticationFlowTests
                 await postgres.DisposeAsync();
                 throw;
             }
+        }
+
+        public async Task<Uri> IssueTargetAccessLinkAsync()
+        {
+            using var scope = app.Services.CreateScope();
+            var store = scope.ServiceProvider.GetRequiredService<Skopka.Identity.IIdentityUserStore<IntegrationProfile>>();
+            var user = await store.FindByIdAsync(TargetId, CancellationToken.None);
+            Assert.NotNull(user);
+            var links = scope.ServiceProvider.GetRequiredService<IHelloAccessLinks<IntegrationProfile>>();
+            var result = await links.IssueAsync(TargetId, user.Version, "default", false, CancellationToken.None);
+            Assert.True(result.IsSuccess);
+            return new Uri(Origin, result.Value.Url.PathAndQuery + result.Value.Url.Fragment);
         }
 
         public async ValueTask DisposeAsync()
@@ -6353,7 +6366,10 @@ public sealed partial class AuthenticationFlowTests
             bool shortVerificationCooldown = false,
             bool nativeBrowser = false,
             bool requireSecondFactor = false,
-            Action<IServiceCollection>? configureServices = null)
+            Action<IServiceCollection>? configureServices = null,
+            bool accessLinksEnabled = false,
+            Action<WebApplication>? configurePipeline = null,
+            Action<WebApplication>? configureEndpoints = null)
         {
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions
@@ -6422,6 +6438,11 @@ public sealed partial class AuthenticationFlowTests
                 })
                 .UseDataProtectionActionTokens()
                 .UseDataProtectionTotp();
+            if (accessLinksEnabled)
+            {
+                identity.AddAccessLinks();
+                builder.Services.AddHelloAccessLinks<IntegrationProfile>();
+            }
             if (requireSecondFactor)
             {
                 builder.Services.AddSingleton<IHelloSignInSecondFactorPolicy<IntegrationProfile>, AlwaysRequireSecondFactor>();
@@ -6612,10 +6633,12 @@ public sealed partial class AuthenticationFlowTests
                 });
             application.UseAuthentication();
             application.UseAuthorization();
+            configurePipeline?.Invoke(application);
             if (nativeBrowser) application.UseAntiforgery();
             application.MapSkopkaHello<IntegrationProfile>();
             application.MapSkopkaHelloAdmin<IntegrationProfile>();
             application.MapSkopkaHelloUi();
+            configureEndpoints?.Invoke(application);
             if (nativeBrowser)
             {
                 application.MapGet("/native-test-callback", () => Results.Text("Native callback"));

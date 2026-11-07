@@ -93,7 +93,7 @@ public sealed class SessionsModel(
     }
 
     private IActionResult RedirectAfterLogout()
-        => uiOptions?.PostLogoutRedirectPath is { } redirectPath
+        => HelloUiSite.LogoutPath(HttpContext, uiOptions) is { } redirectPath
             ? LocalRedirect(redirectPath)
             : RedirectToPage("/SkopkaHello/Login");
 

@@ -13,6 +13,24 @@ namespace Skopka.Hello.Tests;
 public sealed class HelloUiRoutingTests
 {
     [Fact]
+    public void ExplicitSitesRejectInsecureUiCookieConfiguration()
+    {
+        var error = Assert.Throws<InvalidOperationException>(() => CreateApplication("/identity", true,
+            configureUi: options =>
+            {
+                options.SecureCookies = false;
+                options.AuthenticationCookieName = "test-ui";
+                options.AccountSwitching.CookieName = "test-accounts";
+            },
+            configureHello: options => options.Sites.Add(new HelloSiteOptions
+            {
+                Id = "staff",
+                PublicOrigin = new Uri("https://staff.example.test")
+            })));
+        Assert.Contains("secure UI cookies", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CustomPrefixReplacesDefaultRoutesAndCookieRedirects()
     {
         await using var application = CreateApplication(

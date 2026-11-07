@@ -20,7 +20,8 @@ public sealed class LoginModel(
     IHelloUiPhoneApplication? phoneApplication = null,
     SkopkaHelloOptions? helloOptions = null,
     IHelloUiSecondFactorApplication? secondFactor = null,
-    HelloUiPrgStateStore? prgState = null)
+    HelloUiPrgStateStore? prgState = null,
+    HelloUiSite? site = null)
     : PageModel
 {
     /// <summary>Opaque reference to the short-lived second-factor presentation state, retained across reloads.</summary>
@@ -70,8 +71,8 @@ public sealed class LoginModel(
     public bool AccountSecurityChangedSessionCleanup { get; set; }
 
     public IReadOnlyList<Skopka.Hello.Oidc.HelloOidcProvider>
-        ExternalProviders => uiOptions.IsEnabled(
-            HelloUiPages.ExternalIdentity)
+        ExternalProviders => (site?.IsEnabled(HelloUiPages.ExternalIdentity) ?? uiOptions.IsEnabled(
+            HelloUiPages.ExternalIdentity)) && (site?.Current?.ExternalSignInEnabled ?? true)
                 ? externalApplication.Providers
                 : [];
 
@@ -79,20 +80,20 @@ public sealed class LoginModel(
 
     public bool PasswordReset { get; private set; }
 
-    public bool CrossDeviceEnabled => crossDevice is not null;
+    public bool CrossDeviceEnabled => crossDevice is not null && (site?.Current?.CrossDeviceSignInEnabled ?? true);
 
     /// <summary>
     /// Offered when the host has passkeys, and hidden again by the page script
     /// on a browser that cannot do them: a button that opens nothing is worse
     /// than no button.
     /// </summary>
-    public bool PasskeysEnabled => passkeys is not null;
+    public bool PasskeysEnabled => passkeys is not null && (site?.Current?.WebAuthnSignInEnabled ?? true);
 
-    public bool PhoneEnabled => phoneApplication is not null;
+    public bool PhoneEnabled => phoneApplication is not null && (site?.Current?.PhoneOtpEnabled ?? true);
 
     public IReadOnlyList<HelloUiProfileField> PhoneRegistrationFields => phoneApplication?.RegistrationFields ?? [];
 
-    public bool PasswordEnabled => helloOptions?.PasswordSignInEnabled ?? true;
+    public bool PasswordEnabled => (helloOptions?.PasswordSignInEnabled ?? true) && (site?.Current?.PasswordSignInEnabled ?? true);
 
     [BindProperty]
     public PhoneInput Phone { get; set; } = new();
@@ -179,7 +180,7 @@ public sealed class LoginModel(
 
         return Url.IsLocalUrl(ReturnUrl)
             ? LocalRedirect(ReturnUrl)
-            : LocalRedirect(uiOptions.GetAuthenticatedRedirectPath(routes));
+            : LocalRedirect((site?.AuthenticatedRedirect(routes) ?? uiOptions.GetAuthenticatedRedirectPath(routes)));
     }
 
     /// <summary>
@@ -212,7 +213,7 @@ public sealed class LoginModel(
             prgState?.Remove(TempData["SecondFactorErrors"] as string);
             SecondFactorStateToken = null;
             return LocalRedirect(
-                uiOptions.GetAuthenticatedRedirectPath(routes));
+                (site?.AuthenticatedRedirect(routes) ?? uiOptions.GetAuthenticatedRedirectPath(routes)));
         }
 
         if (TryLoadSecondFactor())
@@ -292,7 +293,7 @@ public sealed class LoginModel(
         return Url.IsLocalUrl(ReturnUrl)
             ? LocalRedirect(ReturnUrl)
             : LocalRedirect(
-                uiOptions.GetAuthenticatedRedirectPath(routes));
+                (site?.AuthenticatedRedirect(routes) ?? uiOptions.GetAuthenticatedRedirectPath(routes)));
     }
 
     private async Task<bool> StartSecondFactorAsync(IReadOnlyCollection<Skopka.Abstraction.OperationResult.Error> errors, CancellationToken cancellationToken)
@@ -455,7 +456,7 @@ public sealed class LoginModel(
         SecondFactorStateToken = null;
         await HelloUiSession.EstablishAsync(HttpContext, sessionCookies, signIn);
         return Url.IsLocalUrl(ReturnUrl) ? LocalRedirect(ReturnUrl)
-            : LocalRedirect(uiOptions.GetAuthenticatedRedirectPath(routes));
+            : LocalRedirect((site?.AuthenticatedRedirect(routes) ?? uiOptions.GetAuthenticatedRedirectPath(routes)));
     }
 
     public async Task<IActionResult> OnPostPhoneRequestAsync(
@@ -522,7 +523,7 @@ public sealed class LoginModel(
             return Url.IsLocalUrl(ReturnUrl)
                 ? LocalRedirect(ReturnUrl)
                 : LocalRedirect(
-                    uiOptions.GetAuthenticatedRedirectPath(routes));
+                    (site?.AuthenticatedRedirect(routes) ?? uiOptions.GetAuthenticatedRedirectPath(routes)));
         }
 
         Phone.RegistrationToken = result.Value.RegistrationToken ?? string.Empty;
@@ -596,7 +597,7 @@ public sealed class LoginModel(
         return Url.IsLocalUrl(ReturnUrl)
             ? LocalRedirect(ReturnUrl)
             : LocalRedirect(
-                uiOptions.GetAuthenticatedRedirectPath(routes));
+                (site?.AuthenticatedRedirect(routes) ?? uiOptions.GetAuthenticatedRedirectPath(routes)));
     }
 
     public async Task<IActionResult> OnPostExternalAsync(

@@ -13,7 +13,9 @@ internal sealed class HelloUiApplication<TProfile>(
     IHelloRegistrationConsentPolicy registrationConsentPolicy,
     TimeProvider timeProvider,
     IHelloUiProfileEditor<TProfile>? profileEditor = null,
-    IHelloTotpEnrollmentAuthorization<TProfile>? totpAuthorization = null)
+    IHelloTotpEnrollmentAuthorization<TProfile>? totpAuthorization = null,
+    IHelloAccountPolicy<TProfile>? accountPolicy = null,
+    IEnumerable<IHelloAccessTokenValidator<TProfile>>? accountValidators = null)
     : IHelloUiApplication
 {
     public async Task<OperationResult> RegisterAsync(
@@ -114,10 +116,37 @@ internal sealed class HelloUiApplication<TProfile>(
         var validated = await ValidateAccountAsync(
             httpContext,
             cancellationToken);
-        return validated.IsSuccess
-            ? OperationResultFactory.Success(ToUiAccount(validated.Value))
-            : OperationResultFactory.Fail<HelloUiAccount>(
-                validated.Errors);
+        if (!validated.IsSuccess) return OperationResultFactory.Fail<HelloUiAccount>(validated.Errors);
+        var account = ToUiAccount(validated.Value);
+        if (accountPolicy is null) return OperationResultFactory.Success(account);
+        var user = await ResolvePolicyUserAsync(httpContext, cancellationToken);
+        if (!user.IsSuccess) return OperationResultFactory.Fail<HelloUiAccount>(user.Errors);
+        var access = new Dictionary<HelloAccountArea, HelloAccountAccess>();
+        foreach (var area in Enum.GetValues<HelloAccountArea>())
+        {
+            var result = await accountPolicy.GetPermissionAsync(user.Value, area, cancellationToken);
+            if (!result.IsSuccess) return OperationResultFactory.Fail<HelloUiAccount>(result.Errors);
+            access.Add(area, result.Value);
+        }
+        var visibleFields = new List<HelloUiProfileField>();
+        if (access[HelloAccountArea.Profile].Visible)
+        {
+            foreach (var field in account.ProfileFields)
+            {
+                var fieldAccess = await accountPolicy.GetProfileFieldAccessAsync(
+                    user.Value, field.Name, cancellationToken);
+                if (!fieldAccess.IsSuccess) return OperationResultFactory.Fail<HelloUiAccount>(fieldAccess.Errors);
+                if (!fieldAccess.Value.Visible) continue;
+                var allowed = await accountPolicy.CheckProfileFieldsAsync(
+                    user.Value, [field.Name], cancellationToken);
+                visibleFields.Add(field with
+                {
+                    ReadOnly = !access[HelloAccountArea.Profile].Editable
+                    || !fieldAccess.Value.Editable || !allowed.IsSuccess
+                });
+            }
+        }
+        return OperationResultFactory.Success(account with { Access = access, ProfileFields = visibleFields });
     }
 
     public async Task<OperationResult<HelloUiAccount>> ChangeUserNameAsync(
@@ -201,6 +230,23 @@ internal sealed class HelloUiApplication<TProfile>(
         {
             return OperationResultFactory.Fail<HelloUiAccount>(
                 validated.Errors);
+        }
+
+        if (accountPolicy is not null)
+        {
+            var user = await ResolvePolicyUserAsync(httpContext, cancellationToken);
+            if (!user.IsSuccess) return OperationResultFactory.Fail<HelloUiAccount>(user.Errors);
+            foreach (var field in command.Values.Keys)
+            {
+                var fieldAccess = await accountPolicy.GetProfileFieldAccessAsync(user.Value, field, cancellationToken);
+                if (!fieldAccess.IsSuccess) return OperationResultFactory.Fail<HelloUiAccount>(fieldAccess.Errors);
+                if (!fieldAccess.Value.Visible || !fieldAccess.Value.Editable)
+                    return OperationResultFactory.Fail<HelloUiAccount>(new Error(
+                        "hello.account.action_forbidden", "This account action is unavailable.", ErrorType.Forbidden));
+            }
+            var checkedFields = await accountPolicy.CheckProfileFieldsAsync(
+                user.Value, command.Values.Keys.ToArray(), cancellationToken);
+            if (!checkedFields.IsSuccess) return OperationResultFactory.Fail<HelloUiAccount>(checkedFields.Errors);
         }
 
         var profile = profileEditor.Update(
@@ -609,6 +655,22 @@ internal sealed class HelloUiApplication<TProfile>(
             : await application.ValidateAccessTokenAsync(
                 accessToken,
                 cancellationToken);
+    }
+
+    private async Task<OperationResult<Skopka.Identity.Users.IdentityUser<TProfile>>> ResolvePolicyUserAsync(
+        HttpContext context, CancellationToken cancellationToken)
+    {
+        var token = await ReadAccessTokenAsync(context);
+        if (token is not null && accountValidators is not null)
+        {
+            foreach (var validator in accountValidators)
+            {
+                var result = await validator.ValidateAsync(token, cancellationToken);
+                if (result.IsSuccess) return result;
+            }
+        }
+        return OperationResultFactory.Fail<Skopka.Identity.Users.IdentityUser<TProfile>>(
+            new Error("hello.account.invalid_session", "The session is invalid.", ErrorType.Unauthorized));
     }
 
     private HelloUiAccount ToUiAccount(

@@ -20,6 +20,7 @@ public enum HelloAccountMessageKind
 
     AdminActionVerification = 7,
     PhoneSignInVerification = 8,
+    HostSms = 9,
 }
 
 public sealed record HelloAccountMessage(
@@ -30,4 +31,5 @@ public sealed record HelloAccountMessage(
     Uri? ActionUrl,
     DateTimeOffset ExpiresAt,
     string? VerificationCode = null,
-    string? TemplateVariant = null);
+    string? TemplateVariant = null,
+    string? Text = null);

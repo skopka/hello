@@ -84,7 +84,7 @@ public sealed class NativeSignInBrowserModel : PageModel
     private void Headers() => HelloUiSensitivePage.ApplyResponseHeaders(Response);
     private bool OriginValid()
     {
-        var configured = HttpContext.RequestServices.GetRequiredService<SkopkaHelloOptions>().PublicOrigin;
+        var configured = HttpContext.RequestServices.GetRequiredService<IHelloSiteContext>().Current?.PublicOrigin;
         return configured is not null && Request.IsHttps && Request.Headers.Origin.Count == 1
             && Uri.TryCreate(Request.Headers.Origin.ToString(), UriKind.Absolute, out var origin)
             && origin.AbsolutePath == "/" && origin.Query.Length == 0 && origin.Fragment.Length == 0 && origin.UserInfo.Length == 0

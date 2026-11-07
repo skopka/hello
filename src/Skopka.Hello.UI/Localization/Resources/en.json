@@ -398,6 +398,19 @@
     "Errors.identity.device_authorization.state_invalid": "The cross-device sign-in request can no longer be changed or completed.",
     "Errors.identity.device_authorization.step_up_invalid": "A fresh authenticator confirmation is required.",
     "Errors.hello.cross_device.return_url_invalid": "The requested return address is not allowed.",
-    "Errors.hello.account_switching.account_unavailable": "The saved account is unavailable or expired. Sign in again."
+    "Errors.hello.account_switching.account_unavailable": "The saved account is unavailable or expired. Sign in again.",
+    "AccessLink.ConfirmPassword": "Confirm password",
+    "AccessLink.PasswordMismatch": "Passwords do not match.",
+    "AccessLink.JavaScriptRequired": "JavaScript is required to open this access link.",
+    "AccessLink.Title": "Set up account access",
+    "AccessLink.Invalid": "This access link is invalid, expired or already used.",
+    "AccessLink.Instructions": "Set a password and connect an authenticator to access your account.",
+    "AccessLink.Begin": "Continue",
+    "AccessLink.AuthenticatorInstructions": "Scan the QR code with an authenticator, or enter the key manually.",
+    "AccessLink.QrAlt": "Authenticator setup QR code",
+    "AccessLink.Password": "New password",
+    "AccessLink.Code": "Authenticator code",
+    "AccessLink.Complete": "Set up access",
+    "AccessLink.RecoveryInstructions": "Save these recovery codes in a safe place. They will not be shown again."
   }
 }

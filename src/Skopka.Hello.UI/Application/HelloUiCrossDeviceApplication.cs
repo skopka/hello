@@ -14,7 +14,8 @@ internal sealed class HelloUiCrossDeviceApplication<TProfile>(
     IHelloUiProfileFactory<TProfile> profiles,
     HelloCrossDeviceSignInOptions options,
     SkopkaHelloOptions helloOptions,
-    HelloUiRoutePaths routes)
+    HelloUiRoutePaths routes,
+    IHelloSiteContext? sites = null)
     : IHelloUiCrossDeviceApplication
 {
     public TimeSpan PollingInterval => options.PollingInterval;
@@ -235,9 +236,10 @@ internal sealed class HelloUiCrossDeviceApplication<TProfile>(
             routes.CrossDeviceApprovalPath,
             "deviceCode",
             deviceCode);
-        if (helloOptions.PublicOrigin is not null)
+        var origin = sites?.Current?.PublicOrigin ?? (sites is null ? helloOptions.PublicOrigin : null);
+        if (origin is not null)
         {
-            return new Uri(helloOptions.PublicOrigin, path).AbsoluteUri;
+            return new Uri(origin, path).AbsoluteUri;
         }
 
         return $"{httpContext.Request.Scheme}://"

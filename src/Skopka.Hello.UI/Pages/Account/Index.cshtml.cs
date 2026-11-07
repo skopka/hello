@@ -60,7 +60,13 @@ public sealed class AccountModel(
     [BindProperty]
     public Dictionary<string, string?> ProfileValues { get; set; } = [];
 
-    public bool PhoneBindingEnabled => uiOptions.Account.PhoneBindingEnabled && phoneBinding is not null;
+    private IReadOnlyDictionary<HelloAccountArea, HelloAccountAccess> access =
+        new Dictionary<HelloAccountArea, HelloAccountAccess>();
+    public bool CanView(HelloAccountArea area) => !access.TryGetValue(area, out var value) || value.Visible;
+    public bool CanEdit(HelloAccountArea area) => !access.TryGetValue(area, out var value) || (value.Visible && value.Editable);
+    public bool PhoneBindingEnabled => uiOptions.Account.PhoneBindingEnabled && phoneBinding is not null
+        && (HttpContext.RequestServices.GetService<IHelloSiteContext>()?.Current?.PhoneOtpEnabled ?? true)
+        && CanEdit(HelloAccountArea.Phone);
 
     /// <summary>Shows a one-time confirmation after successful verified phone binding.</summary>
     [TempData]
@@ -375,6 +381,7 @@ public sealed class AccountModel(
         HelloUiAccount account,
         bool preserveSubmittedValues)
     {
+        access = account.Access;
         UserId = account.UserId;
         DisplayName = account.DisplayName;
         UserName = account.UserName;
@@ -444,7 +451,7 @@ public sealed class AccountModel(
         sessionCookies.DeleteSessionCookies(HttpContext);
         await HttpContext.SignOutAsync(
             HelloUiDefaults.AuthenticationScheme);
-        if (uiOptions.PostLogoutRedirectPath is { } redirectPath)
+        if (HelloUiSite.LogoutPath(HttpContext, uiOptions) is { } redirectPath)
         {
             return LocalRedirect(redirectPath);
         }

@@ -1,4 +1,5 @@
 @page
+@inject HelloUiSite Site
 @model ConfirmEmailModel
 @{
     ViewData["Title"] = Text["ConfirmEmail.Title"];
@@ -14,7 +15,7 @@
             @Text["ConfirmEmail.Confirmed"]
         </p>
         <p class="hello-card-footer">
-            @if ((UiOptions.EnabledPages & HelloUiPages.Account) != 0)
+            @if (Site.IsEnabled(HelloUiPages.Account))
             {
                 <a asp-page="/SkopkaHello/Account/Index">@Text["Common.ContinueToAccount"]</a>
             }

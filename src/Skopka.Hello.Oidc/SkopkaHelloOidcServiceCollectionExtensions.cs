@@ -30,7 +30,7 @@ public static class SkopkaHelloOidcServiceCollectionExtensions
         services.AddSingleton(catalog);
         services.AddSingleton<
             Skopka.Hello.Oidc.IHelloOidcProviderCatalog>(catalog);
-        services.TryAddSingleton<
+        services.TryAddScoped<
             Skopka.Hello.Oidc.IHelloOidcChallengeService,
             Skopka.Hello.Oidc.HelloOidcChallengeService>();
         services.TryAddSingleton<
@@ -155,8 +155,20 @@ public static class SkopkaHelloOidcServiceCollectionExtensions
             OnRedirectToIdentityProvider = context =>
             {
                 ApplySensitiveRedirectHeaders(context.Response);
+                var services = context.HttpContext.RequestServices;
+                var explicitSites = services?.GetService<Skopka.Hello.SkopkaHelloOptions>()?.Sites.Count > 0;
+                var sites = services?.GetService<Skopka.Hello.IHelloSiteContext>();
+                if (explicitSites && (sites?.Current is not { } current
+                    || !current.ExternalSignInEnabled
+                    || !context.Properties.Items.TryGetValue(Skopka.Hello.Oidc.HelloOidcProperties.SiteId, out var siteId)
+                    || siteId != current.Id))
+                {
+                    context.HandleResponse();
+                    context.Response.StatusCode = StatusCodes.Status404NotFound;
+                    return Task.CompletedTask;
+                }
                 var redirectUri = new Uri(
-                    helloOptions.PublicOrigin!,
+                    explicitSites ? sites!.Current!.PublicOrigin! : helloOptions.PublicOrigin!,
                     provider.CallbackPath.Value!.TrimStart('/'))
                     .AbsoluteUri;
                 context.ProtocolMessage.RedirectUri = redirectUri;
@@ -187,6 +199,17 @@ public static class SkopkaHelloOidcServiceCollectionExtensions
         TokenValidatedContext context,
         Skopka.Hello.Oidc.HelloOidcProviderRegistration provider)
     {
+        var services = context.HttpContext.RequestServices;
+        var explicitSites = services?.GetService<Skopka.Hello.SkopkaHelloOptions>()?.Sites.Count > 0;
+        var sites = services?.GetService<Skopka.Hello.IHelloSiteContext>();
+        if (explicitSites && (sites?.Current is not { } current
+            || !current.ExternalSignInEnabled
+            || context.Properties?.Items.TryGetValue(Skopka.Hello.Oidc.HelloOidcProperties.SiteId, out var siteId) != true
+            || siteId != current.Id))
+        {
+            context.Fail("The external sign-in site is invalid.");
+            return Task.CompletedTask;
+        }
         if (context.Properties?.Items.TryGetValue(
                 Skopka.Hello.Oidc.HelloOidcProperties.Intent, out var intent) == true
             && intent == Skopka.Hello.Oidc.HelloOidcProperties.TotpIntent)

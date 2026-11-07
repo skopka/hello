@@ -15,7 +15,7 @@ public sealed class IndexModel(
             HelloUiDefaults.AuthenticationScheme);
         return authentication.Succeeded
             ? LocalRedirect(
-                uiOptions.GetAuthenticatedRedirectPath(routes))
+                HelloUiSite.Redirect(HttpContext, uiOptions, routes))
             : RedirectToPage("/SkopkaHello/Login");
     }
 }

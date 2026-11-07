@@ -44,7 +44,11 @@ public sealed class DevelopmentLoggingHelloSmsProvider(
                 "The logging SMS provider is available only in Development.");
         }
 
-        if (message.Kind == HelloAccountMessageKind.PhoneSignInVerification
+        if (message.Kind == HelloAccountMessageKind.HostSms && message.Text is { } text)
+        {
+            LogSms(logger, text, null);
+        }
+        else if (message.Kind == HelloAccountMessageKind.PhoneSignInVerification
             && message.VerificationCode is { } code)
         {
             LogSms(logger,

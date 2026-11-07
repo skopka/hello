@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Skopka.Hello.UI.Pages;
 
@@ -28,7 +29,8 @@ public sealed class AccountSecurityModel(
         private set;
     }
 
-    public bool PasskeysEnabled => passkeys is not null;
+    public bool PasskeysEnabled => passkeys is not null
+        && (HttpContext.RequestServices.GetService<IHelloSiteContext>()?.Current?.WebAuthnSignInEnabled ?? true);
 
     [BindProperty]
     public PasskeyInput Passkey { get; set; } = new();
@@ -163,6 +165,11 @@ public sealed class AccountSecurityModel(
         return await LoadStateAsync(cancellationToken) ? Page() : Challenge();
     }
     public HelloCredentialState? Credentials { get; private set; }
+
+    private IReadOnlyDictionary<HelloAccountArea, HelloAccountAccess> access =
+        new Dictionary<HelloAccountArea, HelloAccountAccess>();
+    public bool CanEdit(HelloAccountArea area) =>
+        !access.TryGetValue(area, out var value) || (value.Visible && value.Editable);
 
     public HelloTotpState? Totp { get; private set; }
 
@@ -650,6 +657,13 @@ public sealed class AccountSecurityModel(
     private async Task<bool> LoadStateAsync(
         CancellationToken cancellationToken)
     {
+        var account = await application.GetAccountAsync(HttpContext, cancellationToken);
+        if (!account.IsSuccess)
+        {
+            HelloUiModelState.AddErrors(ModelState, account.Errors, text);
+            return false;
+        }
+        access = account.Value.Access;
         var result = await application.GetCredentialStateAsync(
             HttpContext,
             cancellationToken);

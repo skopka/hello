@@ -12,7 +12,8 @@ internal sealed class HelloAnonymousAccountMessageProcessor<TProfile>(
     IEnumerable<IIdentityActionTokenIssuer<TProfile>> actionTokenIssuers,
     IHelloAccountMessageSender messageSender,
     SkopkaHelloOptions options,
-    HelloUiRoutePaths uiRoutes)
+    HelloUiRoutePaths uiRoutes,
+    IHelloSiteContext? sites = null)
 {
     private readonly IIdentityActionTokenIssuer<TProfile>?
         actionTokenIssuer = actionTokenIssuers.FirstOrDefault();
@@ -68,8 +69,9 @@ internal sealed class HelloAnonymousAccountMessageProcessor<TProfile>(
                 deliveryAvailable.Errors);
         }
 
-        if (actionTokenIssuer is null
-            || options.PublicOrigin is null)
+        var origin = request.SiteId is { } siteId
+            ? sites?.Find(siteId)?.PublicOrigin : options.PublicOrigin;
+        if (actionTokenIssuer is null || origin is null)
         {
             return NotConfigured();
         }
@@ -105,6 +107,7 @@ internal sealed class HelloAnonymousAccountMessageProcessor<TProfile>(
                 channel,
                 recipient,
                 CreateActionUrl(
+                    origin,
                     request.Kind,
                     user,
                     issued.Value.Token),
@@ -113,6 +116,7 @@ internal sealed class HelloAnonymousAccountMessageProcessor<TProfile>(
     }
 
     private Uri CreateActionUrl(
+        Uri origin,
         HelloAccountMessageKind kind,
         IdentityUser<TProfile> user,
         string token)
@@ -152,7 +156,7 @@ internal sealed class HelloAnonymousAccountMessageProcessor<TProfile>(
         };
 
         return new Uri(
-            options.PublicOrigin!,
+            origin,
             path.TrimStart('/'));
     }
 

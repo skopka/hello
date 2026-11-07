@@ -472,7 +472,8 @@ error details.
 - Exclude OIDC callback query strings and provider tokens from proxy and
   application logs.
 - Exclude password-reset and contact-confirmation query strings from proxy and
-  application logs.
+  application logs. Redact access-link request bodies, passwords, authenticator
+  secrets, verification codes and recovery codes from all telemetry.
 - Keep access-token lifetimes short.
 - Configure a trusted public origin and rate-limit anonymous account-message
   requests.

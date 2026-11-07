@@ -22,6 +22,9 @@ public static class HelloEndpointRouteBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 
+        // The filter also covers routes contributed by the second-factor mapper.
+        endpoints = endpoints.MapGroup(string.Empty).AddEndpointFilter<HelloSiteEndpointFilter>();
+
         var helloOptions = endpoints.ServiceProvider
             .GetRequiredService<SkopkaHelloOptions>();
         if (helloOptions.SelfRegistrationEnabled

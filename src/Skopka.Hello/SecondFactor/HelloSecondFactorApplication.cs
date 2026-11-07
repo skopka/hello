@@ -17,6 +17,7 @@ internal sealed record HelloSecondFactorTicket(Guid FlowId, Guid UserId, string 
     IdentitySessionMetadata? Metadata, string? ClientKey, DateTimeOffset ExpiresAt,
     string Stage, Guid ChallengeId = default)
 {
+    public IdentitySessionContext? Context { get; init; }
     public override string ToString() => "[protected second-factor state]";
 }
 
@@ -36,8 +37,9 @@ internal sealed class HelloSecondFactorTickets(IDataProtectionProvider protectio
         }
         catch (Exception ex) when (ex is CryptographicException or JsonException or FormatException) { return null; }
     }
-    internal HelloSecondFactorTicket New(Guid userId, string stamp, IdentitySessionMetadata? metadata, string? clientKey)
-        => new(Guid.NewGuid(), userId, stamp, metadata, clientKey, clock.GetUtcNow().AddMinutes(5), "primary");
+    internal HelloSecondFactorTicket New(Guid userId, string stamp, IdentitySessionMetadata? metadata, string? clientKey,
+        IdentitySessionContext? context = null)
+        => new(Guid.NewGuid(), userId, stamp, metadata, clientKey, clock.GetUtcNow().AddMinutes(5), "primary") { Context = context };
     internal static HelloSecondFactorTicket Next(HelloSecondFactorTicket ticket, string stage, Guid challengeId = default)
         => ticket with { FlowId = Guid.NewGuid(), Stage = stage, ChallengeId = challengeId };
 }
@@ -61,7 +63,7 @@ internal sealed class HelloSecondFactorAdmission<TProfile>(
                 return OperationResultFactory.Fail(new Error(HelloSecondFactorErrorCodes.Required,
                     "Fresh authentication with an authenticator is required.", ErrorType.Unauthorized));
             var clientKey = http.HttpContext is { } current ? requestContext.CreateClientKey(current) : null;
-            var value = tickets.New(context.User.Id, context.User.SecurityStamp, context.Metadata, clientKey);
+            var value = tickets.New(context.User.Id, context.User.SecurityStamp, context.Metadata, clientKey, context.Context);
             return OperationResultFactory.Fail(new Error(HelloSecondFactorErrorCodes.Required,
                 "Authenticator verification is required.", ErrorType.Unauthorized,
                 new HelloSecondFactorRequired(tickets.Seal(value), value.ExpiresAt)));
@@ -77,7 +79,8 @@ internal sealed class HelloSecondFactorApplication<TProfile>(
     IIdentitySessionService<TProfile> sessions,
     IIdentityUserLookupService<TProfile> users,
     SkopkaHelloOptions options,
-    IIdentityTotpService<TProfile>? totp = null) : IHelloSecondFactorApplication<TProfile>
+    IIdentityTotpService<TProfile>? totp = null,
+    IHelloSiteContext? siteContext = null) : IHelloSecondFactorApplication<TProfile>
 {
     private const string Purpose = "hello.signin.second_factor";
     private static string Binding(HelloSecondFactorTicket ticket) => ticket.FlowId.ToString("N");
@@ -87,6 +90,9 @@ internal sealed class HelloSecondFactorApplication<TProfile>(
         => await flows.TryConsumeAsync(ticket.FlowId, ticket.ExpiresAt, ct);
     private async Task<bool> Current(HelloSecondFactorTicket ticket, CancellationToken ct)
     {
+        if (siteContext is not null && (siteContext.Current is not { } site
+            || ticket.Context?.Scope != site.Id
+            || !HelloSiteAccess.AllowsMethod(site, ticket.Context.AuthenticationMethod))) return false;
         var result = await users.FindActiveByIdAsync(ticket.UserId, ct);
         var user = result.IsSuccess ? result.Value : null;
         return user is not null && user.SecurityStamp == ticket.Stamp
@@ -155,7 +161,8 @@ internal sealed class HelloSecondFactorApplication<TProfile>(
     }
     private async Task<OperationResult<HelloSignIn<TProfile>>> Issue(HelloSecondFactorTicket state, CancellationToken ct)
     {
-        var issued = await sessions.CreateAsync(new CreateIdentitySessionCommand(state.UserId, state.Stamp, state.Metadata) { Assurance = IdentitySessionAssurance.TotpVerified }, ct);
+        var issued = await sessions.CreateAsync(new CreateIdentitySessionCommand(state.UserId, state.Stamp, state.Metadata)
+        { Assurance = IdentitySessionAssurance.TotpVerified, Context = state.Context }, ct);
         if (!issued.IsSuccess) return OperationResultFactory.Fail<HelloSignIn<TProfile>>(issued.Errors);
         var user = await sessions.ValidateAccessTokenAsync(issued.Value.AccessToken, ct);
         if (!user.IsSuccess)

@@ -1,5 +1,6 @@
 @page
 @model AccountSecurityModel
+@inject HelloUiSite Site
 @{
     ViewData["Title"] = Text["Security.Title"];
 }
@@ -113,7 +114,7 @@
                 <p class="hello-muted">
                     @Text["Security.AuthenticatorDescription"]
                 </p>
-                @if (credentials.HasPassword)
+                @if (credentials.HasPassword && Site.Current?.PasswordSignInEnabled == true)
                 {
                     <form method="post" asp-page-handler="BeginTotp" class="hello-form">
                         <label for="totp-password">@Text["Security.TotpCurrentPassword"]</label>
@@ -121,7 +122,7 @@
                         <button class="hello-button hello-button-secondary" type="submit">@Text["Security.SetUpAuthenticator"]</button>
                     </form>
                 }
-                else if (Model.TotpPhone is { } phone)
+                else if (Site.Current?.PhoneOtpEnabled == true && Model.TotpPhone is { } phone)
                 {
                     <form method="post" asp-page-handler="CompleteTotpPhone" class="hello-form">
                         <input type="hidden" name="ticket" value="@phone.Ticket" />
@@ -136,24 +137,26 @@
                 else
                 {
                     <p>@Text["Security.TotpVerifyMethod"]</p>
-                    @if (credentials.HasPhoneOtp)
+                    @if (credentials.HasPhoneOtp && Site.Current?.PhoneOtpEnabled == true)
                     {
                         <form method="post" asp-page-handler="BeginTotpPhone">
                             <button class="hello-button hello-button-secondary" type="submit">@Text["Security.TotpPhone"]</button>
                         </form>
                     }
-                    @if (!credentials.HasPhoneOtp && Model.TotpProviders.Count == 0 && Model.Passkeys is not { Count: > 0 })
+                    @if (!(credentials.HasPhoneOtp && Site.Current?.PhoneOtpEnabled == true)
+                        && !(Site.Current?.ExternalSignInEnabled == true && Site.IsEnabled(HelloUiPages.ExternalIdentity) && Model.TotpProviders.Count > 0)
+                        && !(Model.PasskeysEnabled && Model.Passkeys is { Count: > 0 }))
                     {
                         <p class="hello-muted">@Text["Security.TotpNoMethod"]</p>
                     }
-                    @foreach (var provider in Model.TotpProviders)
+                    @foreach (var provider in (Site.Current?.ExternalSignInEnabled == true && Site.IsEnabled(HelloUiPages.ExternalIdentity) ? Model.TotpProviders : []))
                     {
                         <form method="post" asp-page-handler="TotpExternal">
                             <input type="hidden" name="providerId" value="@provider.ProviderId" />
                             <button class="hello-button hello-button-secondary" type="submit">@Text["Security.TotpExternal", provider.DisplayName]</button>
                         </form>
                     }
-                    @if (Model.Passkeys is { Count: > 0 })
+                    @if (Model.PasskeysEnabled && Model.Passkeys is { Count: > 0 })
                     {
                         <div data-passkey data-ceremony="get" data-challenge-url="@Url.Page(null, "TotpPasskeyChallenge")" hidden>
                             <form method="post" asp-page-handler="TotpPasskey" data-passkey-form>
@@ -172,7 +175,7 @@
             }
         }
 
-        @if (HelloOptions.PasswordSignInEnabled)
+        @if (Site.Current?.PasswordSignInEnabled == true && Model.CanEdit(HelloAccountArea.Password))
         {
         <h2>@Text["Field.Password"]</h2>
         @if (credentials.HasPassword)
@@ -213,6 +216,8 @@
 
         }
 
+        @if (Model.CanEdit(HelloAccountArea.Delete))
+        {
         <h2>@Text["Security.DeleteAccount"]</h2>
         <p class="hello-muted">
             @Text["Security.DeleteDescription"]
@@ -223,9 +228,10 @@
                 @Text["Security.RequestDeletion"]
             </button>
         </form>
+        }
     }
 
-    @if (Model.Pending is { Action: "set" } setChallenge)
+    @if (Model.CanEdit(HelloAccountArea.Password) && Model.Pending is { Action: "set" } setChallenge)
     {
         <h2>@Text["Security.SetPassword"]</h2>
         <p class="hello-muted">
@@ -265,7 +271,7 @@
         </form>
     }
 
-    @if (Model.Pending is { Action: "remove" } removeChallenge)
+    @if (Model.CanEdit(HelloAccountArea.Password) && Model.Pending is { Action: "remove" } removeChallenge)
     {
         <h2>@Text["Security.RemovePassword"]</h2>
         <p class="hello-muted">
@@ -297,7 +303,7 @@
         </form>
     }
 
-    @if (Model.Pending is { Action: "delete" } deleteChallenge)
+    @if (Model.CanEdit(HelloAccountArea.Delete) && Model.Pending is { Action: "delete" } deleteChallenge)
     {
         <h2>@Text["Security.ConfirmDeletion"]</h2>
         <p class="hello-muted">

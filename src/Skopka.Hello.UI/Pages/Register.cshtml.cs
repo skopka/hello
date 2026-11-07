@@ -20,6 +20,9 @@ public sealed class RegisterModel(
     {
     }
 
+    [BindProperty(SupportsGet = true)]
+    public string? ReturnUrl { get; set; }
+
     [BindProperty]
     public InputModel Input { get; set; } = new();
 
@@ -81,7 +84,7 @@ public sealed class RegisterModel(
 
         return RedirectToPage(
             "/SkopkaHello/Login",
-            new { registered = true });
+            new { registered = true, ReturnUrl = Url.IsLocalUrl(ReturnUrl) ? ReturnUrl : null });
     }
 
     public sealed class InputModel

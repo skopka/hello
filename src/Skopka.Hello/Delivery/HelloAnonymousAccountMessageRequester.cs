@@ -19,6 +19,7 @@ internal sealed class HelloAnonymousAccountMessageRequester<TProfile>
     private readonly IdentityRateLimitOptions rateLimitOptions;
     private readonly IIdentityRateLimiter<TProfile>? rateLimiter;
     private readonly IHelloAnonymousAccountMessageInbox queue;
+    private readonly IHelloSiteContext? sites;
     private readonly ILogger<HelloAnonymousAccountMessageRequester<TProfile>>?
         logger;
     private static readonly Action<ILogger, HelloAccountMessageKind,
@@ -36,13 +37,15 @@ internal sealed class HelloAnonymousAccountMessageRequester<TProfile>
         IEnumerable<IIdentityRateLimiter<TProfile>> rateLimiters,
         IHelloAnonymousAccountMessageInbox queue,
         ILogger<HelloAnonymousAccountMessageRequester<TProfile>>? logger =
-            null)
+            null,
+        IHelloSiteContext? sites = null)
     {
         this.normalizer = normalizer;
         this.rateLimitOptions = rateLimitOptions;
         rateLimiter = rateLimiters.FirstOrDefault();
         this.queue = queue;
         this.logger = logger;
+        this.sites = sites;
     }
 
     public async Task<OperationResult> EnqueueAsync(
@@ -52,6 +55,10 @@ internal sealed class HelloAnonymousAccountMessageRequester<TProfile>
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var feature = kind == HelloAccountMessageKind.PasswordReset
+            ? HelloSiteFeatures.PasswordRecovery : HelloSiteFeatures.ContactConfirmation;
+        if (!HelloSiteAccess.Allows(sites, feature))
+            return OperationResultFactory.Fail(HelloSiteAccess.Unavailable());
 
         var normalizedTarget = NormalizeTarget(kind, target);
         if (!normalizedTarget.IsSuccess)
@@ -91,7 +98,8 @@ internal sealed class HelloAnonymousAccountMessageRequester<TProfile>
         var request = new HelloAnonymousAccountMessageRequest(
             Guid.NewGuid(),
             kind,
-            normalizedTarget.Value);
+            normalizedTarget.Value)
+        { SiteId = sites?.Current?.Id };
         var queued = await queue.EnqueueAsync(
             request,
             cancellationToken);

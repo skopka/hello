@@ -33,6 +33,9 @@ public sealed record HelloUiProfileField(
     /// its accessible description. It is not localized by Hello.
     /// </summary>
     public string? Hint { get; init; }
+
+    /// <summary>Whether the built-in account editor must render the field without editing.</summary>
+    public bool ReadOnly { get; init; }
 }
 
 public interface IHelloUiProfileEditor<TProfile>

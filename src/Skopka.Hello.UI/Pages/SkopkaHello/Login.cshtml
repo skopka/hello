@@ -1,4 +1,5 @@
 @page
+@inject HelloUiSite Site
 @model LoginModel
 @{
     ViewData["Title"] = Text["Login.Title"];
@@ -133,7 +134,7 @@ else
         </p>
     }
 
-    @if ((UiOptions.EnabledPages & HelloUiPages.ExternalIdentity) != 0
+    @if (Site.IsEnabled(HelloUiPages.ExternalIdentity)
         && Model.ExternalProviders.Count > 0)
     {
         <div class="hello-external-providers"
@@ -284,7 +285,7 @@ else
              class="hello-validation"
              role="alert"></div>
 
-        <label asp-for="Input.Login">@(HelloOptions.PasswordLoginHandle
+        <label asp-for="Input.Login">@((Site.Current?.PasswordLoginHandle ?? HelloOptions.PasswordLoginHandle)
             == Skopka.Identity.Authentication.PasswordLoginHandle.UserName
                 ? Text["Field.LoginName"]
                 : Text["Field.Login"])</label>
@@ -298,7 +299,7 @@ else
         <span asp-validation-for="Input.Password"
               class="hello-field-error"></span>
 
-        @if ((UiOptions.EnabledPages & HelloUiPages.PasswordRecovery) != 0)
+        @if (Site.IsEnabled(HelloUiPages.PasswordRecovery))
         {
             <a class="hello-form-help"
                asp-page="/SkopkaHello/ForgotPassword">
@@ -371,26 +372,29 @@ else
     }
 
     @if ((HelloOptions.PasswordSignInEnabled
+            && Site.Current?.PasswordSignInEnabled == true
             && HelloOptions.SelfRegistrationEnabled
-            && (UiOptions.EnabledPages & HelloUiPages.Registration) != 0)
-        || (UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0
+            && Site.Current?.SelfRegistrationEnabled == true
+            && Site.IsEnabled(HelloUiPages.Registration))
+        || Site.IsEnabled(HelloUiPages.ContactConfirmation)
             && (UiOptions.ContactConfirmation.EmailEnabled
                 || UiOptions.ContactConfirmation.PhoneEnabled))
     {
         <p class="hello-card-footer">
             @if (HelloOptions.PasswordSignInEnabled
+            && Site.Current?.PasswordSignInEnabled == true
                 && HelloOptions.SelfRegistrationEnabled
-                && (UiOptions.EnabledPages & HelloUiPages.Registration) != 0)
+            && Site.Current?.SelfRegistrationEnabled == true
+                && Site.IsEnabled(HelloUiPages.Registration))
             {
                 <span>@Text["Login.NeedAccount"]</span>
-                <a asp-page="/SkopkaHello/Register">@Text["Layout.Register"]</a>
-                @if ((UiOptions.EnabledPages
-                        & HelloUiPages.ContactConfirmation) != 0)
+                <a asp-page="/SkopkaHello/Register" asp-route-returnUrl="@Model.ReturnUrl">@Text["Layout.Register"]</a>
+                @if (Site.IsEnabled(HelloUiPages.ContactConfirmation))
                 {
                     <br />
                 }
             }
-            @if ((UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0
+            @if (Site.IsEnabled(HelloUiPages.ContactConfirmation)
                 && UiOptions.ContactConfirmation.EmailEnabled)
             {
                 <a asp-page="/SkopkaHello/ResendConfirmation">
@@ -401,7 +405,7 @@ else
                     <br />
                 }
             }
-            @if ((UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0
+            @if (Site.IsEnabled(HelloUiPages.ContactConfirmation)
                 && UiOptions.ContactConfirmation.PhoneEnabled)
             {
                 <a asp-page="/SkopkaHello/ResendPhoneConfirmation">

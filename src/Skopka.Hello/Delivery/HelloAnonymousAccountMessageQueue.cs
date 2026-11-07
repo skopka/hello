@@ -6,7 +6,11 @@ namespace Skopka.Hello;
 public sealed record HelloAnonymousAccountMessageRequest(
     Guid MessageId,
     HelloAccountMessageKind Kind,
-    string NormalizedTarget);
+    string NormalizedTarget)
+{
+    /// <summary>The configured site captured when the action was requested.</summary>
+    public string? SiteId { get; init; }
+}
 
 public sealed record HelloAnonymousAccountMessageLease(
     Guid LeaseId,

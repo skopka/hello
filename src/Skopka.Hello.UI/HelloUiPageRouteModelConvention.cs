@@ -11,7 +11,8 @@ internal sealed class HelloUiPageRouteModelConvention(
     HelloUiPages enabledPages,
     bool emailConfirmationEnabled,
     bool phoneConfirmationEnabled,
-    bool nativeEnabled = false)
+    bool nativeEnabled = false,
+    bool accessLinksEnabled = false)
     : IPageRouteModelConvention
 {
     private readonly Dictionary<string, string?> pageRoutes =
@@ -22,6 +23,9 @@ internal sealed class HelloUiPageRouteModelConvention(
                     ? routes.RootPath
                     : null,
             ["/Pages/SkopkaHello/Error.cshtml"] = routes.ErrorPath,
+            ["/Pages/SkopkaHello/AccessLink.cshtml"] =
+                IsEnabled(enabledPages, HelloUiPages.Login) && passwordSignInEnabled && accessLinksEnabled
+                    ? routes.PathPrefix + "/access-link" : null,
             ["/Pages/SkopkaHello/Login.cshtml"] =
                 IsEnabled(enabledPages, HelloUiPages.Login)
                     ? routes.LoginPath

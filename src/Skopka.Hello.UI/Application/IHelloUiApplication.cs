@@ -34,7 +34,12 @@ public sealed record HelloUiAccount(
     string? Phone,
     bool PhoneConfirmed,
     long Version,
-    IReadOnlyList<HelloUiProfileField> ProfileFields);
+    IReadOnlyList<HelloUiProfileField> ProfileFields)
+{
+    /// <summary>Per-account self-service visibility and edit access.</summary>
+    public IReadOnlyDictionary<HelloAccountArea, HelloAccountAccess> Access { get; init; } =
+        new Dictionary<HelloAccountArea, HelloAccountAccess>();
+}
 
 public sealed record HelloUiChangeUserNameCommand(
     long ExpectedVersion,

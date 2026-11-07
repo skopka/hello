@@ -39,7 +39,10 @@ internal sealed class HelloIdentityApplication<TProfile>(
     IHelloRegistrationConsentPolicy? registrationConsentPolicy = null,
     IHelloRegistrationConsentProfileEnricher<TProfile>?
         registrationConsentProfileEnricher = null,
-    HelloTotpEnrollmentAuthorization<TProfile>? totpAuthorization = null)
+    HelloTotpEnrollmentAuthorization<TProfile>? totpAuthorization = null,
+    IHelloAccountPolicy<TProfile>? accountPolicy = null,
+    IHelloRegistrationContinuation<TProfile>? registrationContinuation = null,
+    IHelloSiteContext? siteContext = null)
     : IHelloIdentityApplication<TProfile>
 {
     private readonly HelloStepUpMethodResolver<TProfile> stepUpMethods =
@@ -59,7 +62,10 @@ internal sealed class HelloIdentityApplication<TProfile>(
         ArgumentNullException.ThrowIfNull(command);
 
         if (!options.SelfRegistrationEnabled
-            || !options.PasswordSignInEnabled)
+            || !options.PasswordSignInEnabled
+            || !HelloSiteAccess.Allows(siteContext, HelloSiteFeatures.Registration)
+            || siteContext is not null && (siteContext.Current?.SelfRegistrationEnabled != true
+                || siteContext.Current.PasswordSignInEnabled != true))
         {
             return OperationResultFactory.Fail<
                 HelloAccount<TProfile>>(
@@ -115,6 +121,15 @@ internal sealed class HelloIdentityApplication<TProfile>(
             profile = enriched.Value;
         }
 
+        if (registrationContinuation is not null)
+        {
+            var prepared = await registrationContinuation.PrepareProfileAsync(
+                profile, HelloRegistrationKind.Password, cancellationToken);
+            if (!prepared.IsSuccess)
+                return OperationResultFactory.Fail<HelloAccount<TProfile>>(prepared.Errors);
+            profile = prepared.Value;
+        }
+
         var phone = command.Phone;
         if (phone is not null)
         {
@@ -146,7 +161,9 @@ internal sealed class HelloIdentityApplication<TProfile>(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        if (!options.PasswordSignInEnabled)
+        if (!options.PasswordSignInEnabled
+            || !HelloSiteAccess.Allows(siteContext, HelloSiteFeatures.Login)
+            || siteContext is not null && siteContext.Current?.PasswordSignInEnabled != true)
         {
             return OperationResultFactory.Fail<HelloSignIn<TProfile>>(
                 new Error(
@@ -157,8 +174,8 @@ internal sealed class HelloIdentityApplication<TProfile>(
 
         var authenticated = await authentication.AuthenticateAsync(
             new AuthenticatePasswordCommand(
-                options.PasswordLoginHandle,
-                options.PasswordLoginHandle == PasswordLoginHandle.Phone
+                siteContext?.Current?.PasswordLoginHandle ?? options.PasswordLoginHandle,
+                (siteContext?.Current?.PasswordLoginHandle ?? options.PasswordLoginHandle) == PasswordLoginHandle.Phone
                     ? HelloPhoneNormalizer.Normalize(command.Login, options.DefaultPhoneRegion)
                     : command.Login,
                 command.Password,
@@ -174,7 +191,8 @@ internal sealed class HelloIdentityApplication<TProfile>(
             new CreateIdentitySessionCommand(
                 authenticated.Value.Id,
                 authenticated.Value.SecurityStamp,
-                command.SessionMetadata),
+                command.SessionMetadata)
+            { Context = HelloSiteAccess.Session(siteContext, HelloAuthenticationMethods.Password) },
             cancellationToken);
         return issued.IsSuccess
             ? OperationResultFactory.Success(
@@ -231,6 +249,11 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 validated.Errors);
         }
 
+        var permission = await HelloAccountPolicy.RequireEditAsync(
+            accountPolicy, validated.Value, HelloAccountArea.UserName, cancellationToken);
+        if (!permission.IsSuccess)
+            return OperationResultFactory.Fail<HelloAccount<TProfile>>(permission.Errors);
+
         var handleAllowed = await EnsureLocalHandleChangeAllowedAsync(
             validated.Value,
             command.UserName,
@@ -267,6 +290,11 @@ internal sealed class HelloIdentityApplication<TProfile>(
             return OperationResultFactory.Fail<HelloAccount<TProfile>>(
                 validated.Errors);
         }
+
+        var permission = await HelloAccountPolicy.RequireEditAsync(
+            accountPolicy, validated.Value, HelloAccountArea.Email, cancellationToken);
+        if (!permission.IsSuccess)
+            return OperationResultFactory.Fail<HelloAccount<TProfile>>(permission.Errors);
 
         var handleAllowed = await EnsureLocalHandleChangeAllowedAsync(
             validated.Value,
@@ -315,6 +343,19 @@ internal sealed class HelloIdentityApplication<TProfile>(
         {
             return OperationResultFactory.Fail<HelloAccount<TProfile>>(
                 validated.Errors);
+        }
+
+        var permission = await HelloAccountPolicy.RequireEditAsync(
+            accountPolicy, validated.Value, HelloAccountArea.Profile, cancellationToken);
+        if (!permission.IsSuccess)
+            return OperationResultFactory.Fail<HelloAccount<TProfile>>(permission.Errors);
+
+        if (accountPolicy is not null)
+        {
+            var allowed = await accountPolicy.CheckProfileChangeAsync(
+                validated.Value, command.Profile, cancellationToken);
+            if (!allowed.IsSuccess)
+                return OperationResultFactory.Fail<HelloAccount<TProfile>>(allowed.Errors);
         }
 
         var changed = await users.PatchProfileAsync(
@@ -629,18 +670,23 @@ internal sealed class HelloIdentityApplication<TProfile>(
             clientKey,
             cancellationToken);
 
-    public Task<OperationResult> ResetPasswordAsync(
+    public async Task<OperationResult> ResetPasswordAsync(
         HelloResetPasswordCommand command,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-
-        return credentials.ResetPasswordAsync(
-            new ResetPasswordCommand(
-                command.UserId,
-                command.Token,
-                command.NewPassword),
-            cancellationToken);
+        var previous = HelloPasswordResetScope.Active.Value;
+        HelloPasswordResetScope.Active.Value = true;
+        try
+        {
+            return await credentials.ResetPasswordAsync(
+                new ResetPasswordCommand(command.UserId, command.Token, command.NewPassword),
+                cancellationToken);
+        }
+        finally
+        {
+            HelloPasswordResetScope.Active.Value = previous;
+        }
     }
 
     public async Task<OperationResult<HelloAccount<TProfile>>>
@@ -696,6 +742,10 @@ internal sealed class HelloIdentityApplication<TProfile>(
             return OperationResultFactory.Fail<HelloStepUpChallenge>(
                 validated.Errors);
         }
+
+        var permission = await HelloAccountPolicy.RequireEditAsync(
+            accountPolicy, validated.Value, HelloAccountArea.Password, cancellationToken);
+        if (!permission.IsSuccess) return OperationResultFactory.Fail<HelloStepUpChallenge>(permission.Errors);
 
         var user = validated.Value;
         var selected = await stepUpMethods.SelectAsync(
@@ -753,6 +803,10 @@ internal sealed class HelloIdentityApplication<TProfile>(
         {
             return OperationResultFactory.Fail(validated.Errors);
         }
+
+        var permission = await HelloAccountPolicy.RequireEditAsync(
+            accountPolicy, validated.Value, HelloAccountArea.Password, cancellationToken);
+        if (!permission.IsSuccess) return OperationResultFactory.Fail(permission.Errors);
 
         var user = validated.Value;
         var verified = await verification.VerifyAsync(
@@ -903,7 +957,8 @@ internal sealed class HelloIdentityApplication<TProfile>(
             command.AccessToken,
             command.ClientKey,
             HelloAccountSecurity.AccountDeleteAction,
-            precondition: null,
+            (user, ct) => HelloAccountPolicy.RequireEditAsync(
+                accountPolicy, user, HelloAccountArea.Delete, ct),
             cancellationToken);
     }
 
@@ -918,12 +973,15 @@ internal sealed class HelloIdentityApplication<TProfile>(
             command.VerificationCode,
             command.ClientKey,
             HelloAccountSecurity.AccountDeleteAction,
-            (user, ct) => users.DeleteAsync(
-                new DeleteUserCommand(
-                    user.Id,
-                    user.Version,
-                    "Self-service account deletion."),
-                ct),
+            async (user, ct) =>
+            {
+                var allowed = await HelloAccountPolicy.RequireEditAsync(
+                    accountPolicy, user, HelloAccountArea.Delete, ct);
+                return allowed.IsSuccess
+                    ? await users.DeleteAsync(new DeleteUserCommand(user.Id, user.Version,
+                        "Self-service account deletion."), ct)
+                    : allowed;
+            },
             cancellationToken);
     }
 
@@ -943,6 +1001,13 @@ internal sealed class HelloIdentityApplication<TProfile>(
         {
             return OperationResultFactory.Fail<HelloStepUpChallenge>(
                 validated.Errors);
+        }
+
+        if (action is HelloAccountSecurity.PasswordSetAction or HelloAccountSecurity.PasswordRemoveAction)
+        {
+            var permission = await HelloAccountPolicy.RequireEditAsync(
+                accountPolicy, validated.Value, HelloAccountArea.Password, cancellationToken);
+            if (!permission.IsSuccess) return OperationResultFactory.Fail<HelloStepUpChallenge>(permission.Errors);
         }
 
         var user = validated.Value;
@@ -1014,6 +1079,13 @@ internal sealed class HelloIdentityApplication<TProfile>(
         if (!validated.IsSuccess)
         {
             return OperationResultFactory.Fail(validated.Errors);
+        }
+
+        if (action is HelloAccountSecurity.PasswordSetAction or HelloAccountSecurity.PasswordRemoveAction)
+        {
+            var permission = await HelloAccountPolicy.RequireEditAsync(
+                accountPolicy, validated.Value, HelloAccountArea.Password, cancellationToken);
+            if (!permission.IsSuccess) return OperationResultFactory.Fail(permission.Errors);
         }
 
         var user = validated.Value;
@@ -1299,7 +1371,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
         string? userName,
         string? email,
         string? phone)
-        => options.PasswordLoginHandle switch
+        => (siteContext?.Current?.PasswordLoginHandle ?? options.PasswordLoginHandle) switch
         {
             PasswordLoginHandle.UserName =>
                 !string.IsNullOrWhiteSpace(userName),
@@ -1392,7 +1464,7 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 cancellationToken);
     }
 
-    private static HelloAccount<TProfile> ToAccount(
+    internal static HelloAccount<TProfile> ToAccount(
         IdentityUser<TProfile> user)
         => new(
             user.Id,

@@ -211,6 +211,21 @@ public sealed class HelloAccountMessageDispatcherTests
             provider.GetRequiredService<CustomSmsProvider>().Messages);
     }
 
+    [Fact]
+    public async Task HostSmsRoutesBoundedTextOnlyToSmsProvider()
+    {
+        var sms = new RecordingProvider("sms", HelloDeliveryChannel.Sms);
+        var sender = new HelloAccountMessageDispatcher(new HelloDeliveryOptions { SmsProviderId = "sms" }, [sms]);
+        var message = new HelloAccountMessage(Guid.NewGuid(), HelloAccountMessageKind.HostSms,
+            HelloDeliveryChannel.Sms, "+12025550123", null, DateTimeOffset.UtcNow.AddMinutes(10), Text: "Consent: https://example.test/a");
+        Assert.True((await sender.SendAsync(message, CancellationToken.None)).IsSuccess);
+        Assert.Same(message, Assert.Single(sms.Messages));
+        Assert.False((await sender.SendAsync(message with { Text = new string('x', 481) }, CancellationToken.None)).IsSuccess);
+        Assert.False((await sender.SendAsync(message with { Channel = HelloDeliveryChannel.Email }, CancellationToken.None)).IsSuccess);
+        Assert.False((await sender.SendAsync(message with { VerificationCode = "123456" }, CancellationToken.None)).IsSuccess);
+        Assert.Single(sms.Messages);
+    }
+
     private static HelloAccountMessage CreateActionMessage(
         HelloDeliveryChannel channel,
         HelloAccountMessageKind kind)

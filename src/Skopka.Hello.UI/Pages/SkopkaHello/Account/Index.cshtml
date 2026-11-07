@@ -1,4 +1,5 @@
 @page
+@inject HelloUiSite Site
 @model AccountModel
 @inject IHelloUiExternalApplication ExternalIdentity
 @inject IHelloUiApplication HelloApplication
@@ -37,9 +38,9 @@
     }
 
     @if (UiOptions.Account.ShowUserId
-        || HelloUiAccountOptions.IsVisible(UiOptions.Account.UserName)
-        || HelloUiAccountOptions.IsVisible(UiOptions.Account.Email)
-        || HelloUiAccountOptions.IsVisible(UiOptions.Account.Phone))
+        || (Model.CanView(HelloAccountArea.UserName) && HelloUiAccountOptions.IsVisible(UiOptions.Account.UserName))
+        || (Model.CanView(HelloAccountArea.Email) && HelloUiAccountOptions.IsVisible(UiOptions.Account.Email))
+        || (Model.CanView(HelloAccountArea.Phone) && HelloUiAccountOptions.IsVisible(UiOptions.Account.Phone)))
     {
         <dl class="hello-details">
             @if (UiOptions.Account.ShowUserId)
@@ -49,7 +50,7 @@
                     <dd><code>@Model.UserId</code></dd>
                 </div>
             }
-            @if (HelloUiAccountOptions.IsVisible(UiOptions.Account.UserName))
+            @if ((Model.CanView(HelloAccountArea.UserName) && HelloUiAccountOptions.IsVisible(UiOptions.Account.UserName)))
             {
                 <div>
                     <dt>@(UiOptions.Account.IsOnlyUserNameEditable
@@ -58,14 +59,14 @@
                     <dd>@(Model.UserName ?? Text["Common.NotSet"])</dd>
                 </div>
             }
-            @if (HelloUiAccountOptions.IsVisible(UiOptions.Account.Email))
+            @if ((Model.CanView(HelloAccountArea.Email) && HelloUiAccountOptions.IsVisible(UiOptions.Account.Email)))
             {
                 <div>
                     <dt>@Text["Field.Email"]</dt>
                     <dd>@(Model.Email ?? Text["Common.NotSet"])</dd>
                 </div>
             }
-            @if (Model.EmailConfirmationApplicable)
+            @if (Model.CanView(HelloAccountArea.Email) && Model.EmailConfirmationApplicable)
             {
                 <div>
                     <dt>@Text["Account.EmailStatus"]</dt>
@@ -74,7 +75,7 @@
                         : Text["Common.NotConfirmed"])</dd>
                 </div>
             }
-            @if (HelloUiAccountOptions.IsVisible(UiOptions.Account.Phone))
+            @if ((Model.CanView(HelloAccountArea.Phone) && HelloUiAccountOptions.IsVisible(UiOptions.Account.Phone)))
             {
                 <div>
                     <dt>@Text["Field.Phone"]</dt>
@@ -93,8 +94,8 @@
         </dl>
     }
 
-    @if (HelloUiAccountOptions.IsEditable(UiOptions.Account.UserName)
-        || HelloUiAccountOptions.IsEditable(UiOptions.Account.Email))
+    @if ((Model.CanEdit(HelloAccountArea.UserName) && HelloUiAccountOptions.IsEditable(UiOptions.Account.UserName))
+        || (Model.CanEdit(HelloAccountArea.Email) && HelloUiAccountOptions.IsEditable(UiOptions.Account.Email)))
     {
         <h2>@(UiOptions.Account.IsOnlyUserNameEditable
             ? Text["Account.LoginName"]
@@ -106,7 +107,7 @@
         </p>
     }
 
-    @if (HelloUiAccountOptions.IsEditable(UiOptions.Account.UserName))
+    @if ((Model.CanEdit(HelloAccountArea.UserName) && HelloUiAccountOptions.IsEditable(UiOptions.Account.UserName)))
     {
         <form method="post"
           asp-page-handler="ChangeUserName"
@@ -126,7 +127,7 @@
         </form>
     }
 
-    @if (HelloUiAccountOptions.IsEditable(UiOptions.Account.Email))
+    @if ((Model.CanEdit(HelloAccountArea.Email) && HelloUiAccountOptions.IsEditable(UiOptions.Account.Email)))
     {
         <form method="post"
           asp-page-handler="ChangeEmail"
@@ -176,7 +177,7 @@
         </section>
     }
 
-    @if (Model.ProfileFields.Count > 0)
+    @if (Model.CanView(HelloAccountArea.Profile) && Model.ProfileFields.Count > 0)
     {
         <h2>@Text["Account.EditableProfile"]</h2>
         <form method="post"
@@ -197,7 +198,8 @@
                        type="@field.InputType"
                        autocomplete="@field.AutoComplete"
                        maxlength="@field.MaximumLength"
-                       required="@field.Required"
+                       required="@(field.Required && !field.ReadOnly)"
+                       disabled="@field.ReadOnly"
                        aria-describedby="@hintId" />
                 @if (hintId is not null)
                 {
@@ -215,10 +217,12 @@
                     }
                 }
             }
-            <button class="hello-button hello-button-secondary"
-                    type="submit">
-                @Text["Account.UpdateProfile"]
-            </button>
+            @if (Model.CanEdit(HelloAccountArea.Profile) && Model.ProfileFields.Any(field => !field.ReadOnly))
+            {
+                <button class="hello-button hello-button-secondary" type="submit">
+                    @Text["Account.UpdateProfile"]
+                </button>
+            }
         </form>
     }
 
@@ -230,14 +234,14 @@
                 @Text["Account.SwitchAccount"]
             </a>
         }
-        @if ((UiOptions.EnabledPages & HelloUiPages.Sessions) != 0)
+        @if (Site.IsEnabled(HelloUiPages.Sessions))
         {
             <a class="hello-button"
                asp-page="/SkopkaHello/Account/Sessions">
                 @Text["Account.ManageSessions"]
             </a>
         }
-        @if ((UiOptions.EnabledPages & HelloUiPages.AccountSecurity) != 0)
+        @if (Site.IsEnabled(HelloUiPages.AccountSecurity))
         {
             <a class="hello-button hello-button-secondary"
                asp-page="/SkopkaHello/Account/Security">
@@ -251,7 +255,8 @@
                 @Text["Account.SignInRequests"]
             </a>
         }
-        @if ((UiOptions.EnabledPages & HelloUiPages.ExternalIdentity) != 0
+        @if (Site.IsEnabled(HelloUiPages.ExternalIdentity)
+            && Site.Current?.ExternalSignInEnabled == true
             && ExternalIdentity.IsConfigured)
         {
             <a class="hello-button hello-button-secondary"
@@ -265,8 +270,8 @@
                 @Text["Layout.SignOut"]
             </button>
         </form>
-        @if ((UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0
-            && Model.EmailConfirmationRequired)
+        @if (Site.IsEnabled(HelloUiPages.ContactConfirmation)
+            && Model.CanView(HelloAccountArea.Email) && Model.EmailConfirmationRequired)
         {
             <form method="post"
                   asp-page-handler="RequestEmailConfirmation">
@@ -276,8 +281,8 @@
                 </button>
             </form>
         }
-        @if ((UiOptions.EnabledPages & HelloUiPages.ContactConfirmation) != 0
-            && Model.PhoneConfirmationRequired)
+        @if (Site.IsEnabled(HelloUiPages.ContactConfirmation)
+            && Model.CanView(HelloAccountArea.Phone) && Model.PhoneConfirmationRequired)
         {
             <form method="post"
                   asp-page-handler="RequestPhoneConfirmation">

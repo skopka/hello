@@ -26,7 +26,9 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
     HelloPhoneInputPolicy phoneInputPolicy,
     TimeProvider timeProvider,
     HelloRegistrationAdmission<TProfile>? registrationAdmission = null,
-    IHelloRegistrationConsentProfileEnricher<TProfile>? profileEnricher = null)
+    IHelloRegistrationConsentProfileEnricher<TProfile>? profileEnricher = null,
+    IHelloRegistrationContinuation<TProfile>? registrationContinuation = null,
+    IHelloSiteContext? siteContext = null)
     : IHelloPhoneOtpApplication<TProfile>
 {
     private readonly IDataProtector protector = protectionProvider
@@ -34,13 +36,19 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
     private readonly IIdentityRateLimiter<TProfile>? rateLimiter =
         rateLimiters.FirstOrDefault();
 
+    private bool PhoneEnabled => options.PhoneOtpEnabled
+        && (siteContext is null || siteContext.Current?.PhoneOtpEnabled == true);
+    private bool RegistrationEnabled => options.SelfRegistrationEnabled
+        && HelloSiteAccess.Allows(siteContext, HelloSiteFeatures.Registration)
+        && (siteContext is null || siteContext.Current?.SelfRegistrationEnabled == true);
+
     public async Task<OperationResult<HelloPhoneCodeRequest>> RequestCodeAsync(
         string phone,
         string? clientKey,
         string? captchaResponse,
         CancellationToken cancellationToken)
     {
-        if (!options.PhoneOtpEnabled)
+        if (!PhoneEnabled)
         {
             return Disabled<HelloPhoneCodeRequest>();
         }
@@ -133,7 +141,7 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
             IdentitySessionMetadata sessionMetadata,
             CancellationToken cancellationToken)
     {
-        if (!options.PhoneOtpEnabled)
+        if (!PhoneEnabled || !HelloSiteAccess.Allows(siteContext, HelloSiteFeatures.Login))
         {
             return Disabled<HelloPhoneCodeVerification<TProfile>>();
         }
@@ -151,7 +159,8 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
         {
             var issued = await sessions.CreateAsync(
                 new CreateIdentitySessionCommand(
-                    user.Id, user.SecurityStamp, sessionMetadata),
+                    user.Id, user.SecurityStamp, sessionMetadata)
+                { Context = HelloSiteAccess.Session(siteContext, HelloAuthenticationMethods.Phone) },
                 cancellationToken);
             return issued.IsSuccess
                 ? OperationResultFactory.Success(
@@ -163,7 +172,7 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
                     HelloPhoneCodeVerification<TProfile>>(issued.Errors);
         }
 
-        if (!options.SelfRegistrationEnabled)
+        if (!RegistrationEnabled)
         {
             return OperationResultFactory.Fail<
                 HelloPhoneCodeVerification<TProfile>>(
@@ -175,7 +184,8 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
             proof.ChallengeId,
             result.Value.Phone,
             proof.Token,
-            proof.ExpiresAt);
+            proof.ExpiresAt)
+        { SiteId = siteContext?.Current?.Id };
         var token = protector.Protect(JsonSerializer.Serialize(ticket));
         return OperationResultFactory.Success(
             new HelloPhoneCodeVerification<TProfile>(null, token));
@@ -186,7 +196,7 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
             HelloPhoneRegistrationCommand<TProfile> command,
             CancellationToken cancellationToken)
     {
-        if (!options.PhoneOtpEnabled || !options.SelfRegistrationEnabled)
+        if (!PhoneEnabled || !RegistrationEnabled)
         {
             return Disabled<HelloSignIn<TProfile>>();
         }
@@ -234,6 +244,13 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
             profile = enriched.Value;
         }
 
+        if (registrationContinuation is not null)
+        {
+            var prepared = await registrationContinuation.PrepareProfileAsync(profile, HelloRegistrationKind.PhoneOtp, cancellationToken);
+            if (!prepared.IsSuccess) return OperationResultFactory.Fail<HelloSignIn<TProfile>>(prepared.Errors);
+            profile = prepared.Value;
+        }
+
         var created = await registration.RegisterVerifiedPhoneAsync(
             new RegisterVerifiedPhoneUserCommand<TProfile>(
                 new CreateUserCommand<TProfile>(
@@ -253,7 +270,8 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
             new CreateIdentitySessionCommand(
                 created.Value.Id,
                 created.Value.SecurityStamp,
-                command.SessionMetadata),
+                command.SessionMetadata)
+            { Context = HelloSiteAccess.Session(siteContext, HelloAuthenticationMethods.Phone) },
             cancellationToken);
         return issuedSession.IsSuccess
             ? OperationResultFactory.Success(
@@ -278,6 +296,7 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
                 protector.Unprotect(protectedToken));
             return ticket is not null
                 && ticket.ExpiresAt > timeProvider.GetUtcNow()
+                && (siteContext is null || ticket.SiteId == siteContext.Current?.Id)
                 ? ticket
                 : null;
         }
@@ -317,5 +336,8 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
         Guid ChallengeId,
         string Phone,
         string Proof,
-        DateTimeOffset ExpiresAt);
+        DateTimeOffset ExpiresAt)
+    {
+        public string? SiteId { get; init; }
+    }
 }

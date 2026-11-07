@@ -68,7 +68,7 @@ internal sealed class HelloAuthorizationApplication<TProfile>(
                 source.Value.User.Id,
                 source.Value.User.SecurityStamp,
                 new IdentitySessionMetadata(clientName))
-            { Assurance = source.Value.Assurance },
+            { Assurance = source.Value.Assurance, Context = source.Value.Context },
             cancellationToken);
         return registered.IsSuccess
             ? OperationResultFactory.Success(

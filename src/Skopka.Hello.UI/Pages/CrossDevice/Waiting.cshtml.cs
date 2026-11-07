@@ -85,7 +85,7 @@ public sealed class CrossDeviceWaitingModel(
             completed.Value.SignIn);
         return Url.IsLocalUrl(completed.Value.ReturnUrl)
             ? LocalRedirect(completed.Value.ReturnUrl)
-            : LocalRedirect(uiOptions.GetAuthenticatedRedirectPath(routes));
+            : LocalRedirect(HelloUiSite.Redirect(HttpContext, uiOptions, routes));
     }
 
     public async Task<IActionResult> OnPostRestartAsync(

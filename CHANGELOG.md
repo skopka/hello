@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.28.4
+
+- Give the account phone-binding code button its own localization key, `PhoneBinding.RequestCode` ("Send code" / "Получить код"), so hosts can override it independently of the sign-in button.
+
 ## 0.28.3
 
 - Let users cancel the phone-binding code step and enter another number without changing their account. After successful binding, return to the phone section and show a one-time localized success message.

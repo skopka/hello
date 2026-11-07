@@ -6,6 +6,8 @@ Enable phone OTP and configure an SMS sender, HMAC OTP and persistent rate limit
 
 On the code step, **Cancel** returns to an empty phone-input form without changing the account. A successful binding redirects to the account page's `#phone-binding` section and shows **Phone number linked.** once. The cancellation link and success redirect respect the configured UI prefix. These interaction improvements are available from 0.28.3; the binding API is unchanged.
 
+Version 0.28.4 gives the account's send-code button its own localization key, `PhoneBinding.RequestCode`: **Send code** in English and **Получить код** in Russian. Override this key under `texts` in a [custom localization dictionary](customization.md) to customize binding independently. The sign-in button continues to use `Phone.RequestCode` (**Send sign-in code** / **Получить код входа**).
+
 For an IqZone-style account page, this configuration fragment enables the built-in replacement for a custom `/me/phone` page once phone OTP and SMS delivery are configured:
 
 ```csharp

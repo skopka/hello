@@ -147,6 +147,10 @@
     {
         <section id="phone-binding" aria-labelledby="phone-binding-title">
         <h2 id="phone-binding-title">@(string.IsNullOrWhiteSpace(Model.Phone) ? Text["PhoneBinding.Add"] : Text["PhoneBinding.Change"])</h2>
+        @if (Model.PhoneBindingSucceeded)
+        {
+            <p class="hello-status" role="status">@Text["PhoneBinding.Success"]</p>
+        }
         <p>@Text["PhoneBinding.Description"]</p>
         @if (string.IsNullOrEmpty(Model.BindingTicket))
         {
@@ -165,6 +169,8 @@
                 <input asp-for="BindingCode" inputmode="numeric" autocomplete="one-time-code" aria-describedby="binding-code-error" required />
                 <span asp-validation-for="BindingCode" id="binding-code-error" class="hello-field-error" role="alert"></span>
                 <button class="hello-button hello-button-secondary" type="submit">@Text["Phone.VerifyCode"]</button>
+                <a asp-page="/SkopkaHello/Account/Index" asp-fragment="phone-binding"
+                   class="hello-button hello-button-secondary">@Text["PhoneBinding.Cancel"]</a>
             </form>
         }
         </section>

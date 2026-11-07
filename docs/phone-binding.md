@@ -4,6 +4,8 @@ Enable phone OTP and configure an SMS sender, HMAC OTP and persistent rate limit
 
 `SkopkaHelloUiOptions.Account.Phone` controls number visibility. `ReadOnly` shows the current number while allowing verified binding through the independent `Account.PhoneBindingEnabled` option (default `true`). `Hidden` hides the current number; set `PhoneBindingEnabled = false` as well to hide and disable the binding forms. Binding also requires the phone OTP services. There is no unverified phone-edit form, including with `Phone = Editable`. This UI option does not disable the authenticated binding API.
 
+On the code step, **Cancel** returns to an empty phone-input form without changing the account. A successful binding redirects to the account page's `#phone-binding` section and shows **Phone number linked.** once. The cancellation link and success redirect respect the configured UI prefix. These interaction improvements are available from 0.28.3; the binding API is unchanged.
+
 For an IqZone-style account page, this configuration fragment enables the built-in replacement for a custom `/me/phone` page once phone OTP and SMS delivery are configured:
 
 ```csharp

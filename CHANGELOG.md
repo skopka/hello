@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.28.3
+
+- Let users cancel the phone-binding code step and enter another number without changing their account. After successful binding, return to the phone section and show a one-time localized success message.
+
 ## 0.28.2
 
 - Require SMS verification of the new number for account phone additions and replacements. Remove `PUT /account/phone` and the direct Razor edit; the retained application method fails with `hello.phone_binding.required`.

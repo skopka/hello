@@ -433,6 +433,7 @@ public sealed partial class AuthenticationFlowTests
         var bindingMessage = await app.WaitForMessageAsync(HelloAccountMessageKind.PhoneSignInVerification);
         using var completed = await SendFormAsync(client, "/identity/account?handler=CompletePhoneBinding", cookies, new Dictionary<string, string> { ["BindingTicket"] = ticket, ["BindingCode"] = bindingMessage.VerificationCode!, ["__RequestVerificationToken"] = token });
         Assert.Equal(HttpStatusCode.Redirect, completed.StatusCode);
+        Assert.Equal("/identity/account#phone-binding", completed.Headers.Location?.OriginalString);
         using var updated = await GetMeAsync(client, apiLogin.AccessToken);
         Assert.Equal("+79990002413", updated.RootElement.GetProperty("phone").GetString());
         Assert.True(updated.RootElement.GetProperty("phoneConfirmed").GetBoolean());

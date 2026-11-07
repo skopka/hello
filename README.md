@@ -12,7 +12,7 @@ verification and refresh-session state stay in Skopka.Identity.
 
 ## Documentation
 
-Documentation: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html). Repository guides describe version `0.28.2`; the documentation site is updated separately.
+Documentation: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html). Repository guides describe version `0.28.3`; the documentation site is updated separately.
 
 Version `0.25.0` adds optional hints under host-defined account profile
 fields; see [customization](docs/customization.md). It also adds
@@ -43,7 +43,10 @@ new number. `Account.PhoneBindingEnabled` (default `true`) enables this flow
 independently of `Account.Phone`, including `ReadOnly`. See the
 [phone-binding migration and configuration](docs/phone-binding.md).
 
-The current `0.28.2` vertical slice contains:
+Version `0.28.3` adds Cancel to the phone-code step and
+returns successful binding to the phone section with a one-time confirmation.
+
+The current `0.28.3` vertical slice contains:
 
 - atomic password registration;
 - passwordless SMS sign-in and atomic registration by verified phone;

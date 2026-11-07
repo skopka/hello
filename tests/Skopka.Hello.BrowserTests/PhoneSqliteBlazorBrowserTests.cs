@@ -96,13 +96,31 @@ public sealed class PhoneSqliteBlazorBrowserTests(BrowserFixture browser)
             await Assertions.Expect(page.Locator("#phone-binding input[name='BindingPhone']"))
                 .ToBeVisibleAsync();
             Assert.Equal(0, await page.Locator("form[action*='handler=ChangePhone']").CountAsync());
+            await page.Locator("#phone-binding input[name='BindingPhone']").FillAsync("+79991234573");
+            await page.Locator("#phone-binding button[type='submit']").ClickAsync();
+            _ = await codes.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(20));
+            await Assertions.Expect(page.Locator("#phone-binding input[name='BindingCode']"))
+                .ToBeVisibleAsync();
+            await page.Locator("#phone-binding").GetByRole(AriaRole.Link,
+                new() { Name = "Отмена", Exact = true }).ClickAsync();
+            await page.WaitForURLAsync("**/hello/account#phone-binding");
+            await Assertions.Expect(page.Locator("#phone-binding input[name='BindingPhone']"))
+                .ToHaveValueAsync(string.Empty);
+            await Assertions.Expect(page.Locator("#phone-binding input[name='BindingCode']"))
+                .ToHaveCountAsync(0);
+            await Assertions.Expect(page.Locator("#phone-binding [role='status']"))
+                .ToHaveCountAsync(0);
+            await Assertions.Expect(page.Locator("body")).ToContainTextAsync("+79991234571");
             await page.Locator("#phone-binding input[name='BindingPhone']").FillAsync("+79991234572");
             await page.Locator("#phone-binding button[type='submit']").ClickAsync();
             var replacementCode = await codes.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(20));
             await page.Locator("#phone-binding input[name='BindingCode']").FillAsync(replacementCode);
             await page.Locator("#phone-binding button[type='submit']").ClickAsync();
-            await page.WaitForURLAsync("**/hello/account**");
+            await page.WaitForURLAsync("**/hello/account#phone-binding");
             await Assertions.Expect(page.Locator("body")).ToContainTextAsync("+79991234572");
+            var bindingStatus = page.Locator("#phone-binding [role='status']");
+            await Assertions.Expect(bindingStatus).ToHaveTextAsync("Номер телефона привязан.");
+            await Assertions.Expect(bindingStatus).ToBeInViewportAsync();
             var displayNameInput = page.GetByLabel(
                 "Display name", new() { Exact = true });
             await Assertions.Expect(displayNameInput)
@@ -114,6 +132,7 @@ public sealed class PhoneSqliteBlazorBrowserTests(BrowserFixture browser)
             await Assertions.Expect(page.Locator("input[name='ProfileValues[schoolClass]']"))
                 .ToHaveValueAsync("7А");
             await page.ReloadAsync();
+            await Assertions.Expect(bindingStatus).ToHaveCountAsync(0);
             await Assertions.Expect(page.Locator("input[name='ProfileValues[schoolClass]']"))
                 .ToHaveValueAsync("7А");
             await page.GotoAsync($"{address}/private");

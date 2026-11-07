@@ -62,6 +62,10 @@ public sealed class AccountModel(
 
     public bool PhoneBindingEnabled => uiOptions.Account.PhoneBindingEnabled && phoneBinding is not null;
 
+    /// <summary>Shows a one-time confirmation after successful verified phone binding.</summary>
+    [TempData]
+    public bool PhoneBindingSucceeded { get; set; }
+
     [BindProperty, ValidateNever]
     public string? BindingPhone { get; set; }
     [BindProperty, ValidateNever]
@@ -86,7 +90,12 @@ public sealed class AccountModel(
         if (!uiOptions.Account.PhoneBindingEnabled || phoneBinding is null) return NotFound();
         ModelState.Clear();
         var result = await phoneBinding.CompleteAsync(BindingTicket ?? string.Empty, BindingCode ?? string.Empty, HttpContext, cancellationToken);
-        if (result.IsSuccess) return RedirectToPage();
+        if (result.IsSuccess)
+        {
+            PhoneBindingSucceeded = true;
+            return RedirectToPage(pageName: null, pageHandler: null,
+                routeValues: null, fragment: "phone-binding");
+        }
         if (result.Errors.Any(error => error.Code == Skopka.Identity.Errors.IdentityErrorCodes.DuplicatePhone))
             ModelState.AddModelError(nameof(BindingCode), text["Errors.identity.phone.duplicate"].Value);
         else HelloUiModelState.AddErrors(ModelState, result.Errors, text);

@@ -44,4 +44,14 @@ public sealed class HelloUiPrgStateStoreTests
         Assert.NotNull(codes);
         Assert.Equal(Codes, codes);
     }
+    [Fact]
+    public void ExpiredStateCannotBeReadOrConsumed()
+    {
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var store = new HelloUiPrgStateStore(cache);
+        var token = store.Store(Codes, DateTimeOffset.UtcNow.AddSeconds(-1));
+
+        Assert.False(store.TryGet<string[]>(token, out _));
+        Assert.False(store.TryTake<string[]>(token, out _));
+    }
 }

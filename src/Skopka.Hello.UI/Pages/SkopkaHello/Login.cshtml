@@ -12,18 +12,13 @@
         {
             <div asp-validation-summary="All" class="hello-status hello-status-error" role="alert" tabindex="-1"></div>
         }
-        @if (Model.SecondFactorView == "start-enroll" || Model.SecondFactorView == "start-verify")
+        @if (Model.SecondFactorView == "verify" || Model.SecondFactorView == "enroll")
         {
-            <p>@Text[Model.SecondFactorView == "start-enroll" ? "SecondFactor.EnrollIntro" : "SecondFactor.VerifyIntro"]</p>
-            <form method="post" class="hello-form" asp-page-handler="SecondFactorStart">
-                <input type="hidden" asp-for="SecondFactorTicket" />
-                <input type="hidden" asp-for="ReturnUrl" />
-                <input type="hidden" name="mode" value="@(Model.SecondFactorView == "start-enroll" ? "enroll" : "verify")" />
-                <button class="hello-button" type="submit">@Text["SecondFactor.Continue"]</button>
-            </form>
-        }
-        else if (Model.SecondFactorView == "verify" || Model.SecondFactorView == "enroll")
-        {
+            <p>@Text[Model.SecondFactorView == "enroll" ? "SecondFactor.EnrollIntro" : "SecondFactor.VerifyIntro"]</p>
+            @if (Model.SecondFactorView == "verify")
+            {
+                <p>@Text["SecondFactor.ContactAdministrator"]</p>
+            }
             @if (Model.SecondFactorSecret is not null)
             {
                 <div class="hello-qr-code">
@@ -36,13 +31,12 @@
                 <input type="hidden" asp-for="SecondFactorTicket" />
                 <input type="hidden" asp-for="ReturnUrl" />
                 <input type="hidden" name="mode" value="@(Model.SecondFactorView == "enroll" ? "enroll" : "verify")" />
-                <label asp-for="SecondFactorCode">@Text["SecondFactor.Code"]</label>
-                <p id="second-factor-hint">@Text["SecondFactor.CodeHint"]</p>
+                <label asp-for="SecondFactorCode">@Text[Model.SecondFactorView == "enroll" ? "Field.AuthenticatorCode" : "SecondFactor.Code"]</label>
+                <p id="second-factor-hint">@Text[Model.SecondFactorView == "enroll" ? "SecondFactor.EnrollmentCodeHint" : "SecondFactor.CodeHint"]</p>
                 <input asp-for="SecondFactorCode" autocomplete="one-time-code" aria-describedby="second-factor-hint second-factor-error" />
                 <span id="second-factor-error" asp-validation-for="SecondFactorCode"></span>
                 <button class="hello-button" type="submit">@Text["SecondFactor.Continue"]</button>
             </form>
-            <p><a asp-page="/SkopkaHello/Login">@Text["SecondFactor.Restart"]</a></p>
         }
         else if (Model.SecondFactorView == "recovery")
         {
@@ -54,6 +48,14 @@
                 <button class="hello-button" type="submit">@Text["SecondFactor.SavedCodes"]</button>
             </form>
         }
+        @if (Model.SecondFactorView == "expired")
+        {
+            <p>@Text["SecondFactor.Expired"]</p>
+        }
+        <form method="post" asp-page-handler="SecondFactorRestart">
+            <input type="hidden" asp-for="ReturnUrl" />
+            <button class="hello-button hello-button-secondary" type="submit">@Text["SecondFactor.Restart"]</button>
+        </form>
     </section>
 }
 else

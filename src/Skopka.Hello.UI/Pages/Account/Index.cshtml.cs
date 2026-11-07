@@ -468,6 +468,10 @@ public sealed class AccountModel(
         sessionCookies.DeleteSessionCookies(HttpContext);
         await HttpContext.SignOutAsync(
             HelloUiDefaults.AuthenticationScheme);
+        if (uiOptions.PostLogoutRedirectPath is { } redirectPath)
+        {
+            return LocalRedirect(redirectPath);
+        }
         return uiOptions.AccountSwitching.Enabled
             && savedAccounts.Count > 1
                 ? RedirectToPage("/SkopkaHello/Accounts")

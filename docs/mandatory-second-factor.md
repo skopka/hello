@@ -83,6 +83,16 @@ antiforgery protection and accept only local return URLs. English and Russian
 strings are included; enrollment QR generation is local and does not contact a
 third-party service. Recovery codes are shown before the session is established.
 
+For password sign-in, phone-code sign-in and phone registration, the first-factor
+POST prepares verification or enrollment before redirecting. The redirected GET
+shows the code input or the enrollment QR and manual key directly. Reloading that
+page within the pending flow expiry does not consume it and shows the same enrollment
+QR and key while the pending presentation remains in the same server process. This
+state is process-local: a restart or cache eviction requires the user to start sign-in
+again. Multi-instance hosts must route these requests to the same instance. If the
+user has neither the authenticator app nor a recovery code, they should contact an
+administrator and restart sign-in after assistance.
+
 This works in an in-process Razor/Blazor Server host using the Hello UI cookie.
 The host must not replace the session admission/online validation services with
 custom implementations that skip these checks. The ready Server image is not

@@ -12,7 +12,7 @@ verification and refresh-session state stay in Skopka.Identity.
 
 ## Documentation
 
-Documentation for version 0.27.1: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html).
+Documentation: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html). Repository guides describe version `0.28.1`; the documentation site is updated separately.
 
 Version `0.25.0` adds optional hints under host-defined account profile
 fields; see [customization](docs/customization.md). It also adds
@@ -25,15 +25,19 @@ Version `0.25.2` requires fresh primary authentication before authenticator enro
 
 Version `0.27.0` adds optional [native app sign-in](docs/native-app-sign-in.md), compact authorization-client administration, and a replaceable [email transport](docs/email-transport.md).
 
-The `0.28.0` candidate adds host-required second-factor sign-in, host-defined phone
+Version `0.28.0` adds host-required second-factor sign-in, host-defined phone
 registration fields, verified phone binding and guarded administrator authenticator
 reset. See [mandatory second factor](docs/mandatory-second-factor.md),
 [phone registration and binding](docs/phone-binding.md), and the
 [upgrade guide from 0.25.1](docs/upgrade-0.28.0.md).
-It requires Skopka.Identity `0.17.0`. These versions are prepared locally;
-the documentation site above still describes the published release.
+This release line requires Skopka.Identity `0.17.0`.
 
-The current `0.28.0` vertical slice contains:
+Version `0.28.1` prepares the Razor password and phone second-factor step
+before redirecting to its input or enrollment screen and preserves it across
+page reloads. Hosts can configure a local post-logout destination through
+`SkopkaHelloUiOptions.PostLogoutRedirectPath`; the default behavior is unchanged.
+
+The current `0.28.1` vertical slice contains:
 
 - atomic password registration;
 - passwordless SMS sign-in and atomic registration by verified phone;
@@ -252,6 +256,15 @@ disabled through `SkopkaHelloOptions`, registration routes remain absent even
 if `HelloUiPages.Registration` is selected. A login-only configuration must set
 `AuthenticatedRedirectPath` to a local absolute path; a valid local
 `ReturnUrl` still takes priority after sign-in.
+
+To return to the host's home page after explicit sign-out, set
+`options.PostLogoutRedirectPath = "/"` in the existing `AddSkopkaHelloUi`
+callback. This also applies to sign-out from all sessions and revoking the
+current session. The default `null` preserves the Login page or saved-account
+chooser; an explicit path takes priority over that chooser. Only a local
+absolute path is accepted, without a query, fragment, escaping or dot segments.
+Request-supplied return URLs cannot override this setting. The ready Server
+reads `SkopkaHello:Ui:PostLogoutRedirectPath`.
 
 Hosts can opt in to device-local account switching:
 

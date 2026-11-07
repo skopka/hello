@@ -29,6 +29,14 @@ public sealed class SkopkaHelloUiOptions
 
     public string? AuthenticatedRedirectPath { get; set; }
 
+    /// <summary>
+    /// Optional local absolute path after explicit sign-out, sign-out from all
+    /// sessions, or revocation of the current session. Null preserves the Login
+    /// page (or saved-account chooser) redirect. Takes precedence over the chooser.
+    /// Authorities, queries, fragments, escaping and dot segments are rejected.
+    /// </summary>
+    public string? PostLogoutRedirectPath { get; set; }
+
     public string? ApplicationHomeUrl { get; set; }
 
     public bool ApplicationHomeLinkOnLoginEnabled { get; set; } = true;
@@ -105,6 +113,13 @@ public sealed class SkopkaHelloUiOptions
         {
             throw new InvalidOperationException(
                 "ApplicationHomeUrl must be a local absolute path or an absolute HTTPS URL without credentials, a query, a fragment or unsafe path segments.");
+        }
+
+        if (PostLogoutRedirectPath is not null
+            && !IsLocalAbsolutePath(PostLogoutRedirectPath))
+        {
+            throw new InvalidOperationException(
+                "PostLogoutRedirectPath must be a local absolute path without an authority, query, fragment, escaping, whitespace or dot segments.");
         }
 
         ValidateLegalDocumentUrl(

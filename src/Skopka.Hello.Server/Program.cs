@@ -538,6 +538,8 @@ builder.Services.AddSkopkaHelloUi<
 {
     options.ApplicationHomeUrl =
         configuration["SkopkaHello:Ui:ApplicationHomeUrl"];
+    options.PostLogoutRedirectPath =
+        configuration["SkopkaHello:Ui:PostLogoutRedirectPath"];
     options.ApplicationHomeLinkOnLoginEnabled = configuration.GetValue(
         "SkopkaHello:Ui:ApplicationHomeLinkOnLoginEnabled",
         true);

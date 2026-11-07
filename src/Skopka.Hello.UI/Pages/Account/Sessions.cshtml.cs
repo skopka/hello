@@ -9,7 +9,8 @@ namespace Skopka.Hello.UI.Pages;
 public sealed class SessionsModel(
     IHelloUiApplication application,
     IHelloSessionCookieManager sessionCookies,
-    IHelloUiLocalizer text)
+    IHelloUiLocalizer text,
+    SkopkaHelloUiOptions? uiOptions = null)
     : PageModel
 {
     public IReadOnlyList<HelloSessionInfo> Sessions { get; private set; } =
@@ -59,7 +60,7 @@ public sealed class SessionsModel(
         if (sessionId == currentSessionId)
         {
             await ClearLocalSessionAsync();
-            return RedirectToPage("/SkopkaHello/Login");
+            return RedirectAfterLogout();
         }
 
         return RedirectToPage();
@@ -88,8 +89,13 @@ public sealed class SessionsModel(
         }
 
         await ClearLocalSessionAsync();
-        return RedirectToPage("/SkopkaHello/Login");
+        return RedirectAfterLogout();
     }
+
+    private IActionResult RedirectAfterLogout()
+        => uiOptions?.PostLogoutRedirectPath is { } redirectPath
+            ? LocalRedirect(redirectPath)
+            : RedirectToPage("/SkopkaHello/Login");
 
     private bool TryGetIdentity(
         out Guid userId,

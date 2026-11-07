@@ -5,6 +5,8 @@ using Skopka.Hello.Endpoints;
 using Skopka.Hello.Oidc;
 using Skopka.Hello.UI;
 
+new SkopkaHelloUiOptions { PostLogoutRedirectPath = "/" }.Validate();
+
 Type[] packageSurfaces =
 [
     typeof(SkopkaHelloOptions),

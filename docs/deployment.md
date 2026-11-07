@@ -28,6 +28,10 @@ Optional `SkopkaHello:Ui:ApplicationHomeUrl` adds a link back to the host
 application. Set `SkopkaHello:Ui:ApplicationHomeLinkOnLoginEnabled` to `false`
 when that application requires authentication; the login page then omits the
 link, while authenticated and other Hello pages keep it.
+Optional `SkopkaHello:Ui:PostLogoutRedirectPath` selects a local absolute path
+after explicit UI sign-out; set `/` to return to the site home page. The default
+is unchanged: Login, or the saved-account chooser when applicable. External
+URLs, queries, fragments, escaping and dot segments are rejected at startup.
 An application composing the NuGet packages can set
 `SkopkaHelloUiOptions.LayoutPath` to a compiled host Razor layout; this applies
 to both Hello and Admin pages. The ready Server keeps the packaged layouts.

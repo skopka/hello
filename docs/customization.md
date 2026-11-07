@@ -100,6 +100,7 @@ Register the Razor Class Library with an application-specific profile factory:
 services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
 {
     options.LayoutPath = "/Pages/Shared/_Layout.cshtml";
+    options.PostLogoutRedirectPath = "/";
     options.NoticeText =
         "Test environment: data may be removed without notice.";
     options.CustomCssFilePath = "/themes/custom.css";
@@ -124,6 +125,20 @@ ProblemDetails by requesting `application/json` or `application/problem+json`;
 an absent or wildcard-only `Accept` header is treated as an API request. Error
 pages never include exception messages or stack traces and expose only the
 request id needed to correlate server logs.
+
+`PostLogoutRedirectPath` selects the local destination after the user signs out,
+signs out from all sessions, or revokes the current session. Set it to `/` to
+open the host home page, including in IqZone's existing UI registration callback.
+It takes priority over the saved-account chooser. Omit it (`null`) to preserve
+the existing Login/chooser redirects, including a custom Hello UI prefix.
+The path is relative to the site's origin, independent of the Hello UI prefix.
+Startup rejects external and protocol-relative URLs, queries, fragments,
+escaping, whitespace, backslashes and dot segments. A request's `ReturnUrl`
+does not affect sign-out. `ApplicationHomeUrl` remains a separate navigation link.
+Security-triggered reauthentication and the OIDC authorization-server end-session
+protocol keep their own redirects. The ready Server reads
+`SkopkaHello:Ui:PostLogoutRedirectPath` (environment:
+`SkopkaHello__Ui__PostLogoutRedirectPath=/`).
 
 `NoticeText` adds one host-owned message above the body on every packaged
 Hello page. A null, empty or whitespace-only value emits no notice element.

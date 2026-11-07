@@ -12,12 +12,16 @@ public sealed class HelloUiPrgStateStore(IMemoryCache cache)
 
     public string Store<T>(T value)
         where T : class
+        => Store(value, DateTimeOffset.UtcNow.Add(Lifetime));
+
+    internal string Store<T>(T value, DateTimeOffset expiresAt)
+        where T : class
     {
         var token = WebEncoders.Base64UrlEncode(
             RandomNumberGenerator.GetBytes(32));
         lock (sync)
         {
-            cache.Set(CacheKeyPrefix + token, value, Lifetime);
+            cache.Set(CacheKeyPrefix + token, value, expiresAt);
         }
 
         return token;

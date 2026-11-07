@@ -14,7 +14,8 @@ public sealed class ExternalRegisterModel(
     IHelloSessionCookieManager sessionCookies,
     IHelloUiLocalizer text,
     SkopkaHelloUiOptions uiOptions,
-    HelloUiPrgStateStore? prgState = null)
+    HelloUiPrgStateStore? prgState = null,
+    IHelloUiSecondFactorApplication? secondFactor = null)
     : PageModel
 {
     public ExternalRegisterModel(
@@ -111,10 +112,16 @@ public sealed class ExternalRegisterModel(
         if (!result.IsSuccess)
         {
             var required = result.Errors.FirstOrDefault(error => error.Code == HelloSecondFactorErrorCodes.Required)?.Details as HelloSecondFactorRequired;
-            if (required is not null && prgState is not null)
+            if (required is not null && prgState is not null && secondFactor is not null)
             {
-                TempData["SecondFactorStateToken"] = prgState.Store(required);
-                return RedirectToPage("/SkopkaHello/Login", new { ReturnUrl = required.ReturnUrl });
+                var prepared = await HelloUiSecondFactorFlow.BeginAsync(required, secondFactor, HttpContext, cancellationToken);
+                if (prepared.State is not null)
+                {
+                    prgState.Remove(TempData["SecondFactorStateToken"] as string);
+                    TempData["SecondFactorStateToken"] = prgState.Store(prepared.State, prepared.State.ExpiresAt);
+                    return RedirectToPage("/SkopkaHello/Login", new { ReturnUrl = required.ReturnUrl });
+                }
+                HelloUiModelState.AddErrors(ModelState, prepared.Errors, text);
             }
             HelloUiModelState.AddErrors(
                 ModelState,

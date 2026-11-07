@@ -123,6 +123,8 @@
     "ResendPhone.Accepted": "The request was accepted. If that phone belongs to an unconfirmed active account, delivery of a confirmation SMS will be attempted.",
 
     "Login.Eyebrow": "Welcome back",
+    "SecondFactor.ContactAdministrator": "If you have neither your authenticator app nor recovery codes, contact your administrator.",
+    "SecondFactor.Expired": "This sign-in has expired. Start again.",
     "SecondFactor.Restart": "Start sign-in again",
     "SecondFactor.QrAlt": "QR code for authenticator enrollment",
     "SecondFactor.Title": "Verify your sign-in",
@@ -131,6 +133,7 @@
     "SecondFactor.Continue": "Continue",
     "SecondFactor.SecretHint": "Add this setup key to your authenticator:",
     "SecondFactor.Code": "Authenticator or recovery code",
+    "SecondFactor.EnrollmentCodeHint": "Enter the current code from your authenticator app.",
     "SecondFactor.CodeHint": "Enter the current authenticator code or an unused recovery code.",
     "SecondFactor.RecoveryHint": "Save these recovery codes in a safe place. Each code can be used once.",
     "SecondFactor.SavedCodes": "I saved my recovery codes",

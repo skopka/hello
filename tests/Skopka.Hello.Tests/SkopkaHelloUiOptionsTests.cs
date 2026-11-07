@@ -24,6 +24,7 @@ public sealed class SkopkaHelloUiOptionsTests
             options.AccountSwitching.CookieName);
         Assert.Equal(5, options.AccountSwitching.MaximumSavedAccounts);
         Assert.Null(options.AuthenticatedRedirectPath);
+        Assert.Null(options.PostLogoutRedirectPath);
         Assert.Null(options.ApplicationHomeUrl);
         Assert.True(options.ApplicationHomeLinkOnLoginEnabled);
         Assert.Null(options.LayoutPath);
@@ -43,6 +44,35 @@ public sealed class SkopkaHelloUiOptionsTests
         Assert.Equal(
             "/_content/Skopka.Hello.UI/css/hello.css",
             HelloUiDefaults.BuiltInStylesheetPath);
+    }
+
+    [Theory]
+    [InlineData("/")]
+    [InlineData("/welcome")]
+    [InlineData("/app/home")]
+    public void ValidateAllowsLocalPostLogoutRedirect(string path)
+    {
+        new SkopkaHelloUiOptions { PostLogoutRedirectPath = path }.Validate();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("welcome")]
+    [InlineData("https://example.test/")]
+    [InlineData("//example.test/")]
+    [InlineData("/\\example.test/")]
+    [InlineData("/%2f%2fexample.test")]
+    [InlineData("/app/../home")]
+    [InlineData("/app/./home")]
+    [InlineData("/app?returnUrl=https://example.test")]
+    [InlineData("/app#fragment")]
+    [InlineData("/app\r\nLocation: https://example.test")]
+    public void ValidateRejectsUnsafePostLogoutRedirect(string path)
+    {
+        var options = new SkopkaHelloUiOptions { PostLogoutRedirectPath = path };
+        var exception = Assert.Throws<InvalidOperationException>(options.Validate);
+        Assert.Contains(nameof(options.PostLogoutRedirectPath), exception.Message);
     }
 
     [Fact]

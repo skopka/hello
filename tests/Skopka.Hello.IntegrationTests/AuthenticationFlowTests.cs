@@ -2869,8 +2869,10 @@ public sealed partial class AuthenticationFlowTests
 
     }
 
-    [Fact]
-    public async Task BrowserCanAddAndSwitchSavedAccounts()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("/")]
+    public async Task BrowserCanAddAndSwitchSavedAccounts(string? postLogoutRedirectPath)
     {
         await using var postgres = new PostgreSqlBuilder(
                 "postgres:17-alpine")
@@ -2879,7 +2881,10 @@ public sealed partial class AuthenticationFlowTests
         await using var app = await TestApplication.CreateAsync(
             postgres.GetConnectionString(),
             configureUi: options =>
-                options.AccountSwitching.Enabled = true);
+            {
+                options.AccountSwitching.Enabled = true;
+                options.PostLogoutRedirectPath = postLogoutRedirectPath;
+            });
         using var client = app.CreateClient(allowAutoRedirect: false);
         Dictionary<string, string> cookies = new(StringComparer.Ordinal);
 
@@ -2968,6 +2973,16 @@ public sealed partial class AuthenticationFlowTests
         Assert.NotNull(currentUser);
         Assert.Equal(firstUserId, currentUser.UserId);
         Assert.Equal("Saved Alice", currentUser.DisplayName);
+
+        using var account = await SendAsync(client, HttpMethod.Get, "/hello/account", cookies);
+        MergeCookies(cookies, account);
+        using var logout = await SendFormAsync(client, "/hello/account?handler=Logout", cookies,
+            new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = ReadInputValue(await account.Content.ReadAsStringAsync(), "__RequestVerificationToken"),
+            });
+        Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
+        Assert.Equal(postLogoutRedirectPath ?? "/hello/accounts", logout.Headers.Location?.OriginalString);
     }
 
     [Fact]

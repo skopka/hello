@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.28.1
+
+- Add optional `SkopkaHelloUiOptions.PostLogoutRedirectPath` and ready Server configuration for a local destination after explicit sign-out, sign-out everywhere, or current-session revocation. Default Login/account-chooser redirects remain unchanged.
+- Prepare required second-factor verification or enrollment during password and phone first-factor submissions, so the redirected page immediately shows the code input or enrollment QR and key. Reloading within the pending expiry preserves the step.
+
 ## 0.28.0
 
 - Redirect successful client administration submissions to a GET and show generated secrets once from server-side state.

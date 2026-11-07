@@ -5,7 +5,15 @@ using Skopka.Hello.Endpoints;
 using Skopka.Hello.Oidc;
 using Skopka.Hello.UI;
 
-new SkopkaHelloUiOptions { PostLogoutRedirectPath = "/" }.Validate();
+new SkopkaHelloUiOptions
+{
+    PostLogoutRedirectPath = "/",
+    Account =
+    {
+        Phone = HelloUiAccountFieldMode.ReadOnly,
+        PhoneBindingEnabled = true,
+    },
+}.Validate();
 
 Type[] packageSurfaces =
 [

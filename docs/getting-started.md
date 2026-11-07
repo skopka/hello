@@ -435,9 +435,12 @@ Content-Type: application/json
 }
 ```
 
-The same contract is available at `PUT /account/user-name`,
-`PUT /account/email` and `PUT /account/phone`. Changing an email or phone
-resets its confirmation. A stale version returns `409 Conflict`; callers must
+The same contract is available at `PUT /account/user-name` and
+`PUT /account/email`. Changing an email resets its confirmation.
+Phone additions and replacements require a code sent to the new phone through
+`POST /account/phone/binding` and `POST /account/phone/binding/complete`;
+`PUT /account/phone` is no longer mapped. See [phone binding](phone-binding.md).
+A stale version returns `409 Conflict` for the versioned updates above; callers must
 reload `/account/me` instead of overwriting a concurrent change. The generic
 profile type is the exact `TProfile` registered by the host. A password account
 cannot remove its final user name, email or phone because that would leave the

@@ -12,7 +12,7 @@ verification and refresh-session state stay in Skopka.Identity.
 
 ## Documentation
 
-Documentation: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html). Repository guides describe version `0.28.1`; the documentation site is updated separately.
+Documentation: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html). Repository guides describe version `0.28.2`; the documentation site is updated separately.
 
 Version `0.25.0` adds optional hints under host-defined account profile
 fields; see [customization](docs/customization.md). It also adds
@@ -37,7 +37,13 @@ before redirecting to its input or enrollment screen and preserves it across
 page reloads. Hosts can configure a local post-logout destination through
 `SkopkaHelloUiOptions.PostLogoutRedirectPath`; the default behavior is unchanged.
 
-The current `0.28.1` vertical slice contains:
+Version `0.28.2` removes direct `PUT /account/phone` and the
+Razor phone-edit form. Additions and replacements require a code sent to the
+new number. `Account.PhoneBindingEnabled` (default `true`) enables this flow
+independently of `Account.Phone`, including `ReadOnly`. See the
+[phone-binding migration and configuration](docs/phone-binding.md).
+
+The current `0.28.2` vertical slice contains:
 
 - atomic password registration;
 - passwordless SMS sign-in and atomic registration by verified phone;
@@ -146,7 +152,8 @@ The same client is covered by real Chromium tests.
 | `GET` | `/account/me` | Bearer |
 | `PUT` | `/account/user-name` | Bearer |
 | `PUT` | `/account/email` | Bearer |
-| `PUT` | `/account/phone` | Bearer |
+| `POST` | `/account/phone/binding` | Bearer; sends a code to the new phone when phone OTP is enabled |
+| `POST` | `/account/phone/binding/complete` | Bearer + protected ticket + SMS code |
 | `PUT` | `/account/profile` | Bearer |
 | `GET` | `/account/sessions` | Bearer |
 | `GET` | `/account/cross-device/{deviceCode}` | Bearer, when cross-device sign-in is enabled |

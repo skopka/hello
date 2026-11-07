@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
+using System.Threading.Channels;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -21,8 +22,7 @@ public sealed class PhoneSqliteBlazorBrowserTests(BrowserFixture browser)
         var database = Path.Combine(Path.GetTempPath(),
             $"skopka-phone-browser-{Guid.NewGuid():N}.db");
         var address = $"http://127.0.0.1:{GetFreePort()}";
-        var code = new TaskCompletionSource<string>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var codes = Channel.CreateUnbounded<string>();
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo("dotnet")
@@ -77,7 +77,7 @@ public sealed class PhoneSqliteBlazorBrowserTests(BrowserFixture browser)
                 "input[name='Phone.PhoneNumber'][type='tel']")
                 .FillAsync("+79991234571");
             await page.Locator("button[data-phone-resend]").ClickAsync();
-            var deliveredCode = await code.Task.WaitAsync(
+            var deliveredCode = await codes.Reader.ReadAsync().AsTask().WaitAsync(
                 TimeSpan.FromSeconds(20));
             await page.Locator("input[name='Phone.Code']")
                 .FillAsync(deliveredCode);
@@ -93,6 +93,16 @@ public sealed class PhoneSqliteBlazorBrowserTests(BrowserFixture browser)
                 "form:has(input[name='Phone.DisplayName']) button[type='submit']")
                 .ClickAsync();
             await page.WaitForURLAsync("**/hello/account");
+            await Assertions.Expect(page.Locator("#phone-binding input[name='BindingPhone']"))
+                .ToBeVisibleAsync();
+            Assert.Equal(0, await page.Locator("form[action*='handler=ChangePhone']").CountAsync());
+            await page.Locator("#phone-binding input[name='BindingPhone']").FillAsync("+79991234572");
+            await page.Locator("#phone-binding button[type='submit']").ClickAsync();
+            var replacementCode = await codes.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(20));
+            await page.Locator("#phone-binding input[name='BindingCode']").FillAsync(replacementCode);
+            await page.Locator("#phone-binding button[type='submit']").ClickAsync();
+            await page.WaitForURLAsync("**/hello/account**");
+            await Assertions.Expect(page.Locator("body")).ToContainTextAsync("+79991234572");
             var displayNameInput = page.GetByLabel(
                 "Display name", new() { Exact = true });
             await Assertions.Expect(displayNameInput)
@@ -141,7 +151,7 @@ public sealed class PhoneSqliteBlazorBrowserTests(BrowserFixture browser)
             var match = Regex.Match(line, @"(?<!\d)\d{6}(?!\d)");
             if (match.Success)
             {
-                code.TrySetResult(match.Value);
+                codes.Writer.TryWrite(match.Value);
             }
         }
     }

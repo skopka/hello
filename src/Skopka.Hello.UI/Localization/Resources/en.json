@@ -159,6 +159,8 @@
     "Errors.hello.ui.registration_fields_invalid": "Registration fields are invalid.",
     "Errors.hello.ui.registration_field_required": "This field is required.",
     "Errors.hello.ui.registration_field_too_long": "This field is too long.",
+    "PhoneBinding.Add": "Add phone",
+    "PhoneBinding.Change": "Change phone",
     "PhoneBinding.Title": "Link a phone number",
     "PhoneBinding.Description": "We will send a code to this number. Enter it to link the confirmed number to your account.",
     "Phone.VerifyCode": "Verify code",

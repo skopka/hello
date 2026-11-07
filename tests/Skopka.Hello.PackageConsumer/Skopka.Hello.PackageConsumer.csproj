@@ -3,7 +3,7 @@
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
-    <HelloPackageVersion Condition="'$(HelloPackageVersion)' == ''">0.28.1</HelloPackageVersion>
+    <HelloPackageVersion Condition="'$(HelloPackageVersion)' == ''">0.28.2</HelloPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>

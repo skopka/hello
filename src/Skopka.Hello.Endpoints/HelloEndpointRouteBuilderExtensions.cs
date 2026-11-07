@@ -232,12 +232,6 @@ public static class HelloEndpointRouteBuilderExtensions
             .WithName("SkopkaHelloChangeEmail");
 
         endpoints.MapPut(
-                "/account/phone",
-                ChangePhoneAsync<TProfile>)
-            .RequireAuthorization()
-            .WithName("SkopkaHelloChangePhone");
-
-        endpoints.MapPut(
                 "/account/profile",
                 ReplaceProfileAsync<TProfile>)
             .RequireAuthorization()
@@ -2355,32 +2349,6 @@ public static class HelloEndpointRouteBuilderExtensions
                 accessToken,
                 request.ExpectedVersion,
                 request.Email),
-            cancellationToken);
-        return changed.IsSuccess
-            ? TypedResults.Ok(ToAccountResponse(changed.Value))
-            : OperationResultProblemMapper.ToResult(
-                changed,
-                httpContext);
-    }
-
-    private static async Task<IResult> ChangePhoneAsync<TProfile>(
-        ChangePhoneRequest request,
-        IHelloIdentityApplication<TProfile> application,
-        HttpContext httpContext,
-        CancellationToken cancellationToken)
-    {
-        ApplySensitiveResponseHeaders(httpContext);
-        var accessToken = ReadBearerToken(httpContext);
-        if (accessToken is null)
-        {
-            return InvalidSession(httpContext);
-        }
-
-        var changed = await application.ChangePhoneAsync(
-            new HelloChangePhoneCommand(
-                accessToken,
-                request.ExpectedVersion,
-                request.Phone),
             cancellationToken);
         return changed.IsSuccess
             ? TypedResults.Ok(ToAccountResponse(changed.Value))

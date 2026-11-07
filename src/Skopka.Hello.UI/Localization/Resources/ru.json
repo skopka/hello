@@ -159,6 +159,8 @@
     "Errors.hello.ui.registration_fields_invalid": "Проверьте поля регистрации.",
     "Errors.hello.ui.registration_field_required": "Заполните это поле.",
     "Errors.hello.ui.registration_field_too_long": "Значение слишком длинное.",
+    "PhoneBinding.Add": "Добавить номер",
+    "PhoneBinding.Change": "Сменить номер",
     "PhoneBinding.Title": "Привязать номер телефона",
     "PhoneBinding.Description": "Мы отправим код на этот номер. Введите его, чтобы привязать подтверждённый номер к аккаунту.",
     "Phone.VerifyCode": "Проверить код",

@@ -44,6 +44,7 @@ public sealed record HelloUiChangeEmailCommand(
     long ExpectedVersion,
     string? Email);
 
+/// <summary>Legacy command retained for source compatibility; the built-in application rejects unverified phone changes.</summary>
 public sealed record HelloUiChangePhoneCommand(
     long ExpectedVersion,
     string? Phone);
@@ -115,6 +116,7 @@ public interface IHelloUiApplication
         CancellationToken cancellationToken)
         => AccountSelfServiceUnavailable();
 
+    /// <summary>Legacy operation. The built-in implementation rejects direct changes; use <see cref="IHelloUiPhoneBindingApplication"/>.</summary>
     Task<OperationResult<HelloUiAccount>> ChangePhoneAsync(
         HelloUiChangePhoneCommand command,
         HttpContext httpContext,

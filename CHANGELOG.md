@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.28.2
+
+- Require SMS verification of the new number for account phone additions and replacements. Remove `PUT /account/phone` and the direct Razor edit; the retained application method fails with `hello.phone_binding.required`.
+- Separate account phone visibility from verified binding through `Account.PhoneBindingEnabled` (default `true`), including hosts using `Account.Phone = ReadOnly`. Show Add phone or Change phone based on the current account.
+
 ## 0.28.1
 
 - Add optional `SkopkaHelloUiOptions.PostLogoutRedirectPath` and ready Server configuration for a local destination after explicit sign-out, sign-out everywhere, or current-session revocation. Default Login/account-chooser redirects remain unchanged.

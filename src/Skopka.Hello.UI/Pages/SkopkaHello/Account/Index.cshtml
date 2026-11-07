@@ -94,8 +94,7 @@
     }
 
     @if (HelloUiAccountOptions.IsEditable(UiOptions.Account.UserName)
-        || HelloUiAccountOptions.IsEditable(UiOptions.Account.Email)
-        || HelloUiAccountOptions.IsEditable(UiOptions.Account.Phone))
+        || HelloUiAccountOptions.IsEditable(UiOptions.Account.Email))
     {
         <h2>@(UiOptions.Account.IsOnlyUserNameEditable
             ? Text["Account.LoginName"]
@@ -144,33 +143,17 @@
         </form>
     }
 
-    @if (HelloUiAccountOptions.IsEditable(UiOptions.Account.Phone))
-    {
-        <form method="post"
-          asp-page-handler="ChangePhone"
-          class="hello-form">
-        <input asp-for="PhoneInput.ExpectedVersion" type="hidden" />
-        <label asp-for="PhoneInput.Phone">@Text["Field.Phone"]</label>
-        <input asp-for="PhoneInput.Phone" type="tel" autocomplete="tel" />
-        <span asp-validation-for="PhoneInput.Phone"
-              class="hello-field-error"></span>
-        <button class="hello-button hello-button-secondary"
-                type="submit">
-            @Text["Account.ChangePhone"]
-        </button>
-        </form>
-    }
-
-    @if (Model.PhoneBindingEnabled && HelloUiAccountOptions.IsEditable(UiOptions.Account.Phone))
+    @if (Model.PhoneBindingEnabled)
     {
         <section id="phone-binding" aria-labelledby="phone-binding-title">
-        <h2 id="phone-binding-title">@Text["PhoneBinding.Title"]</h2>
+        <h2 id="phone-binding-title">@(string.IsNullOrWhiteSpace(Model.Phone) ? Text["PhoneBinding.Add"] : Text["PhoneBinding.Change"])</h2>
         <p>@Text["PhoneBinding.Description"]</p>
         @if (string.IsNullOrEmpty(Model.BindingTicket))
         {
             <form method="post" asp-page-handler="BeginPhoneBinding" class="hello-form">
                 <label asp-for="BindingPhone">@Text["Field.Phone"]</label>
-                <input asp-for="BindingPhone" type="tel" autocomplete="tel" required />
+                <input asp-for="BindingPhone" type="tel" autocomplete="tel" aria-describedby="binding-phone-error" required />
+                <span asp-validation-for="BindingPhone" id="binding-phone-error" class="hello-field-error"></span>
                 <button class="hello-button hello-button-secondary" type="submit">@Text["Phone.RequestCode"]</button>
             </form>
         }
@@ -179,8 +162,8 @@
             <form method="post" asp-page-handler="CompletePhoneBinding" class="hello-form">
                 <input asp-for="BindingTicket" type="hidden" />
                 <label asp-for="BindingCode">@Text["Phone.Code"]</label>
-                <input asp-for="BindingCode" autocomplete="one-time-code" required />
-                <span asp-validation-for="BindingCode" class="hello-field-error"></span>
+                <input asp-for="BindingCode" inputmode="numeric" autocomplete="one-time-code" aria-describedby="binding-code-error" required />
+                <span asp-validation-for="BindingCode" id="binding-code-error" class="hello-field-error" role="alert"></span>
                 <button class="hello-button hello-button-secondary" type="submit">@Text["Phone.VerifyCode"]</button>
             </form>
         }

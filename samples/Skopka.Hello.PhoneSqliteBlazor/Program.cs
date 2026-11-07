@@ -61,6 +61,8 @@ builder.Services.AddSkopkaHelloUi<SampleProfile, SampleProfileFactory>(
         options.Localization.Enabled = true;
         options.Localization.DefaultCulture = "ru";
         options.SecureCookies = !development;
+        options.Account.Phone = HelloUiAccountFieldMode.ReadOnly;
+        options.Account.PhoneBindingEnabled = true;
         if (development)
         {
             options.AuthenticationCookieName = "Skopka.Hello.UI";

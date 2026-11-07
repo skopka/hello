@@ -8,6 +8,13 @@ Phone-only accounts have no user-name claim; read
 `HelloUiDefaults.DisplayNameClaimType` from the authenticated principal to show
 the profile display name.
 
+The account page displays the current phone with `Account.Phone = ReadOnly`
+and enables `Account.PhoneBindingEnabled`. Add or replace it through the SMS
+code form at `/hello/account#phone-binding`; the old number stays unchanged
+until the new number is verified. There is no direct phone-edit form or
+`PUT /account/phone` route. A conflict for an occupied number is shown only
+after a correct code. See [phone binding](../../docs/phone-binding.md).
+
 After Skopka.Identity 0.15.0 is available to NuGet restore, run:
 
 ```powershell

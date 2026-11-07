@@ -404,7 +404,8 @@ public sealed partial class AuthenticationFlowTests
         await using var app = await TestApplication.CreateAsync(postgres.GetConnectionString(), uiPathPrefix: "/identity",
             configureHello: options => { options.PhoneOtpEnabled = true; options.DefaultPhoneRegion = "RU"; },
             configurePhoneOtp: options => options.AllowedCountryCodes = ["+7"],
-            configureUi: options => { options.Localization.Enabled = true; options.Localization.DefaultCulture = "ru"; });
+            configureUi: options => { options.Localization.Enabled = true; options.Localization.DefaultCulture = "ru"; },
+            shortVerificationCooldown: true);
         using var client = app.CreateClient(allowAutoRedirect: false);
         const string password = "correct horse battery staple";
         using var registration = await client.PostAsJsonAsync("/auth/register", new { userName = "phone-ui", email = "phone-ui@example.test", phone = (string?)null, profile = new { displayName = "Phone UI", locale = "ru" }, password });
@@ -415,23 +416,26 @@ public sealed partial class AuthenticationFlowTests
         var cookies = await LoginThroughUiAsync(client, "phone-ui@example.test", password, null, "/identity/account");
         using var account = await SendAsync(client, HttpMethod.Get, "/identity/account", cookies);
         var html = await account.Content.ReadAsStringAsync();
-        var input = Regex.Match(html, "<input[^>]*id=\"PhoneInput_Phone\"[^>]*>").Value;
+        var input = Regex.Match(html, "<input[^>]*id=\"BindingPhone\"[^>]*>").Value;
         Assert.Contains("type=\"tel\"", input);
-        var version = ReadInputValue(html, "PhoneInput.ExpectedVersion");
         var token = ReadInputValue(html, "__RequestVerificationToken");
         foreach (var (phone, error) in new[] { ("bad-number", "Введите корректный номер телефона."), ("+12125551234", "Допускаются только номера с кодом +7.") })
         {
-            using var denied = await SendFormAsync(client, "/identity/account?handler=ChangePhone", cookies, new Dictionary<string, string> { ["PhoneInput.ExpectedVersion"] = version, ["PhoneInput.Phone"] = phone, ["__RequestVerificationToken"] = token });
+            using var denied = await SendFormAsync(client, "/identity/account?handler=BeginPhoneBinding", cookies, new Dictionary<string, string> { ["BindingPhone"] = phone, ["__RequestVerificationToken"] = token });
             var deniedHtml = WebUtility.HtmlDecode(await denied.Content.ReadAsStringAsync());
             Assert.Contains(error, deniedHtml);
             token = ReadInputValue(deniedHtml, "__RequestVerificationToken");
         }
-        using var changed = await SendFormAsync(client, "/identity/account?handler=ChangePhone", cookies, new Dictionary<string, string> { ["PhoneInput.ExpectedVersion"] = version, ["PhoneInput.Phone"] = "8 999 000-24-13", ["__RequestVerificationToken"] = token });
-        Assert.Equal(HttpStatusCode.Redirect, changed.StatusCode);
+        using var begun = await SendFormAsync(client, "/identity/account?handler=BeginPhoneBinding", cookies, new Dictionary<string, string> { ["BindingPhone"] = "8 999 000-24-13", ["__RequestVerificationToken"] = token });
+        var begunHtml = await begun.Content.ReadAsStringAsync();
+        var ticket = ReadInputValue(begunHtml, "BindingTicket");
+        token = ReadInputValue(begunHtml, "__RequestVerificationToken");
+        var bindingMessage = await app.WaitForMessageAsync(HelloAccountMessageKind.PhoneSignInVerification);
+        using var completed = await SendFormAsync(client, "/identity/account?handler=CompletePhoneBinding", cookies, new Dictionary<string, string> { ["BindingTicket"] = ticket, ["BindingCode"] = bindingMessage.VerificationCode!, ["__RequestVerificationToken"] = token });
+        Assert.Equal(HttpStatusCode.Redirect, completed.StatusCode);
         using var updated = await GetMeAsync(client, apiLogin.AccessToken);
         Assert.Equal("+79990002413", updated.RootElement.GetProperty("phone").GetString());
-        Assert.False(updated.RootElement.GetProperty("phoneConfirmed").GetBoolean());
-        await ConfirmPhoneForOtpAsync(client, app, "+79990002413");
+        Assert.True(updated.RootElement.GetProperty("phoneConfirmed").GetBoolean());
         Dictionary<string, string> phoneCookies = new(StringComparer.Ordinal);
         using var loginPage = await SendAsync(client, HttpMethod.Get, "/identity/login", phoneCookies);
         MergeCookies(phoneCookies, loginPage);
@@ -441,7 +445,7 @@ public sealed partial class AuthenticationFlowTests
         var requestHtml = await requested.Content.ReadAsStringAsync();
         var requestId = ReadInputValue(requestHtml, "Phone.RequestId");
         token = ReadInputValue(requestHtml, "__RequestVerificationToken");
-        var message = await app.WaitForMessageAsync(HelloAccountMessageKind.PhoneSignInVerification);
+        var message = app.Messages.Last(entry => entry.Kind == HelloAccountMessageKind.PhoneSignInVerification);
         Assert.NotNull(message.VerificationCode);
         using var verified = await SendFormAsync(client, "/identity/login?handler=PhoneVerify", phoneCookies, new Dictionary<string, string> { ["Phone.RequestId"] = requestId, ["Phone.Code"] = message.VerificationCode, ["__RequestVerificationToken"] = token });
         Assert.Equal(HttpStatusCode.Redirect, verified.StatusCode);
@@ -453,13 +457,14 @@ public sealed partial class AuthenticationFlowTests
     }
 
     [Fact]
-    public async Task ChangedPhoneAllowsOtpForSameAccountAndRejectsInvalidValues()
+    public async Task PhoneBindingValidatesInputAndAllowsOtpForSameAccount()
     {
         await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
         await postgres.StartAsync();
         await using var app = await TestApplication.CreateAsync(postgres.GetConnectionString(),
             configureHello: options => { options.PhoneOtpEnabled = true; options.DefaultPhoneRegion = "RU"; },
-            configurePhoneOtp: options => options.AllowedCountryCodes = ["+7"]);
+            configurePhoneOtp: options => options.AllowedCountryCodes = ["+7"],
+            shortVerificationCooldown: true);
         using var client = app.CreateClient(allowAutoRedirect: false);
         const string password = "correct horse battery staple";
         using var registration = await client.PostAsJsonAsync("/auth/register", new { userName = "phone-change", email = "phone-change@example.test", phone = (string?)null, profile = new { displayName = "Phone Change", locale = "ru" }, password });
@@ -477,7 +482,7 @@ public sealed partial class AuthenticationFlowTests
             ("+12125551234", "en", IdentityErrorCodes.PhoneCountryNotAllowed, "Only phone numbers with the code +7 are allowed.")
         })
         {
-            using var request = new HttpRequestMessage(HttpMethod.Put, "/account/phone") { Content = JsonContent.Create(new { expectedVersion = version, phone = value }) };
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/account/phone/binding") { Content = JsonContent.Create(new { phone = value }) };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", login.AccessToken);
             request.Headers.TryAddWithoutValidation("Accept-Language", culture);
             using var rejected = await client.SendAsync(request);
@@ -499,31 +504,26 @@ public sealed partial class AuthenticationFlowTests
         Assert.Equal(version, unchanged.RootElement.GetProperty("version").GetInt64());
         Assert.Equal(JsonValueKind.Null, unchanged.RootElement.GetProperty("phone").ValueKind);
         Assert.False(unchanged.RootElement.GetProperty("phoneConfirmed").GetBoolean());
-        using var changed = await SendAuthorizedJsonAsync(client, HttpMethod.Put, "/account/phone", login.AccessToken, new { expectedVersion = version, phone = "8 999 000-24-13" });
-        Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
-        using var changedAccount = JsonDocument.Parse(await changed.Content.ReadAsStringAsync());
-        Assert.Equal("+79990002413", changedAccount.RootElement.GetProperty("phone").GetString());
-        Assert.False(changedAccount.RootElement.GetProperty("phoneConfirmed").GetBoolean());
-        var nextVersion = changedAccount.RootElement.GetProperty("version").GetInt64();
-        using var formatted = await SendAuthorizedJsonAsync(client, HttpMethod.Put, "/account/phone", login.AccessToken, new { expectedVersion = nextVersion, phone = "+7 (999) 000-24-13" });
-        Assert.Equal(HttpStatusCode.OK, formatted.StatusCode);
-        using var formattedAccount = JsonDocument.Parse(await formatted.Content.ReadAsStringAsync());
-        Assert.Equal("+79990002413", formattedAccount.RootElement.GetProperty("phone").GetString());
-        await ConfirmPhoneForOtpAsync(client, app, "+79990002413");
+        using var rawChange = await SendAuthorizedJsonAsync(client, HttpMethod.Put, "/account/phone", login.AccessToken, new { expectedVersion = version, phone = "8 999 000-24-13" });
+        Assert.Equal(HttpStatusCode.NotFound, rawChange.StatusCode);
+        using var afterRawChange = await GetMeAsync(client, login.AccessToken);
+        Assert.Equal(version, afterRawChange.RootElement.GetProperty("version").GetInt64());
+        Assert.Equal(JsonValueKind.Null, afterRawChange.RootElement.GetProperty("phone").ValueKind);
+        using var begun = await SendAuthorizedJsonAsync(client, HttpMethod.Post, "/account/phone/binding", login.AccessToken, new { phone = "8 999 000-24-13" });
+        Assert.Equal(HttpStatusCode.OK, begun.StatusCode);
+        using var binding = JsonDocument.Parse(await begun.Content.ReadAsStringAsync());
+        var bindingMessage = await app.WaitForMessageAsync(HelloAccountMessageKind.PhoneSignInVerification);
+        using var completed = await SendAuthorizedJsonAsync(client, HttpMethod.Post, "/account/phone/binding/complete", login.AccessToken,
+            new { ticket = binding.RootElement.GetProperty("ticket").GetString(), code = bindingMessage.VerificationCode });
+        Assert.Equal(HttpStatusCode.NoContent, completed.StatusCode);
         using var confirmedAccount = await GetMeAsync(client, login.AccessToken);
-        var confirmedVersion = confirmedAccount.RootElement.GetProperty("version").GetInt64();
+        Assert.Equal("+79990002413", confirmedAccount.RootElement.GetProperty("phone").GetString());
         Assert.True(confirmedAccount.RootElement.GetProperty("phoneConfirmed").GetBoolean());
-        using var deniedAfterConfirmation = await SendAuthorizedJsonAsync(client, HttpMethod.Put, "/account/phone", login.AccessToken, new { expectedVersion = confirmedVersion, phone = "+12125551234" });
-        Assert.Equal(HttpStatusCode.BadRequest, deniedAfterConfirmation.StatusCode);
-        using var stillConfirmed = await GetMeAsync(client, login.AccessToken);
-        Assert.Equal(confirmedVersion, stillConfirmed.RootElement.GetProperty("version").GetInt64());
-        Assert.Equal("+79990002413", stillConfirmed.RootElement.GetProperty("phone").GetString());
-        Assert.True(stillConfirmed.RootElement.GetProperty("phoneConfirmed").GetBoolean());
         using var requested = await client.PostAsJsonAsync("/auth/phone/request", new { phone = "8 999 000-24-13" });
         Assert.Equal(HttpStatusCode.Accepted, requested.StatusCode);
         var challenge = await requested.Content.ReadFromJsonAsync<PhoneCodeRequestResponse>();
         Assert.NotNull(challenge);
-        var message = await app.WaitForMessageAsync(HelloAccountMessageKind.PhoneSignInVerification);
+        var message = app.Messages.Last(entry => entry.Kind == HelloAccountMessageKind.PhoneSignInVerification);
         using var verified = await client.PostAsJsonAsync("/auth/phone/verify", new { requestId = challenge.RequestId, code = message.VerificationCode });
         Assert.Equal(HttpStatusCode.OK, verified.StatusCode);
         var result = await verified.Content.ReadFromJsonAsync<PhoneCodeVerifyResponse>();
@@ -2288,16 +2288,7 @@ public sealed partial class AuthenticationFlowTests
                 expectedVersion = emailVersion,
                 phone = "+1 555 010 4242",
             });
-        Assert.Equal(HttpStatusCode.OK, changedPhone.StatusCode);
-        using var phoneAccount = JsonDocument.Parse(
-            await changedPhone.Content.ReadAsStringAsync());
-        var phoneVersion = phoneAccount.RootElement
-            .GetProperty("version")
-            .GetInt64();
-        Assert.False(
-            phoneAccount.RootElement
-                .GetProperty("phoneConfirmed")
-                .GetBoolean());
+        Assert.Equal(HttpStatusCode.NotFound, changedPhone.StatusCode);
 
         using var changedProfile = await SendAuthorizedJsonAsync(
             client,
@@ -2306,7 +2297,7 @@ public sealed partial class AuthenticationFlowTests
             login.AccessToken,
             new
             {
-                expectedVersion = phoneVersion,
+                expectedVersion = emailVersion,
                 profile = new
                 {
                     displayName = "Updated profile",
@@ -2382,16 +2373,7 @@ public sealed partial class AuthenticationFlowTests
                 expectedVersion = phoneOnlyAccount.Version,
                 phone = (string?)null,
             });
-        Assert.Equal(
-            HttpStatusCode.Conflict,
-            removeLastHandle.StatusCode);
-        using var lastHandleProblem = JsonDocument.Parse(
-            await removeLastHandle.Content.ReadAsStringAsync());
-        Assert.Equal(
-            HelloAccountSecurityActionErrorCodes.LastSignInMethod,
-            lastHandleProblem.RootElement
-                .GetProperty("code")
-                .GetString());
+        Assert.Equal(HttpStatusCode.NotFound, removeLastHandle.StatusCode);
     }
 
     [Fact]

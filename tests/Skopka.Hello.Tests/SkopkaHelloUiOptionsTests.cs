@@ -39,6 +39,7 @@ public sealed class SkopkaHelloUiOptionsTests
         Assert.Equal(
             HelloUiAccountFieldMode.Editable,
             options.Account.Phone);
+        Assert.True(options.Account.PhoneBindingEnabled);
         Assert.True(options.ContactConfirmation.EmailEnabled);
         Assert.True(options.ContactConfirmation.PhoneEnabled);
         Assert.Equal(

@@ -24,7 +24,7 @@ The code is purpose-bound, HMAC-protected in Identity's Verification store,
 limited by age and attempts, and its proof is consumed once on sign-in or
 atomically with registration. A verified number is not used to auto-link an
 OIDC account. A confirmed phone counts as a sign-in method when checking
-whether an external login or passkey can be removed. A newly changed phone stays unconfirmed and must be confirmed through the phone-confirmation flow before OTP can sign in to the existing account. An unconfirmed number is never linked merely by an anonymous sign-in code. The authenticated phone-binding flow explicitly authorizes attaching a confirmed phone after validating the phone-sign-in code.
+whether an external login or passkey can be removed. An unconfirmed number is never linked merely by an anonymous sign-in code. Account phone additions and replacements require the authenticated phone-binding flow, which verifies a code sent to the new phone before atomically attaching and confirming it. The previous phone remains unchanged until completion. Phone availability is checked only after proof verification. The direct `PUT /account/phone` route and unverified Razor edit are removed; the legacy application change method fails closed. See [phone binding](phone-binding.md) for UI configuration and migration.
 
 Identity enforces per-phone and per-client daily limits plus a resend cooldown.
 Hello adds a host-wide daily SMS budget and runs registered

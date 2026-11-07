@@ -15,8 +15,10 @@ public sealed record HelloPhoneBindingChallenge(string Ticket, TimeSpan RetryAft
 /// <summary>Starts and completes phone binding for an online authenticated session.</summary>
 public interface IHelloPhoneBindingApplication<TProfile>
 {
+    /// <summary>Sends a code to the proposed phone without disclosing whether it is already in use.</summary>
     Task<OperationResult<HelloPhoneBindingChallenge>> BeginAsync(string accessToken,
         string phone, string? clientKey, CancellationToken cancellationToken);
+    /// <summary>Verifies the code and binds the phone to the authenticated account.</summary>
     Task<OperationResult<HelloAccount<TProfile>>> CompleteAsync(string accessToken,
         string ticket, string code, string? clientKey, CancellationToken cancellationToken);
 }

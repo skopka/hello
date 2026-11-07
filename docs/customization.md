@@ -269,7 +269,11 @@ The setting applies to API and Razor login, password registration, and the
 precondition for adding a password. Email and phone can still be retained as
 contact data without becoming password login identifiers.
 
-Account-page fields can be independently editable, read-only or hidden.
+User-name and email account fields can be independently editable, read-only or hidden.
+Phone display is controlled separately from verified SMS binding: `Account.Phone`
+controls visibility, while `Account.PhoneBindingEnabled` (default `true`) enables
+the binding forms when phone OTP is configured. `ReadOnly` still permits this
+verified flow. There is no code-free phone edit, even in `Editable` mode.
 Confirmation channels can also be removed from the UI. Trusted email domains
 do not receive an email-confirmation prompt:
 
@@ -280,6 +284,7 @@ services.AddSkopkaHelloUi<MyProfile, MyProfileUiFactory>(options =>
     options.Account.UserName = HelloUiAccountFieldMode.Editable;
     options.Account.Email = HelloUiAccountFieldMode.ReadOnly;
     options.Account.Phone = HelloUiAccountFieldMode.Hidden;
+    options.Account.PhoneBindingEnabled = false;
 
     options.ContactConfirmation.PhoneEnabled = false;
     options.ContactConfirmation.TrustedEmailDomains.Add("example.test");

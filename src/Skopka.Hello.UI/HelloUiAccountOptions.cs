@@ -17,8 +17,12 @@ public sealed class HelloUiAccountOptions
     public HelloUiAccountFieldMode Email { get; set; } =
         HelloUiAccountFieldMode.Editable;
 
+    /// <summary>Controls phone visibility. Editable is retained as a legacy display mode; phone changes require verified binding.</summary>
     public HelloUiAccountFieldMode Phone { get; set; } =
         HelloUiAccountFieldMode.Editable;
+
+    /// <summary>Enables SMS-verified phone binding independently of the phone display mode, when the binding service is available.</summary>
+    public bool PhoneBindingEnabled { get; set; } = true;
 
     public static bool IsVisible(HelloUiAccountFieldMode mode)
         => mode != HelloUiAccountFieldMode.Hidden;
@@ -28,8 +32,7 @@ public sealed class HelloUiAccountOptions
 
     public bool IsOnlyUserNameEditable
         => IsEditable(UserName)
-            && !IsEditable(Email)
-            && !IsEditable(Phone);
+            && !IsEditable(Email);
 
     internal void Validate()
     {

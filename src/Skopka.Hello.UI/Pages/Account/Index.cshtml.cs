@@ -54,15 +54,13 @@ public sealed class AccountModel(
 
     public ChangeEmailInput EmailInput { get; set; } = new();
 
-    public ChangePhoneInput PhoneInput { get; set; } = new();
-
     [BindProperty]
     public long ProfileExpectedVersion { get; set; }
 
     [BindProperty]
     public Dictionary<string, string?> ProfileValues { get; set; } = [];
 
-    public bool PhoneBindingEnabled => phoneBinding is not null;
+    public bool PhoneBindingEnabled => uiOptions.Account.PhoneBindingEnabled && phoneBinding is not null;
 
     [BindProperty, ValidateNever]
     public string? BindingPhone { get; set; }
@@ -74,7 +72,7 @@ public sealed class AccountModel(
     public async Task<IActionResult> OnPostBeginPhoneBindingAsync(CancellationToken cancellationToken)
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
-        if (phoneBinding is null) return NotFound();
+        if (!uiOptions.Account.PhoneBindingEnabled || phoneBinding is null) return NotFound();
         ModelState.Clear();
         var result = await phoneBinding.BeginAsync(BindingPhone ?? string.Empty, HttpContext, cancellationToken);
         if (result.IsSuccess) BindingTicket = result.Value.Ticket;
@@ -85,7 +83,7 @@ public sealed class AccountModel(
     public async Task<IActionResult> OnPostCompletePhoneBindingAsync(CancellationToken cancellationToken)
     {
         HelloUiSensitivePage.ApplyResponseHeaders(Response);
-        if (phoneBinding is null) return NotFound();
+        if (!uiOptions.Account.PhoneBindingEnabled || phoneBinding is null) return NotFound();
         ModelState.Clear();
         var result = await phoneBinding.CompleteAsync(BindingTicket ?? string.Empty, BindingCode ?? string.Empty, HttpContext, cancellationToken);
         if (result.IsSuccess) return RedirectToPage();
@@ -158,35 +156,6 @@ public sealed class AccountModel(
             HttpContext,
             cancellationToken);
         return await FinishMutationAsync(result, cancellationToken);
-    }
-
-    public async Task<IActionResult> OnPostChangePhoneAsync(
-        [Bind(Prefix = nameof(PhoneInput))]
-        ChangePhoneInput input,
-        CancellationToken cancellationToken)
-    {
-        PhoneInput = input;
-        HelloUiSensitivePage.ApplyResponseHeaders(Response);
-        if (!HelloUiAccountOptions.IsEditable(uiOptions.Account.Phone))
-        {
-            return NotFound();
-        }
-
-        if (!ModelState.IsValid)
-        {
-            return await LoadAccountAsync(
-                preserveSubmittedValues: true,
-                cancellationToken);
-        }
-
-        var result = await application.ChangePhoneAsync(
-            new HelloUiChangePhoneCommand(
-                PhoneInput.ExpectedVersion,
-                PhoneInput.Phone),
-            HttpContext,
-            cancellationToken);
-        return await FinishMutationAsync(result, cancellationToken,
-            field => $"PhoneInput.{field}");
     }
 
     public async Task<IActionResult> OnPostUpdateProfileAsync(
@@ -414,13 +383,11 @@ public sealed class AccountModel(
 
         UserNameInput.ExpectedVersion = account.Version;
         EmailInput.ExpectedVersion = account.Version;
-        PhoneInput.ExpectedVersion = account.Version;
         ProfileExpectedVersion = account.Version;
         if (!preserveSubmittedValues)
         {
             UserNameInput.UserName = account.UserName ?? string.Empty;
             EmailInput.Email = account.Email;
-            PhoneInput.Phone = account.Phone;
             ProfileValues = account.ProfileFields.ToDictionary(
                 field => field.Name,
                 field => field.Value,
@@ -495,16 +462,5 @@ public sealed class AccountModel(
         [EmailAddress(ErrorMessage = "Validation.EmailAddress")]
         [StringLength(320, ErrorMessage = "Validation.StringLength")]
         public string? Email { get; set; }
-    }
-
-    public sealed class ChangePhoneInput
-    {
-        public long ExpectedVersion { get; set; }
-
-        [StringLength(
-            Skopka.Identity.Authentication.IdentityLoginLimits
-                .MaximumLoginLength,
-            ErrorMessage = "Validation.StringLength")]
-        public string? Phone { get; set; }
     }
 }

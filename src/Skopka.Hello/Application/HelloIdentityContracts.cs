@@ -69,6 +69,7 @@ public sealed record HelloChangeEmailCommand(
     long ExpectedVersion,
     string? Email);
 
+/// <summary>Legacy command retained for source compatibility. Direct phone changes are rejected; use verified phone binding.</summary>
 public sealed record HelloChangePhoneCommand(
     string AccessToken,
     long ExpectedVersion,
@@ -248,6 +249,7 @@ public interface IHelloIdentityApplication<TProfile>
         HelloChangeEmailCommand command,
         CancellationToken cancellationToken);
 
+    /// <summary>Always fails; use <see cref="IHelloPhoneBindingApplication{TProfile}"/> to verify and bind a phone.</summary>
     Task<OperationResult<HelloAccount<TProfile>>> ChangePhoneAsync(
         HelloChangePhoneCommand command,
         CancellationToken cancellationToken);

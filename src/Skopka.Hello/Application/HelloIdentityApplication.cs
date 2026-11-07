@@ -289,50 +289,16 @@ internal sealed class HelloIdentityApplication<TProfile>(
         return ToAccountResult(changed);
     }
 
-    public async Task<OperationResult<HelloAccount<TProfile>>>
+    public Task<OperationResult<HelloAccount<TProfile>>>
         ChangePhoneAsync(
             HelloChangePhoneCommand command,
             CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var validated = await ValidateTokenAsync(
-            command.AccessToken,
-            cancellationToken);
-        if (!validated.IsSuccess)
-        {
-            return OperationResultFactory.Fail<HelloAccount<TProfile>>(
-                validated.Errors);
-        }
-
-        var phone = command.Phone;
-        if (phone is not null)
-        {
-            var normalized = phoneInputPolicy.Normalize(phone);
-            if (!normalized.IsSuccess)
-                return OperationResultFactory.Fail<HelloAccount<TProfile>>(normalized.Errors);
-            phone = normalized.Value;
-        }
-
-        var handleAllowed = await EnsureLocalHandleChangeAllowedAsync(
-            validated.Value,
-            validated.Value.UserName,
-            validated.Value.Email,
-            phone,
-            cancellationToken);
-        if (!handleAllowed.IsSuccess)
-        {
-            return OperationResultFactory.Fail<HelloAccount<TProfile>>(
-                handleAllowed.Errors);
-        }
-
-        var changed = await users.ChangePhoneAsync(
-            new ChangePhoneCommand(
-                validated.Value.Id,
-                command.ExpectedVersion,
-                phone),
-            cancellationToken);
-        return ToAccountResult(changed);
+        return Task.FromResult(OperationResultFactory.Fail<HelloAccount<TProfile>>(
+            new Error("hello.phone_binding.required",
+                "Phone changes require verification of the new number.", ErrorType.Forbidden)));
     }
 
     public async Task<OperationResult<HelloAccount<TProfile>>>

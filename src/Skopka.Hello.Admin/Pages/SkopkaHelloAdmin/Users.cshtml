@@ -250,6 +250,11 @@
         </div>
     }
 
+    @if (Model.FilteredTotal is { } filteredTotal && Model.Users.Count > 0)
+    {
+        <p class="small text-body-secondary mb-2" role="status" data-admin-filtered-count="@filteredTotal">@Text["Admin.Common.FoundCount", filteredTotal]</p>
+    }
+
     @if (Model.Users.Count == 0)
     {
         <div class="alert alert-light border shadow-sm">
@@ -345,6 +350,10 @@
                                                 ? Text["Admin.Users.ConfirmedParenthetical"]
                                                 : Text["Admin.Users.UnconfirmedParenthetical"])
                                                 </span>
+                                                @if (user.PhoneScope.Length > 0)
+                                                {
+                                                    <span class="badge rounded-pill text-bg-light border" data-admin-phone-scope="@user.PhoneScope">@Text["Admin.Users.PhoneScope", user.PhoneScope]</span>
+                                                }
                                             }
                                             else
                                             {

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.32.0
+
+- Require Skopka.Identity 0.19.0 and apply its `PhoneScopes` migration (the Hello server image applies pending Identity migrations at startup). The migration cannot be reverted while two accounts share a number.
+- Add `HelloSiteOptions.PhoneScope`: one phone number may belong to one account per site scope, for example a personal account on the main site and a staff account on the staff site. Code sign-in, password sign-in with `PasswordLoginHandle.Phone`, registration (by code, password or external sign-in), phone binding by code, delegated phone registration and verification and queued phone confirmation find and create accounts in the current site's scope. `null` (the default) keeps the previous behavior; hosts without scopes are unchanged. `PasswordLoginHandle.Automatic` searches every scope, so password sign-in by a number shared across scopes fails as invalid credentials. See `docs/public-sites.md`.
+- Answer Admin role member lists and role badge filters with Identity's role-membership query and count instead of paging through accounts: no "Continue search" there, and the Roles page shows the member count and the badge filter the number of matches. Host-decided badges keep the bounded scan (`MembershipScanLimit`).
+- Make the Roles page "add an account" search an ordinary paged search: accounts already in the role are marked and cannot be added again.
+- Add `HelloAdminUserBadge.AlsoFromHost`. A badge with roles now ignores the badge source's keys unless it sets this flag; such a badge is filtered by the scan.
+- Add `HelloAdminQueryUsersCommand.RoleIds`, `IHelloAdminApplication.CountUsersAsync`, the repeated `roleId` parameter of `GET /admin/users` and `HelloAdminUser.PhoneScope`, shown read-only in the Admin Manage dialog when it is not the default.
+- Fix the Roles page "role already removed" outcome, which could claim a removal when the member was on a later page.
+
 ## 0.31.0
 
 - Add `IHelloDelegatedPhoneVerification<TProfile>`: a signed-in actor proves possession of a phone number that may already belong to another account. After the correct code the host receives a protected one-use `HelloPhoneOwnershipProof` with the holder of the confirmed number (`AccountId`) and either registers a new account (`RegisterAsync`) or redeems it for linking (`RedeemAsync` → `HelloPhoneOwnership`). Occupancy is still disclosed only after the correct code; codes, budgets, limits and `IHelloDelegatedPhoneRegistrationPolicy<TProfile>` are shared with delegated registration. The proof is bound to the actor and access token, expires with the Identity proof (`VerificationOptions.ProofLifetime`, two minutes by default) and is spent atomically by Skopka.Identity. `IHelloDelegatedPhoneRegistration<TProfile>` is unchanged. See `docs/host-sms.md`.

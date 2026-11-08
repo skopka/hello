@@ -94,7 +94,14 @@ public sealed record HelloAdminUser(
     DateTimeOffset? BlockedAt,
     DateTimeOffset? BlockedUntil,
     DateTimeOffset CreatedAt,
-    DateTimeOffset ModifiedAt);
+    DateTimeOffset ModifiedAt)
+{
+    /// <summary>
+    /// Identity phone scope of <see cref="Phone"/>; <c>""</c> is the default scope.
+    /// Read-only in Admin: the scope follows the site where the number was bound.
+    /// </summary>
+    public string PhoneScope { get; init; } = "";
+}
 
 public sealed record HelloAdminUserPage(
     IReadOnlyList<HelloAdminUser> Items,

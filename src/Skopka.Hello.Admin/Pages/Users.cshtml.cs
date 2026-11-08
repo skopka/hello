@@ -71,6 +71,9 @@ public sealed class UsersModel : PageModel
 
     public int ScannedUsers { get; private set; }
 
+    /// <summary>Number of accounts matching a role-badge filter, counted by Identity.</summary>
+    public long? FilteredTotal { get; private set; }
+
     public IReadOnlyDictionary<Guid, IReadOnlyList<IdentityRole>> UserRoles
     { get; private set; } =
         new Dictionary<Guid, IReadOnlyList<IdentityRole>>();
@@ -727,6 +730,7 @@ public sealed class UsersModel : PageModel
         NextCursor = result.Value.NextCursor;
         ScanLimitReached = result.Value.LimitReached;
         ScannedUsers = result.Value.Examined;
+        FilteredTotal = result.Value.Total;
         UserRoles = result.Value.Rows.ToDictionary(row => row.User.Id, row => row.Roles);
         UserBadges = result.Value.Rows.ToDictionary(row => row.User.Id, row => row.Badges);
         var roleCatalog = await roleApplication.QueryRolesAsync(

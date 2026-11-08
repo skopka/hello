@@ -190,8 +190,10 @@ public sealed class MyAccountKindBadges(MyAccounts accounts)
 }
 ```
 
-An account holds a badge when it has any of `Roles` (case-insensitive) or when
-the source returns the badge key for it; both may be combined. The source is
+An account holds a role badge when it has any of `Roles` (case-insensitive), and
+a badge without roles when the source returns its key. To let the source also
+grant a role badge, set `AlsoFromHost = true` on it; otherwise, since 0.32.0,
+the source's keys for role badges are ignored. The source is
 optional, resolved per request and called once per batch of at most 100
 accounts with each account's id, flags, login, email, phone and role names.
 Unknown keys are ignored. `Key` is the stable filter value
@@ -201,19 +203,26 @@ translate; a UI dictionary key `Admin.Badges.{key}` overrides it per culture.
 `CssClass` takes Bootstrap badge classes (default `text-bg-info`) and
 `Filterable = false` shows a badge without offering a filter.
 
-Identity has no query by role or by host attribute. A badge filter, and the role
-member list below, page through accounts with the bounded user query and keep
-the matching ones. One page request examines at most
-`MembershipScanLimit` accounts (default 500, allowed 100–5000). When it stops
-before the page is full, the page says how many accounts were examined and
-offers "Continue search" from where it stopped. Narrow the list with the search
-box for large directories.
+A role badge filter is answered by Skopka.Identity in the database: Hello
+resolves the badge's role names to role ids (exact names, ignoring case) and
+asks for the members of any of them, with search, status and pages, and shows
+the number of matching accounts ("Found: N"). Identity knows nothing of host
+attributes, so a filter by a badge without roles, or with `AlsoFromHost`, pages
+through accounts with the bounded user query and keeps the matching ones. One
+page request examines at most `MembershipScanLimit` accounts (default 500,
+allowed 100–5000). When it stops before the page is full, the page says how many
+accounts were examined and offers "Continue search" from where it stopped. A
+host that keeps an account kind in its own data can avoid the scan by also
+giving those accounts a role and declaring the badge by that role.
 
 ## Role members
 
 The Roles page lists the members of a role in the role's dialog ("Members"),
-with search and pages. From there an administrator adds an account (search by
-login, email or phone among accounts without the role) or removes a member.
+with search, pages and the member count, all answered by Skopka.Identity in the
+database. From there an administrator adds an account or removes a member. The
+add search (by login, email or phone) is an ordinary page of accounts; accounts
+that already have the role are marked "Already has this role" and cannot be
+added again, and deleted accounts are not listed.
 Adding and removing use the same step-up confirmation, the same
 `RoleAssignmentPolicyName` and the same per-role rules (`GrantableBy`,
 `RoleAssignment`, protected and own-role restrictions) as assignment from the
@@ -243,9 +252,13 @@ same database and secret configuration as the service.
 ## API
 
 `GET /admin/users` accepts `search`, `status`, `requiredFlags`, `pageSize`,
-`cursorCreatedAt` and `cursorId`. Both cursor values must be supplied together.
-Identity caps a page at 100 and orders its opaque continuation by
-`(CreatedAt, Id)`.
+`cursorCreatedAt`, `cursorId` and, since 0.32.0, repeated `roleId` values (up to
+50) that limit the page to members of any of those roles. Both cursor values
+must be supplied together. Identity caps a page at 100 and orders its opaque
+continuation by `(CreatedAt, Id)`. Each user includes `phoneScope`, the Identity
+scope of the phone (`""` by default; see
+[public sites](public-sites.md#one-number-on-several-sites)), which the Manage
+dialog shows when it is not the default.
 
 Mutations use the slugs `block`, `unblock`, `delete`, `restore` and
 `revoke-sessions`. Start a challenge with the intended command parameters:

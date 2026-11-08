@@ -381,6 +381,15 @@
                                                     </div>
                                                 </form>
 
+                                                @if (Model.MembersTotal is { } membersTotal && (membersTotal > 0 || !string.IsNullOrWhiteSpace(Model.MemberSearch)))
+                                                {
+                                                    <p class="small text-body-secondary mb-2" role="status" data-admin-member-count="@membersTotal">
+                                                        @(string.IsNullOrWhiteSpace(Model.MemberSearch)
+                                                        ? Text["Admin.Roles.MemberCount", membersTotal]
+                                                        : Text["Admin.Common.FoundCount", membersTotal])
+                                                    </p>
+                                                }
+
                                                 @if (Model.Members.Count == 0)
                                                 {
                                                     <p class="small text-body-secondary" data-admin-no-members>
@@ -431,10 +440,6 @@
                                                 @if (Model.MembersNextCursor is { } nextMember)
                                                 {
                                                     <div class="d-flex flex-wrap align-items-center justify-content-end gap-2 mb-3">
-                                                        @if (Model.MembersScanLimitReached)
-                                                        {
-                                                            <span class="small text-body-secondary" role="status">@Text["Admin.Users.ScanLimitReached", Model.MembersScanned]</span>
-                                                        }
                                                         <a class="btn btn-outline-primary btn-sm"
                                                            asp-page="/SkopkaHelloAdmin/Roles"
                                                            asp-all-route-data="@(Model.ListContext(role.Id, members: false).Where(pair => pair.Value is not null).ToDictionary(pair => pair.Key, pair => pair.Value!))"
@@ -442,7 +447,7 @@
                                                            asp-route-MemberCursorCreatedAt="@nextMember.CreatedAt.ToString("O")"
                                                            asp-route-MemberCursorId="@nextMember.Id"
                                                            asp-fragment="@(editPanelId)-members">
-                                                            @(Model.MembersScanLimitReached ? Text["Admin.Users.ContinueScan"] : Text["Admin.Common.NextPage"])
+                                                            @Text["Admin.Common.NextPage"]
                                                         </a>
                                                     </div>
                                                 }
@@ -478,6 +483,7 @@
                                                             <div class="list-group admin-role-candidate-list">
                                                                 @foreach (var candidate in candidates)
                                                                 {
+                                                                    var alreadyMember = Model.InOpenRole(candidate);
                                                                     <div class="list-group-item d-flex flex-wrap align-items-center gap-2" data-admin-candidate="@candidate.User.Id">
                                                                         <span class="text-break flex-grow-1">
                                                                             @RolesModel.UserLabel(candidate.User)
@@ -486,6 +492,12 @@
                                                                                 <span class="badge @badge.CssClass admin-user-badge">@Model.BadgeLabel(badge)</span>
                                                                             }
                                                                         </span>
+                                                                        @if (alreadyMember)
+                                                                        {
+                                                                            <span class="small text-body-secondary" data-admin-candidate-member>@Text["Admin.Roles.AlreadyMember"]</span>
+                                                                        }
+                                                                        else
+                                                                        {
                                                                         <form method="post" asp-page-handler="BeginAction">
                                                                             <input type="hidden" name="action" value="assign" />
                                                                             <input type="hidden" name="roleId" value="@role.Id" />
@@ -494,13 +506,23 @@
                                                                             <partial name="_AdminListContext" model="@Model.ListContext(role.Id)" />
                                                                             <button class="btn btn-primary btn-sm" type="submit">@Text["Admin.Roles.Add"]</button>
                                                                         </form>
+                                                                        }
                                                                     </div>
                                                                 }
                                                             </div>
-                                                            @if (Model.CandidatesScanLimitReached)
-                                                            {
-                                                                <p class="small text-body-secondary mt-2">@Text["Admin.Users.ScanLimitReached", Model.CandidatesScanned]</p>
-                                                            }
+                                                        }
+                                                        @if (Model.CandidatesNextCursor is { } nextCandidate)
+                                                        {
+                                                            <div class="d-flex justify-content-end mt-2">
+                                                                <a class="btn btn-outline-primary btn-sm"
+                                                                   asp-page="/SkopkaHelloAdmin/Roles"
+                                                                   asp-all-route-data="@(Model.ListContext(role.Id, members: false).Where(pair => pair.Value is not null).ToDictionary(pair => pair.Key, pair => pair.Value!))"
+                                                                   asp-route-MemberSearch="@Model.MemberSearch"
+                                                                   asp-route-AddSearch="@Model.AddSearch"
+                                                                   asp-route-AddCursorCreatedAt="@nextCandidate.CreatedAt.ToString("O")"
+                                                                   asp-route-AddCursorId="@nextCandidate.Id"
+                                                                   asp-fragment="@(editPanelId)-members">@Text["Admin.Common.NextPage"]</a>
+                                                            </div>
                                                         }
                                                     }
                                                 }

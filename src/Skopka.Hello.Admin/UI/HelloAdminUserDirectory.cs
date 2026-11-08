@@ -13,12 +13,9 @@ internal sealed record HelloAdminDirectoryQuery(
     IdentityUserCursor? Cursor,
     int PageSize,
     string? Badge = null,
-    Guid? MemberOfRoleId = null,
-    Guid? NotMemberOfRoleId = null)
+    Guid? MemberOfRoleId = null)
 {
-    public bool Filtered => Badge is not null
-        || MemberOfRoleId is not null
-        || NotMemberOfRoleId is not null;
+    public bool Filtered => Badge is not null || MemberOfRoleId is not null;
 }
 
 internal sealed record HelloAdminDirectoryRow(
@@ -43,12 +40,11 @@ internal sealed record HelloAdminDirectoryPage(
 
 /// <summary>
 /// The Admin user list with roles and badges. Role members and role badges are
-/// filtered by Identity in the database. Identity knows nothing of host
-/// attributes or of accounts outside a role, so host badges and the "add to
-/// role" candidates page through accounts with the bounded user query and keep
-/// the matching ones, examining at most
-/// <see cref="SkopkaHelloAdminOptions.MembershipScanLimit"/> accounts per
-/// request.
+/// filtered and counted by Identity in the database. Identity knows nothing of
+/// host attributes, so a badge the host's source decides pages through
+/// accounts with the bounded user query and keeps the matching ones,
+/// examining at most <see cref="SkopkaHelloAdminOptions.MembershipScanLimit"/>
+/// accounts per request.
 /// </summary>
 internal sealed class HelloAdminUserDirectory(
     IHelloAdminApplication users,
@@ -81,36 +77,34 @@ internal sealed class HelloAdminUserDirectory(
             return await PageAsync(query, roleIds: null, cancellationToken);
         }
 
-        if (query.NotMemberOfRoleId is null)
+        IReadOnlyCollection<Guid>? roleIds = null;
+        if (query.MemberOfRoleId is { } member)
         {
-            IReadOnlyCollection<Guid>? roleIds = null;
-            if (query.MemberOfRoleId is { } member)
+            roleIds = badge is null ? [member] : null;
+        }
+        else if (badge is { FromHost: false })
+        {
+            var resolved = await ResolveRolesAsync(query.AccessToken, badge, cancellationToken);
+            if (!resolved.IsSuccess)
             {
-                roleIds = badge is null ? [member] : null;
-            }
-            else if (badge is { Roles.Count: > 0, AlsoFromHost: false })
-            {
-                var resolved = await ResolveRolesAsync(query.AccessToken, badge, cancellationToken);
-                if (!resolved.IsSuccess)
-                {
-                    return OperationResultFactory.Fail<HelloAdminDirectoryPage>(resolved.Errors);
-                }
-
-                if (resolved.Value.Count == 0)
-                {
-                    return OperationResultFactory.Success(
-                        new HelloAdminDirectoryPage([], null, 0, false, Total: 0));
-                }
-
-                roleIds = resolved.Value.Count <= IdentityUserQueryLimits.MaximumRoleIds
-                    ? resolved.Value
-                    : null;
+                return OperationResultFactory.Fail<HelloAdminDirectoryPage>(resolved.Errors);
             }
 
-            if (roleIds is not null)
+            if (resolved.Value.Count == 0)
             {
-                return await PageAsync(query, roleIds, cancellationToken);
+                return OperationResultFactory.Success(
+                    new HelloAdminDirectoryPage([], null, 0, false, Total: 0));
             }
+
+            // More roles than one Identity query accepts: fall back to the scan.
+            roleIds = resolved.Value.Count <= IdentityUserQueryLimits.MaximumRoleIds
+                ? resolved.Value
+                : null;
+        }
+
+        if (roleIds is not null)
+        {
+            return await PageAsync(query, roleIds, cancellationToken);
         }
 
         List<HelloAdminDirectoryRow> matches = [];
@@ -259,9 +253,7 @@ internal sealed class HelloAdminUserDirectory(
         HelloAdminUserBadge? badge)
         => (badge is null || row.Badges.Contains(badge))
             && (query.MemberOfRoleId is not { } member
-                || row.Roles.Any(role => role.Id == member))
-            && (query.NotMemberOfRoleId is not { } excluded
-                || row.User.DeletedAt is null && row.Roles.All(role => role.Id != excluded));
+                || row.Roles.Any(role => role.Id == member));
 
     private async Task<OperationResult<IReadOnlyList<HelloAdminDirectoryRow>>> DecorateAsync(
         string accessToken,

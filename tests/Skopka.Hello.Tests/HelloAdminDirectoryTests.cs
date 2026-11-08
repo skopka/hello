@@ -150,19 +150,24 @@ public sealed class HelloAdminDirectoryTests
     }
 
     [Fact]
-    public async Task CandidatesExcludeMembersAndDeletedAccounts()
+    public async Task CandidateSearchPagesEveryAccountWithItsRoles()
     {
-        var users = Users(3);
-        users[2] = users[2] with { DeletedAt = DateTimeOffset.UtcNow };
+        // The "add to role" search is an ordinary page: members stay in it, with
+        // their roles, so the page can mark them instead of scanning past them.
+        var users = Users(12);
         var roles = new Dictionary<Guid, IReadOnlyList<IdentityRole>> { [users[0].Id] = [Teacher] };
-        var directory = new HelloAdminUserDirectory(
-            new FakeUsers(users), new FakeRoles(roles), Options(), new Services(null));
+        var fake = new FakeUsers(users, roles);
+        var directory = new HelloAdminUserDirectory(fake, new FakeRoles(roles), Options(), new Services(null));
 
         var page = await directory.QueryAsync(
-            new HelloAdminDirectoryQuery("token", null, IdentityUserStatus.Any, null, 10, NotMemberOfRoleId: Teacher.Id),
+            new HelloAdminDirectoryQuery("token", "user", IdentityUserStatus.Any, null, 10),
             CancellationToken.None);
 
-        Assert.Equal(users[1].Id, Assert.Single(page.Value.Rows).User.Id);
+        Assert.Equal(10, page.Value.Rows.Count);
+        Assert.Contains(page.Value.Rows[0].Roles, role => role.Id == Teacher.Id);
+        Assert.NotNull(page.Value.NextCursor);
+        Assert.Null(fake.LastRoleIds);
+        Assert.Null(page.Value.Total);
     }
 
     [Fact]

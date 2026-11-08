@@ -88,9 +88,15 @@ public sealed class RolesModel : PageModel
     [BindProperty(SupportsGet = true)]
     public Guid? MemberCursorId { get; set; }
 
-    /// <summary>Search for accounts without the open role, to add them.</summary>
+    /// <summary>Search for accounts to add to the open role.</summary>
     [BindProperty(SupportsGet = true)]
     public string? AddSearch { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public DateTimeOffset? AddCursorCreatedAt { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public Guid? AddCursorId { get; set; }
 
     public IdentityRole? OpenRole { get; private set; }
 
@@ -98,15 +104,19 @@ public sealed class RolesModel : PageModel
 
     public IdentityUserCursor? MembersNextCursor { get; private set; }
 
-    public bool MembersScanLimitReached { get; private set; }
+    /// <summary>Number of members matching <see cref="MemberSearch"/>, counted by Identity.</summary>
+    public long? MembersTotal { get; private set; }
 
-    public int MembersScanned { get; private set; }
-
+    /// <summary>
+    /// One page of the account search for adding members. Accounts already in
+    /// the role stay in the list, marked; deleted accounts are left out.
+    /// </summary>
     internal IReadOnlyList<HelloAdminDirectoryRow>? Candidates { get; private set; }
 
-    public bool CandidatesScanLimitReached { get; private set; }
+    public IdentityUserCursor? CandidatesNextCursor { get; private set; }
 
-    public int CandidatesScanned { get; private set; }
+    internal bool InOpenRole(HelloAdminDirectoryRow row)
+        => OpenRole is { } role && row.Roles.Any(item => item.Id == role.Id);
 
     /// <summary>Whether the current administrator may add accounts to and remove them from the open role.</summary>
     public bool CanManageOpenRoleMembers { get; private set; }
@@ -463,6 +473,10 @@ public sealed class RolesModel : PageModel
                 : null,
             [nameof(MemberCursorId)] = members && open == Open ? MemberCursorId?.ToString("D") : null,
             [nameof(AddSearch)] = members && open == Open ? AddSearch : null,
+            [nameof(AddCursorCreatedAt)] = members && open == Open
+                ? AddCursorCreatedAt?.ToString("O", CultureInfo.InvariantCulture)
+                : null,
+            [nameof(AddCursorId)] = members && open == Open ? AddCursorId?.ToString("D") : null,
         };
 
     private static bool IsMembership(HelloAdminRoleAction action)
@@ -598,8 +612,7 @@ public sealed class RolesModel : PageModel
 
         Members = members.Value.Rows;
         MembersNextCursor = members.Value.NextCursor;
-        MembersScanLimitReached = members.Value.LimitReached;
-        MembersScanned = members.Value.Examined;
+        MembersTotal = members.Value.Total;
         if (!CanManageOpenRoleMembers || string.IsNullOrWhiteSpace(AddSearch))
         {
             return;
@@ -610,9 +623,10 @@ public sealed class RolesModel : PageModel
                 accessToken,
                 AddSearch,
                 IdentityUserStatus.Any,
-                Cursor: null,
-                CandidatePageSize,
-                NotMemberOfRoleId: OpenRole.Id),
+                AddCursorCreatedAt is not null && AddCursorId is not null
+                    ? new IdentityUserCursor(AddCursorCreatedAt.Value, AddCursorId.Value)
+                    : null,
+                CandidatePageSize),
             cancellationToken);
         if (!candidates.IsSuccess)
         {
@@ -620,9 +634,8 @@ public sealed class RolesModel : PageModel
             return;
         }
 
-        Candidates = candidates.Value.Rows;
-        CandidatesScanLimitReached = candidates.Value.LimitReached;
-        CandidatesScanned = candidates.Value.Examined;
+        Candidates = candidates.Value.Rows.Where(row => row.User.DeletedAt is null).ToArray();
+        CandidatesNextCursor = candidates.Value.NextCursor;
     }
 
     private async Task<string?> ReadAccessTokenAsync()

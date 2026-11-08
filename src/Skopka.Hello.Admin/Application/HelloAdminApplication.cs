@@ -699,7 +699,10 @@ internal sealed partial class HelloAdminApplication<TProfile>(
                     user.BlockedAt,
                     user.BlockedUntil,
                     user.CreatedAt,
-                    user.ModifiedAt))
+                    user.ModifiedAt)
+                {
+                    PhoneScope = user.PhoneScope,
+                })
             : OperationResultFactory.Fail<HelloAdminUser>(profile.Errors);
     }
 

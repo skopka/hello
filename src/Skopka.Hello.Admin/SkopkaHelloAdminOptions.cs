@@ -63,10 +63,11 @@ public sealed class SkopkaHelloAdminOptions
 
     /// <summary>
     /// How many accounts one Admin page request may examine while filtering
-    /// the user list by badge or listing role members. Identity has no role
-    /// or host-attribute query, so these lists are built by paging through
-    /// accounts; when the bound is reached the page offers to continue. The
-    /// default is 500; the allowed range is 100-5000.
+    /// the user list by a badge the host's <see cref="IHelloAdminUserBadgeSource"/>
+    /// decides. Identity has no host-attribute query, so such a list is built by
+    /// paging through accounts; when the bound is reached the page offers to
+    /// continue. Role members and role badges are filtered in the database and
+    /// do not use it. The default is 500; the allowed range is 100-5000.
     /// </summary>
     public int MembershipScanLimit { get; set; } = 500;
 

@@ -146,7 +146,11 @@
     "Admin.Roles.NoMatchingMembers": "No members matched the search.",
     "Admin.Roles.AddMember": "Add an account",
     "Admin.Roles.FindAccount": "Find an account without this role",
-    "Admin.Roles.NoCandidates": "No accounts without this role matched the search.",
+    "Admin.Roles.NoCandidates": "No accounts matched the search.",
+    "Admin.Roles.AlreadyMember": "Already has this role",
+    "Admin.Users.PhoneScope": "scope: {0}",
+    "Admin.Roles.MemberCount": "Members: {0}",
+    "Admin.Common.FoundCount": "Found: {0}",
     "Admin.Roles.Add": "Add",
     "Admin.Roles.Find": "Find",
     "Admin.Roles.MembershipReadOnly": "You cannot change the members of this role."

@@ -146,7 +146,11 @@
     "Admin.Roles.NoMatchingMembers": "В составе роли никого не найдено.",
     "Admin.Roles.AddMember": "Добавить аккаунт",
     "Admin.Roles.FindAccount": "Найдите аккаунт без этой роли",
-    "Admin.Roles.NoCandidates": "Подходящих аккаунтов без этой роли не найдено.",
+    "Admin.Roles.NoCandidates": "Подходящих аккаунтов не найдено.",
+    "Admin.Roles.AlreadyMember": "Уже в роли",
+    "Admin.Users.PhoneScope": "область: {0}",
+    "Admin.Roles.MemberCount": "Участников: {0}",
+    "Admin.Common.FoundCount": "Найдено: {0}",
     "Admin.Roles.Add": "Добавить",
     "Admin.Roles.Find": "Найти",
     "Admin.Roles.MembershipReadOnly": "Вы не можете менять состав этой роли."

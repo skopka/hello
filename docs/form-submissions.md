@@ -93,3 +93,13 @@ required as before.
 
 A host page that posts its own forms is not affected; only pages under the
 Hello UI and Admin prefixes use this behavior.
+
+## Exceptions
+
+- Script requests that answer with JSON, such as the passkey challenge, are not
+  form submissions; they neither redirect nor replace a kept outcome.
+- Native app sign-in approval (`NativeSignIn/Browser`) answers its confirmation
+  with a one-time hand-off page that immediately opens the app callback, and a
+  refused request with ProblemDetails. Its flow is consumed by the first
+  submission, so a repeated submission is refused and changes nothing; the
+  hand-off is never kept server-side because it carries a one-time receipt.

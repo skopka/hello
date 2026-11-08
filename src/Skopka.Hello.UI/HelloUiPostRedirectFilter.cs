@@ -104,12 +104,6 @@ internal sealed class HelloUiPostRedirectFilter(
             return;
         }
 
-        if (HttpMethods.IsPost(request.Method)
-            && ReadBinding(http) is { } current)
-        {
-            store.Invalidate(current, PageKey(request));
-        }
-
         var executed = await next();
         if (executed.Exception is null
             && executed.Result is PageResult
@@ -127,9 +121,24 @@ internal sealed class HelloUiPostRedirectFilter(
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(next);
         var http = context.HttpContext;
-        if (!HttpMethods.IsPost(http.Request.Method)
-            || context.Result is not PageResult)
+        if (!HttpMethods.IsPost(http.Request.Method))
         {
+            await next();
+            return;
+        }
+
+        if (context.Result is not PageResult)
+        {
+            // A submission that navigated on (success, the next step) makes the
+            // earlier outcome of this page stale, so Back renders it afresh.
+            // JSON, status and file answers to script requests leave it alone.
+            if (context.Result is RedirectToPageResult or RedirectResult
+                    or LocalRedirectResult or RedirectToActionResult or RedirectToRouteResult
+                && ReadBinding(http) is { } current)
+            {
+                store.Invalidate(current, PageKey(http.Request));
+            }
+
             await next();
             return;
         }
@@ -224,7 +233,7 @@ internal sealed class HelloUiPostRedirectFilter(
     public static string CleanUrl(HttpRequest request)
         => RedirectTarget(request, token: null);
 
-    private static List<KeyValuePair<string, string?>> GetState(object? handler)
+    internal static List<KeyValuePair<string, string?>> GetState(object? handler)
     {
         if (handler is null)
         {

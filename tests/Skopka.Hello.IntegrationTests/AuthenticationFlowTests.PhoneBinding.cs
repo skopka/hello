@@ -56,15 +56,19 @@ public sealed partial class AuthenticationFlowTests
         csrf = ReadInputValue(startedHtml, "__RequestVerificationToken");
         var message = await app.WaitForMessageAsync(HelloAccountMessageKind.PhoneSignInVerification);
         Assert.NotNull(message.VerificationCode);
+        var wrongCode = message.VerificationCode == "000000" ? "111111" : "000000";
         using var wrong = await SendFormAsync(client, "/identity/account?handler=CompletePhoneBinding", cookies,
             new Dictionary<string, string>
             {
                 ["BindingTicket"] = ticket,
-                ["BindingCode"] = message.VerificationCode == "000000" ? "111111" : "000000",
+                ["BindingCode"] = wrongCode,
                 ["__RequestVerificationToken"] = csrf
             });
         var wrongHtml = await wrong.Content.ReadAsStringAsync();
         Assert.DoesNotContain("Этот номер телефона уже используется", WebUtility.HtmlDecode(wrongHtml));
+        // The redirected page keeps the code step but never the typed code.
+        Assert.Contains("name=\"BindingCode\"", wrongHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain($"value=\"{wrongCode}\"", wrongHtml, StringComparison.Ordinal);
         csrf = ReadInputValue(wrongHtml, "__RequestVerificationToken");
         using var conflict = await SendFormAsync(client, "/identity/account?handler=CompletePhoneBinding", cookies,
             new Dictionary<string, string>

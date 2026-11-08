@@ -1,5 +1,11 @@
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -110,5 +116,81 @@ public sealed class HelloUiPostRedirectTests
         Assert.Equal(
             "/app/hello/cross-device/waiting?ReturnUrl=%2Fcourses",
             HelloUiPostRedirectFilter.CleanUrl(context.Request));
+    }
+
+    [Fact]
+    public async Task OnlyANavigatingSubmissionReplacesTheRetainedOutcome()
+    {
+        using var store = new HelloUiPostRedirectStore();
+        var filter = new HelloUiPostRedirectFilter(store, new SkopkaHelloUiOptions(), new NoTempData());
+        const string cookie = "browser-binding-cookie-value-0123456789";
+        // Anonymous binding: the browser cookie and an empty account.
+        var binding = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(cookie + '\n')));
+        var token = store.Store(Snapshot(binding, "/hello/login"));
+
+        // A script asking for a passkey challenge answers with JSON.
+        await ExecuteAsync(filter, cookie, new JsonResult(new { challenge = "x" }));
+        Assert.True(store.TryGet(token, binding, "/hello/login", out _));
+
+        await ExecuteAsync(filter, cookie, new RedirectToPageResult("/SkopkaHello/Account/Index"));
+        Assert.False(store.TryGet(token, binding, "/hello/login", out _));
+    }
+
+    [Fact]
+    public void GetStateCarriesGetValuesButNoSecretsOrTokens()
+    {
+        var state = HelloUiPostRedirectFilter.GetState(new SampleModel())
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+
+        Assert.Equal("device-1", state["DeviceCode"]);
+        Assert.Equal("/courses", state["returnUrl"]);
+        Assert.Equal("true", state["Flag"]);
+        Assert.False(state.ContainsKey("Code"));
+        Assert.False(state.ContainsKey("Token"));
+        Assert.False(state.ContainsKey("Posted"));
+        Assert.False(state.ContainsKey("Off"));
+    }
+
+    private static Task ExecuteAsync(HelloUiPostRedirectFilter filter, string cookie, IActionResult result)
+    {
+        var http = new DefaultHttpContext();
+        http.Request.Method = HttpMethods.Post;
+        http.Request.Path = "/hello/login";
+        http.Request.Headers.Cookie = "__Host-Skopka.Hello.UI.Prg=" + cookie;
+        var action = new ActionContext(http, new RouteData(), new ActionDescriptor());
+        var executing = new ResultExecutingContext(action, [], result, new object());
+        return filter.OnResultExecutionAsync(
+            executing,
+            () => Task.FromResult(new ResultExecutedContext(action, [], result, new object())));
+    }
+
+    private sealed class SampleModel
+    {
+        [BindProperty(SupportsGet = true)]
+        public string DeviceCode { get; set; } = "device-1";
+
+        [BindProperty(SupportsGet = true, Name = "returnUrl")]
+        public string? ReturnUrl { get; set; } = "/courses";
+
+        [BindProperty(SupportsGet = true)]
+        public bool Flag { get; set; } = true;
+
+        [BindProperty(SupportsGet = true)]
+        public bool Off { get; set; }
+
+        [BindProperty(SupportsGet = true)]
+        public string Code { get; set; } = "123456";
+
+        [BindProperty(SupportsGet = true)]
+        public string Token { get; set; } = "reset-token";
+
+        [BindProperty]
+        public string Posted { get; set; } = "posted";
+    }
+
+    private sealed class NoTempData : ITempDataDictionaryFactory
+    {
+        public ITempDataDictionary GetTempData(HttpContext context)
+            => throw new NotSupportedException();
     }
 }

@@ -12,6 +12,10 @@ verification and refresh-session state stay in Skopka.Identity.
 
 ## Documentation
 
+Version `0.31.0` adds [delegated phone verification](docs/host-sms.md#delegated-phone-verification):
+a signed-in actor proves possession of a number that may already belong to another
+account, and the host links that account or registers a new one.
+
 Version `0.30.0`: every Hello UI and Admin form submission ends with a redirect
 to a GET, so refresh and Back never resubmit it; errors, non-secret input and
 the current step survive refresh, and a repeated Admin confirmation ends like
@@ -24,7 +28,7 @@ Version `0.29.1`: access-link setup now uses the standard Hello form styles and 
 retry guidance. Refresh no longer resubmits the form; expired or replaced
 authenticator setup can be restarted. See [access links](docs/access-links.md).
 
-Documentation: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html). Repository guides describe version `0.30.0`; the documentation site is updated separately.
+Documentation: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html). Repository guides describe version `0.31.0`; the documentation site is updated separately.
 
 Version `0.25.0` adds optional hints under host-defined account profile
 fields; see [customization](docs/customization.md). It also adds
@@ -71,9 +75,6 @@ Version `0.29.0` requires Skopka.Identity `0.18.0` and adds
 [host-issued access links](docs/access-links.md), and
 [host SMS and delegated phone registration](docs/host-sms.md).
 
-Version `0.31.0` adds [delegated phone verification](docs/host-sms.md#delegated-phone-verification):
-a signed-in actor proves possession of a number that may already belong to another
-account, and the host links that account or registers a new one.
 The [host policy example](samples/Skopka.Hello.HostPolicies/README.md)
 shows the integration contracts.
 

@@ -2,7 +2,8 @@
 
 This is a compiled policy library, not a runnable web application. It shows site
 admission, mandatory staff TOTP, account restrictions, durable onboarding markers,
-delegated child creation and account-specific session expiry. Wire it into an
+delegated child creation (the same policy also gates delegated phone verification
+for linking an existing child account) and account-specific session expiry. Wire it into an
 existing Hello host with `services.AddExamplePolicies()` and configure the
 `personal` and `staff` site ids as in [public sites](../../docs/public-sites.md).
 

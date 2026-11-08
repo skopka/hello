@@ -7,7 +7,7 @@ for linking an existing child account) and account-specific session expiry. Wire
 existing Hello host with `services.AddExamplePolicies()` and configure the
 `personal` and `staff` site ids as in [public sites](../../docs/public-sites.md).
 
-Restore and build with the repository NuGet configuration and the released Identity 0.19.0 packages:
+Restore and build with the repository NuGet configuration and the released Identity 0.19.1 packages:
 
 ```powershell
 dotnet restore Skopka.Hello.slnx --configfile NuGet.Config

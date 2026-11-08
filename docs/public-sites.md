@@ -1,7 +1,7 @@
 # Public sites and account admission
 
 Hello 0.29.0 requires Skopka.Identity 0.18.0 for these features. Site phone
-scopes need Hello 0.32.0 with Skopka.Identity 0.19.0.
+scopes need Hello 0.32.0 with Skopka.Identity 0.19.1.
 
 One process can expose multiple explicitly configured HTTPS origins. Define
 `SkopkaHelloOptions.Sites` once at startup. Site identifiers are stable security
@@ -112,7 +112,7 @@ every phone operation on that site:
 | Operation | Effect of the site scope |
 | --- | --- |
 | Code sign-in (`/auth/phone/verify`, Razor login) | finds the account in the scope |
-| Password sign-in with `PasswordLoginHandle.Phone` | finds the account in the scope |
+| Password sign-in by number (`PasswordLoginHandle.Phone` or `Automatic`) | finds the account in the scope; with `Automatic` user names and emails still match in every scope |
 | Registration by code, by password with a phone, by external sign-in | the new account's number is in the scope |
 | Phone binding by code (account page, `/account/phone/binding`) | the bound number moves into the scope; a duplicate is checked there |
 | Delegated phone registration and verification | the holder is looked up and the new account created in the scope |
@@ -120,9 +120,12 @@ every phone operation on that site:
 
 Authenticator reset by phone code proves the signed-in account's own number in
 its own scope. A site without `PhoneScope` (the default `null`) uses the Identity
-default scope `""` for lookups and new accounts, and keeps an account's current
-scope when it binds a number; an explicit `""` also moves a bound number back
-into the default scope. Hosts that configure no scopes behave exactly as before.
+default scope `""` for lookups and new accounts; for password sign-in Hello
+passes `""` explicitly, because Identity's `Automatic` mode treats a missing scope
+as "every scope". Binding a number on such a site keeps the account's current
+scope, while an explicit `""` also moves a bound number back into the default
+scope. Hosts that configure no scopes behave exactly as before: all their
+numbers are in the default scope.
 
 Keep personal accounts in the default scope so that existing data needs no
 migration. Give a staff account a number that a personal account already holds
@@ -132,17 +135,16 @@ Identity with `BindVerifiedPhoneCommand { PhoneScope = "staff" }` or
 
 Limits that come from Identity:
 
-- `PasswordLoginHandle.Automatic` (the default) searches every scope. A number
-  shared by two accounts is ambiguous there, so password sign-in by that number
-  fails with the common credential error; the user name, email or code
-  sign-in still work. Use `PasswordLoginHandle.Phone` on a site whose people
-  sign in by number and password.
 - User names and emails stay unique across all scopes.
+- A custom Identity lookup store must implement the scoped login-identifier
+  lookup of Skopka.Identity 0.19.1; otherwise `Automatic` password sign-in by a
+  number shared across scopes stays ambiguous and fails with the common
+  credential error.
 - A sign-in code is bound to the number: requesting codes for one number on two
   sites at once supersedes the earlier code, and the daily SMS limits count the
   number across sites.
 
-Skopka.Identity 0.19.0 adds the `PhoneScopes` migration. The Hello server image
+Skopka.Identity 0.19.0 adds the `PhoneScopes` migration (0.19.1 adds none). The Hello server image
 applies pending Identity migrations at startup; a host that manages migrations
 itself must apply it before starting Hello 0.32.0. It cannot be reverted while
 two accounts share a number.

@@ -184,9 +184,8 @@ internal sealed class HelloIdentityApplication<TProfile>(
                 command.Password,
                 command.ClientKey)
             {
-                // Identity uses the scope only for the explicit phone handle.
-                PhoneScope = (siteContext?.Current?.PasswordLoginHandle ?? options.PasswordLoginHandle)
-                    == PasswordLoginHandle.Phone ? HelloSiteAccess.PhoneScope(siteContext) : null,
+                // Selects the account of an entered number for the phone and automatic handles.
+                PhoneScope = HelloSiteAccess.SignInPhoneScope(siteContext),
             },
             cancellationToken);
         if (!authenticated.IsSuccess)

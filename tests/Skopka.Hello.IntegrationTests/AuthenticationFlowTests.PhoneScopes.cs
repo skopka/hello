@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 using Skopka.Hello;
 using Skopka.Hello.Endpoints;
@@ -23,6 +24,8 @@ public sealed partial class AuthenticationFlowTests
             {
                 options.PhoneOtpEnabled = true;
                 options.DefaultPhoneRegion = "RU";
+                // The scenario registers more accounts from one client than the default limit allows.
+                options.RegistrationClientPermitLimit = 20;
                 options.Sites.Add(new HelloSiteOptions { Id = "main", PublicOrigin = new Uri("https://main.example.test") });
                 options.Sites.Add(new HelloSiteOptions
                 {
@@ -67,7 +70,22 @@ public sealed partial class AuthenticationFlowTests
         // A staff account bound on the staff site may take a number a personal account already holds.
         const string password = "correct horse battery staple";
         const string personalOnly = "+79991234602";
-        var second = await RegisterByPhoneAsync(main, app, personalOnly, "Second personal");
+        using var personalRegistration = await main.PostAsJsonAsync("/auth/register", new
+        {
+            userName = "scoped-personal",
+            email = "scoped-personal@example.test",
+            phone = personalOnly,
+            profile = new { displayName = "Scoped personal", locale = "en" },
+            password,
+        });
+        Assert.Equal(HttpStatusCode.Created, personalRegistration.StatusCode);
+        using (var registered = JsonDocument.Parse(await personalRegistration.Content.ReadAsStringAsync()))
+        {
+            await ConfirmScopedPhoneAsync(main, app, personalOnly,
+                registered.RootElement.GetProperty("id").GetGuid());
+        }
+
+        var second = (await LookupAsync(app, personalOnly, null)).Id;
         using var staffRegistration = await staff.PostAsJsonAsync("/auth/register", new
         {
             userName = "scoped-staff",
@@ -98,6 +116,65 @@ public sealed partial class AuthenticationFlowTests
         using var byPhoneMe = await GetMeAsync(desk, byPhone.AccessToken);
         Assert.Equal("scoped-staff", byPhoneMe.RootElement.GetProperty("userName").GetString());
         Assert.Equal(second, await SignInByPhoneAsync(main, app, personalOnly));
+
+        // A queued phone confirmation finds the account in the scope of the site that accepted it.
+        const string third = "+79991234603";
+        await RegisterByPhoneAsync(main, app, third, "Third personal");
+        using var unconfirmedStaff = await staff.PostAsJsonAsync("/auth/register", new
+        {
+            userName = "unconfirmed-staff",
+            email = "unconfirmed-staff@example.test",
+            phone = third,
+            profile = new { displayName = "Unconfirmed staff", locale = "en" },
+            password,
+        });
+        Assert.True(unconfirmedStaff.StatusCode == HttpStatusCode.Created, await unconfirmedStaff.Content.ReadAsStringAsync());
+        var unconfirmed = await LookupAsync(app, third, "staff");
+        Assert.False(unconfirmed.PhoneConfirmed);
+        await ConfirmScopedPhoneAsync(staff, app, third, unconfirmed.Id);
+        Assert.True((await LookupAsync(app, third, "staff")).PhoneConfirmed);
+
+        // Automatic password sign-in limits an entered number to the site's scope, so the
+        // shared number is not ambiguous; the main site passes the default scope explicitly.
+        var automaticMain = await LoginAsync(main, personalOnly, password);
+        using var automaticMainMe = await GetMeAsync(main, automaticMain.AccessToken);
+        Assert.Equal("scoped-personal", automaticMainMe.RootElement.GetProperty("userName").GetString());
+        var automaticStaff = await LoginAsync(staff, personalOnly, password);
+        using var automaticStaffMe = await GetMeAsync(staff, automaticStaff.AccessToken);
+        Assert.Equal("scoped-staff", automaticStaffMe.RootElement.GetProperty("userName").GetString());
+    }
+
+    private static async Task<IdentityUser<IntegrationProfile>> LookupAsync(TestApplication app, string phone, string? scope)
+    {
+        using var lookupScope = app.Services.CreateScope();
+        var lookup = lookupScope.ServiceProvider.GetRequiredService<IIdentityUserLookupService<IntegrationProfile>>();
+        var found = await lookup.FindActiveByPhoneAsync(phone, scope, CancellationToken.None);
+        Assert.True(found.IsSuccess);
+        return found.Value;
+    }
+
+    // Requests and confirms the phone of the account the confirmation link names.
+    private static async Task ConfirmScopedPhoneAsync(HttpClient client, TestApplication app, string phone, Guid userId)
+    {
+        using var requested = await client.PostAsJsonAsync("/auth/phone-confirmation/request", new { phone });
+        Assert.Equal(HttpStatusCode.Accepted, requested.StatusCode);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        HelloAccountMessage? message = null;
+        while (message is null)
+        {
+            message = app.Messages.LastOrDefault(item => item.Kind == HelloAccountMessageKind.PhoneConfirmation
+                && item.RecipientAddress == phone);
+            if (message is null)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(10), timeout.Token);
+            }
+        }
+
+        var query = QueryHelpers.ParseQuery(Assert.IsType<Uri>(message.ActionUrl).Query);
+        Assert.Equal(userId, Guid.Parse(query["userId"].Single()!));
+        using var confirmed = await client.PostAsJsonAsync("/auth/phone-confirmation/confirm",
+            new { userId, phone = query["phone"].Single(), token = query["token"].Single() });
+        Assert.Equal(HttpStatusCode.NoContent, confirmed.StatusCode);
     }
 
     private static int PhoneCodeCount(TestApplication app, string phone)

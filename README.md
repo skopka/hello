@@ -13,7 +13,7 @@ verification and refresh-session state stay in Skopka.Identity.
 ## Documentation
 
 Version `0.32.0` lets [one phone number belong to one account per site](docs/public-sites.md#one-number-on-several-sites)
-through `HelloSiteOptions.PhoneScope` (Skopka.Identity 0.19.0), and Admin role
+through `HelloSiteOptions.PhoneScope` (Skopka.Identity 0.19.1), and Admin role
 member lists and role badge filters are answered and counted in the database.
 
 Version `0.31.0` adds [delegated phone verification](docs/host-sms.md#delegated-phone-verification):

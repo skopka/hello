@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Http;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Identity.Errors;
+using Skopka.Identity.Authentication;
 using Skopka.Identity.Sessions;
+using Skopka.Identity.Users;
 
 namespace Skopka.Hello;
 
@@ -65,6 +67,17 @@ internal static class HelloSiteAccess
 
     /// <summary>Phone scope of the current site; <see langword="null"/> without sites or a configured scope.</summary>
     internal static string? PhoneScope(IHelloSiteContext? context) => context?.Current?.PhoneScope;
+
+    /// <summary>
+    /// Scope in which an entered number is looked up at password sign-in. Never
+    /// <see langword="null"/>: for <see cref="PasswordLoginHandle.Automatic"/> Identity
+    /// treats <see langword="null"/> as "every scope", where a number shared by a personal
+    /// and a staff account is ambiguous, so a site without a scope passes the default
+    /// scope explicitly. Without named scopes every number is in the default scope, so
+    /// hosts that use none see no change.
+    /// </summary>
+    internal static string SignInPhoneScope(IHelloSiteContext? context)
+        => context?.Current?.PhoneScope ?? IdentityPhoneScopes.Default;
 
     internal static IdentitySessionContext? Session(IHelloSiteContext? context, string method)
         => context?.Current is { } site ? new(site.Id, method) : null;

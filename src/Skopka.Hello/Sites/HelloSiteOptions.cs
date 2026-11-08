@@ -31,11 +31,10 @@ public sealed class HelloSiteOptions
 
     /// <summary>
     /// Trusted Identity phone scope of this site, for example <c>"staff"</c>. Code sign-in,
-    /// password sign-in with <see cref="Skopka.Identity.Authentication.PasswordLoginHandle.Phone"/>,
-    /// registration, phone binding and delegated phone flows on this site find and create
+    /// password sign-in by number, registration, phone binding and delegated phone flows on this site find and create
     /// accounts in this scope, so one number may belong to one account per scope.
     /// <see langword="null"/> (the default) uses the Identity default scope <c>""</c> for
-    /// lookups and new accounts and keeps an account's current scope when it binds a phone;
+    /// lookups, password sign-in and new accounts and keeps an account's current scope when it binds a phone;
     /// an explicit <c>""</c> also moves a bound number into the default scope. At most 128
     /// characters, compared ordinally, without control characters or surrounding whitespace.
     /// </summary>

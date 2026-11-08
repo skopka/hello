@@ -108,6 +108,7 @@ public static partial class SkopkaHelloAdminEndpointRouteBuilderExtensions
         [FromQuery] int? pageSize,
         [FromQuery] DateTimeOffset? cursorCreatedAt,
         [FromQuery] Guid? cursorId,
+        [FromQuery] Guid[]? roleId,
         IHelloAdminApplication application,
         IAuthorizationService authorization,
         SkopkaHelloAdminOptions options,
@@ -148,7 +149,10 @@ public static partial class SkopkaHelloAdminEndpointRouteBuilderExtensions
                     ? new IdentityUserCursor(
                         cursorCreatedAt.Value,
                         cursorId!.Value)
-                    : null),
+                    : null)
+            {
+                RoleIds = roleId is { Length: > 0 } ? roleId : null,
+            },
             cancellationToken);
         return result.IsSuccess
             ? TypedResults.Ok(result.Value)

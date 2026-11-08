@@ -143,7 +143,10 @@ internal sealed class HelloExternalIdentityApplication<TProfile>(
                     command.UserName,
                     command.Email,
                     phone,
-                    profile),
+                    profile)
+                {
+                    PhoneScope = HelloSiteAccess.PhoneScope(siteContext),
+                },
                 command.Login),
             cancellationToken);
         return registered.IsSuccess

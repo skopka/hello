@@ -38,6 +38,33 @@ public sealed class HelloSitesTests
         { Context = new IdentitySessionContext(site, method) };
 
     [Fact]
+    public void SitePhoneScopeIsResolvedFromTheSiteAndValidated()
+    {
+        var options = new SkopkaHelloOptions();
+        options.Sites.Add(new HelloSiteOptions { Id = "main", PublicOrigin = new Uri("https://main.test") });
+        options.Sites.Add(new HelloSiteOptions { Id = "staff", PublicOrigin = new Uri("https://staff.test"), PhoneScope = "staff" });
+        var catalog = new HelloSiteCatalog(options);
+        var http = new DefaultHttpContext();
+        http.Request.Scheme = "https";
+        http.Request.Host = new HostString("staff.test");
+        var sites = new HelloSiteContext(catalog, new HttpContextAccessor { HttpContext = http });
+        Assert.Equal("staff", HelloSiteAccess.PhoneScope(sites));
+        http.Request.Host = new HostString("main.test");
+        Assert.Null(HelloSiteAccess.PhoneScope(sites));
+        Assert.Null(HelloSiteAccess.PhoneScope(null));
+        Assert.Null(new HelloSiteCatalog(new SkopkaHelloOptions()).Sites[0].PhoneScope);
+
+        foreach (var invalid in new[] { " staff", "staff ", "st\u0007aff", new string('s', 129) })
+        {
+            var site = new HelloSiteOptions { Id = "bad", PublicOrigin = new Uri("https://bad.test"), PhoneScope = invalid };
+            Assert.Throws<InvalidOperationException>(site.Validate);
+        }
+
+        new HelloSiteOptions { Id = "empty", PublicOrigin = new Uri("https://empty.test"), PhoneScope = "" }.Validate();
+        new HelloSiteOptions { Id = "long", PublicOrigin = new Uri("https://long.test"), PhoneScope = new string('s', 128) }.Validate();
+    }
+
+    [Fact]
     public async Task StaffPasswordRequiresMatchingAccountAndSite()
     {
         var (catalog, sites, _) = Setup();

@@ -106,7 +106,15 @@ public sealed record HelloAdminQueryUsersCommand(
     IdentityUserStatus Status = IdentityUserStatus.Any,
     UserFlags RequiredFlags = UserFlags.None,
     int PageSize = IdentityUserQueryLimits.DefaultPageSize,
-    IdentityUserCursor? Cursor = null);
+    IdentityUserCursor? Cursor = null)
+{
+    /// <summary>
+    /// Limits the page to accounts with a direct membership in at least one of these roles,
+    /// filtered by Identity in the database. <see langword="null"/> applies no role filter;
+    /// an empty collection or more than 50 ids is a validation error.
+    /// </summary>
+    public IReadOnlyCollection<Guid>? RoleIds { get; init; }
+}
 
 public sealed record HelloAdminUserActionParameters(
     long? ExpectedVersion = null,
@@ -138,6 +146,18 @@ public interface IHelloAdminApplication
     Task<OperationResult<HelloAdminUserPage>> QueryUsersAsync(
         HelloAdminQueryUsersCommand command,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Counts the accounts matching the same search, status, flags and roles as
+    /// <see cref="QueryUsersAsync"/>; the cursor and page size are ignored.
+    /// </summary>
+    Task<OperationResult<long>> CountUsersAsync(
+        HelloAdminQueryUsersCommand command,
+        CancellationToken cancellationToken)
+        => Task.FromResult(OperationResultFactory.Fail<long>(new Error(
+            "hello.admin.count_unavailable",
+            "This Admin application does not count users.",
+            ErrorType.Failure)));
 
     Task<OperationResult<HelloStepUpChallenge>> BeginUserActionAsync(
         HelloAdminBeginUserActionCommand command,

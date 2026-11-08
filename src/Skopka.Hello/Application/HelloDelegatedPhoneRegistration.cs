@@ -85,7 +85,8 @@ internal sealed class HelloDelegatedPhoneRegistration<TProfile>(
     IDataProtectionProvider protection, TimeProvider clock,
     IIdentityVerificationService<TProfile> verification, IIdentityUserLookupService<TProfile> lookup,
     IHelloRegistrationConsentProfileEnricher<TProfile>? enricher = null,
-    IHelloRegistrationContinuation<TProfile>? continuation = null)
+    IHelloRegistrationContinuation<TProfile>? continuation = null,
+    IHelloSiteContext? sites = null)
     : IHelloDelegatedPhoneRegistration<TProfile>, IHelloDelegatedPhoneVerification<TProfile>
 {
     private const int MaximumProtectedLength = 8192;
@@ -248,7 +249,8 @@ internal sealed class HelloDelegatedPhoneRegistration<TProfile>(
         VerificationProof proof, CancellationToken cancellationToken)
     {
         var created = await registration.RegisterVerifiedPhoneAsync(new RegisterVerifiedPhoneUserCommand<TProfile>(
-            new CreateUserCommand<TProfile>(null, null, phone, profile), proof), cancellationToken);
+            new CreateUserCommand<TProfile>(null, null, phone, profile) { PhoneScope = HelloSiteAccess.PhoneScope(sites) },
+            proof), cancellationToken);
         return created.IsSuccess ? OperationResultFactory.Success(Account(created.Value)) : OperationResultFactory.Fail<HelloAccount<TProfile>>(created.Errors);
     }
 
@@ -256,7 +258,8 @@ internal sealed class HelloDelegatedPhoneRegistration<TProfile>(
     // about who owns that account, and a deleted account is not active. A blocked account still counts; the host decides.
     private async Task<OperationResult<Guid?>> FindHolderAsync(string phone, CancellationToken cancellationToken)
     {
-        var found = await lookup.FindActiveByPhoneAsync(phone, cancellationToken);
+        // Only the holder in this site's phone scope: a staff account with the same number is not reported on the main site.
+        var found = await lookup.FindActiveByPhoneAsync(phone, HelloSiteAccess.PhoneScope(sites), cancellationToken);
         if (found.IsSuccess) return OperationResultFactory.Success<Guid?>(found.Value.PhoneConfirmed ? found.Value.Id : null);
         return found.Errors.All(error => error.Code == IdentityErrorCodes.UserNotFound)
             ? OperationResultFactory.Success<Guid?>(null)

@@ -30,7 +30,8 @@ internal sealed class HelloSiteCatalog
                 options.SelfRegistrationEnabled && site.SelfRegistrationEnabled,
                 site.ExternalSignInEnabled, site.WebAuthnSignInEnabled, site.CrossDeviceSignInEnabled,
                 site.PasswordLoginHandle ?? options.PasswordLoginHandle, site.EnabledFeatures,
-                site.ApplicationHomeUrl, site.PostLogoutRedirectPath, site.AuthenticatedRedirectPath)).ToArray();
+                site.ApplicationHomeUrl, site.PostLogoutRedirectPath, site.AuthenticatedRedirectPath)
+                { PhoneScope = site.PhoneScope }).ToArray();
     }
 }
 
@@ -61,6 +62,9 @@ internal static class HelloSiteAccess
 
     internal static bool Allows(IHelloSiteContext? context, HelloSiteFeatures features)
         => context is null || context.Current?.IsEnabled(features) == true;
+
+    /// <summary>Phone scope of the current site; <see langword="null"/> without sites or a configured scope.</summary>
+    internal static string? PhoneScope(IHelloSiteContext? context) => context?.Current?.PhoneScope;
 
     internal static IdentitySessionContext? Session(IHelloSiteContext? context, string method)
         => context?.Current is { } site ? new(site.Id, method) : null;

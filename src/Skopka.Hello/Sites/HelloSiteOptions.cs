@@ -1,4 +1,5 @@
 using Skopka.Identity.Authentication;
+using Skopka.Identity.Users;
 
 namespace Skopka.Hello;
 
@@ -28,6 +29,18 @@ public sealed class HelloSiteOptions
     public string? PostLogoutRedirectPath { get; set; }
     public string? AuthenticatedRedirectPath { get; set; }
 
+    /// <summary>
+    /// Trusted Identity phone scope of this site, for example <c>"staff"</c>. Code sign-in,
+    /// password sign-in with <see cref="Skopka.Identity.Authentication.PasswordLoginHandle.Phone"/>,
+    /// registration, phone binding and delegated phone flows on this site find and create
+    /// accounts in this scope, so one number may belong to one account per scope.
+    /// <see langword="null"/> (the default) uses the Identity default scope <c>""</c> for
+    /// lookups and new accounts and keeps an account's current scope when it binds a phone;
+    /// an explicit <c>""</c> also moves a bound number into the default scope. At most 128
+    /// characters, compared ordinally, without control characters or surrounding whitespace.
+    /// </summary>
+    public string? PhoneScope { get; set; }
+
     internal void Validate()
     {
         if (string.IsNullOrWhiteSpace(Id) || Id.Length > 128
@@ -37,9 +50,19 @@ public sealed class HelloSiteOptions
         if ((EnabledFeatures & ~HelloSiteFeatures.All) != 0
             || PasswordLoginHandle is { } handle && !Enum.IsDefined(handle))
             throw new InvalidOperationException("The site contains an unsupported feature or login handle.");
+        ValidatePhoneScope(PhoneScope);
         foreach (var path in new[] { ApplicationHomeUrl, PostLogoutRedirectPath, AuthenticatedRedirectPath })
             if (path is not null && !IsLocalPath(path))
                 throw new InvalidOperationException("Site destinations must be local absolute paths without an authority, escaping, query or fragment.");
+    }
+
+    internal static void ValidatePhoneScope(string? scope)
+    {
+        if (scope is null || scope.Length == 0) return;
+        if (scope.Length > IdentityPhoneScopes.MaximumLength
+            || char.IsWhiteSpace(scope[0]) || char.IsWhiteSpace(scope[^1]) || scope.Any(char.IsControl))
+            throw new InvalidOperationException(
+                "A site phone scope must contain at most 128 characters without control characters or surrounding whitespace.");
     }
 
     internal static void ValidateOrigin(Uri? origin)
@@ -66,6 +89,12 @@ public sealed record HelloSite(
     HelloSiteFeatures EnabledFeatures, string? ApplicationHomeUrl,
     string? PostLogoutRedirectPath, string? AuthenticatedRedirectPath)
 {
+    /// <summary>
+    /// Identity phone scope of this site; <see langword="null"/> means the default scope for
+    /// lookups and new accounts and "keep the current scope" when a phone is bound.
+    /// </summary>
+    public string? PhoneScope { get; init; }
+
     public bool IsEnabled(HelloSiteFeatures feature) => (EnabledFeatures & feature) == feature;
 }
 

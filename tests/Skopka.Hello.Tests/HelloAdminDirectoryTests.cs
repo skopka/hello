@@ -11,6 +11,7 @@ public sealed class HelloAdminDirectoryTests
 {
     private static readonly IdentityRole Admin = Role("iq-admin");
     private static readonly IdentityRole Teacher = Role("iq-teacher");
+    private static readonly IdentityRole FormerAdmin = Role("iq-admin-former");
 
     [Fact]
     public async Task BadgesComeFromRolesAndTheHostSource()
@@ -45,7 +46,7 @@ public sealed class HelloAdminDirectoryTests
         var roles = users.Where((_, index) => index % 10 == 0)
             .ToDictionary(user => user.Id, _ => (IReadOnlyList<IdentityRole>)[Admin]);
         var directory = new HelloAdminUserDirectory(
-            new FakeUsers(users), new FakeRoles(roles), Options(), new Services(null));
+            new FakeUsers(users, roles), new FakeRoles(roles), Options(), new Services(null));
 
         var first = await directory.QueryAsync(
             new HelloAdminDirectoryQuery("token", null, IdentityUserStatus.Any, null, 5, Badge: "admin"),
@@ -56,13 +57,44 @@ public sealed class HelloAdminDirectoryTests
 
         Assert.Equal(users.Where((_, index) => index % 10 == 0).Take(5).Select(user => user.Id), first.Value.Rows.Select(row => row.User.Id));
         Assert.NotNull(first.Value.NextCursor);
+        Assert.Equal(5, first.Value.Examined);
+        Assert.Equal(23, first.Value.Total);
         Assert.Equal(18, second.Value.Rows.Count);
         Assert.Null(second.Value.NextCursor);
         Assert.False(second.Value.LimitReached);
     }
 
     [Fact]
-    public async Task MembershipScanStopsAtTheBoundAndOffersToContinue()
+    public async Task RoleBadgeFilterAsksIdentityForExactRoleNamesOnly()
+    {
+        var users = Users(3);
+        var roles = new Dictionary<Guid, IReadOnlyList<IdentityRole>>
+        {
+            [users[0].Id] = [Admin],
+            [users[1].Id] = [FormerAdmin],
+        };
+        var fake = new FakeUsers(users, roles);
+        var directory = new HelloAdminUserDirectory(fake, new FakeRoles(roles), Options(), new Services(null));
+
+        var page = await directory.QueryAsync(
+            new HelloAdminDirectoryQuery("token", null, IdentityUserStatus.Any, null, 25, Badge: "admin"),
+            CancellationToken.None);
+
+        Assert.Equal(users[0].Id, Assert.Single(page.Value.Rows).User.Id);
+        Assert.Equal([Admin.Id], fake.LastRoleIds);
+        Assert.Equal(1, page.Value.Total);
+
+        var unknown = new SkopkaHelloAdminOptions();
+        unknown.UserBadges.Add(HelloAdminUserBadge.ForRoles("gone", "Gone", "no-such-role"));
+        var empty = await new HelloAdminUserDirectory(fake, new FakeRoles(roles), unknown, new Services(null)).QueryAsync(
+            new HelloAdminDirectoryQuery("token", null, IdentityUserStatus.Any, null, 25, Badge: "gone"),
+            CancellationToken.None);
+        Assert.Empty(empty.Value.Rows);
+        Assert.Equal(0, empty.Value.Total);
+    }
+
+    [Fact]
+    public async Task RoleMembersComeFromTheRoleQueryWithoutAScan()
     {
         var users = Users(350);
         var member = users[^1];
@@ -70,13 +102,35 @@ public sealed class HelloAdminDirectoryTests
         var options = Options();
         options.MembershipScanLimit = 100;
         var directory = new HelloAdminUserDirectory(
-            new FakeUsers(users), new FakeRoles(roles), options, new Services(null));
+            new FakeUsers(users, roles), new FakeRoles(roles), options, new Services(null));
 
         var page = await directory.QueryAsync(
             new HelloAdminDirectoryQuery("token", null, IdentityUserStatus.Any, null, 25, MemberOfRoleId: Teacher.Id),
             CancellationToken.None);
 
+        Assert.Equal(member.Id, Assert.Single(page.Value.Rows).User.Id);
+        Assert.False(page.Value.LimitReached);
+        Assert.Null(page.Value.NextCursor);
+        Assert.Equal(1, page.Value.Total);
+    }
+
+    [Fact]
+    public async Task HostBadgeScanStopsAtTheBoundAndOffersToContinue()
+    {
+        var users = Users(350);
+        var member = users[^1];
+        var options = new SkopkaHelloAdminOptions { MembershipScanLimit = 100 };
+        options.UserBadges.Add(new HelloAdminUserBadge("staff", "Staff"));
+        var directory = new HelloAdminUserDirectory(
+            new FakeUsers(users), new FakeRoles(new Dictionary<Guid, IReadOnlyList<IdentityRole>>()), options,
+            new Services(new Source(member.Id)));
+
+        var page = await directory.QueryAsync(
+            new HelloAdminDirectoryQuery("token", null, IdentityUserStatus.Any, null, 25, Badge: "staff"),
+            CancellationToken.None);
+
         Assert.Empty(page.Value.Rows);
+        Assert.Null(page.Value.Total);
         Assert.True(page.Value.LimitReached);
         Assert.Equal(100, page.Value.Examined);
         Assert.NotNull(page.Value.NextCursor);
@@ -86,7 +140,7 @@ public sealed class HelloAdminDirectoryTests
         while (cursor is not null && found.Count == 0)
         {
             var next = await directory.QueryAsync(
-                new HelloAdminDirectoryQuery("token", null, IdentityUserStatus.Any, cursor, 25, MemberOfRoleId: Teacher.Id),
+                new HelloAdminDirectoryQuery("token", null, IdentityUserStatus.Any, cursor, 25, Badge: "staff"),
                 CancellationToken.None);
             found = next.Value.Rows;
             cursor = next.Value.NextCursor;
@@ -193,6 +247,7 @@ public sealed class HelloAdminDirectoryTests
         options.UserBadges.Add(new HelloAdminUserBadge("staff", "Сотрудник")
         {
             Roles = ["iq-admin", "iq-manager", "iq-teacher", "iq-author"],
+            AlsoFromHost = true,
         });
         return options;
     }
@@ -242,14 +297,32 @@ public sealed class HelloAdminDirectoryTests
             => serviceType == typeof(IHelloAdminUserBadgeSource) ? source : null;
     }
 
-    private sealed class FakeUsers(IReadOnlyList<HelloAdminUser> users) : IHelloAdminApplication
+    private sealed class FakeUsers(
+        IReadOnlyList<HelloAdminUser> users,
+        IReadOnlyDictionary<Guid, IReadOnlyList<IdentityRole>>? roles = null) : IHelloAdminApplication
     {
+        public IReadOnlyCollection<Guid>? LastRoleIds { get; private set; }
+
+        private IEnumerable<HelloAdminUser> InRoles(HelloAdminQueryUsersCommand command)
+        {
+            LastRoleIds = command.RoleIds;
+            return command.RoleIds is not { } ids
+                ? users
+                : users.Where(user => roles is not null && roles.TryGetValue(user.Id, out var assigned)
+                    && assigned.Any(role => ids.Contains(role.Id)));
+        }
+
+        public Task<OperationResult<long>> CountUsersAsync(
+            HelloAdminQueryUsersCommand command,
+            CancellationToken cancellationToken)
+            => Task.FromResult(OperationResultFactory.Success((long)InRoles(command).Count()));
+
         public Task<OperationResult<HelloAdminUserPage>> QueryUsersAsync(
             HelloAdminQueryUsersCommand command,
             CancellationToken cancellationToken)
         {
             // Newest first, as the Identity user query orders them.
-            var remaining = users
+            var remaining = InRoles(command)
                 .Where(user => command.Cursor is null
                     || user.CreatedAt < command.Cursor.CreatedAt
                     || user.CreatedAt == command.Cursor.CreatedAt && user.Id.CompareTo(command.Cursor.Id) < 0)
@@ -277,10 +350,16 @@ public sealed class HelloAdminDirectoryTests
     private sealed class FakeRoles(IReadOnlyDictionary<Guid, IReadOnlyList<IdentityRole>> roles)
         : IHelloAdminRoleApplication
     {
+        // Identity role search matches name fragments.
         public Task<OperationResult<IdentityRolePage>> QueryRolesAsync(
             HelloAdminQueryRolesCommand command,
             CancellationToken cancellationToken)
-            => throw new NotSupportedException();
+            => Task.FromResult(OperationResultFactory.Success(new IdentityRolePage(
+                new[] { Admin, Teacher, FormerAdmin }
+                    .Where(role => command.Search is null
+                        || role.Name.Contains(command.Search, StringComparison.OrdinalIgnoreCase))
+                    .ToArray(),
+                null)));
 
         public Task<OperationResult<IReadOnlyList<IdentityRole>>> GetUserRolesAsync(
             HelloAdminGetUserRolesCommand command,

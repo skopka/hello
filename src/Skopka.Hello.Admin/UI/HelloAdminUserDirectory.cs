@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Skopka.Abstraction.OperationResult;
 using Skopka.Identity.Roles;
+using Skopka.Identity.Roles.Queries;
 using Skopka.Identity.Users.Queries;
 
 namespace Skopka.Hello.Admin;
@@ -29,16 +30,23 @@ internal sealed record HelloAdminDirectoryRow(
 /// The scan stopped at <see cref="SkopkaHelloAdminOptions.MembershipScanLimit"/>
 /// before the page filled; <paramref name="NextCursor"/> continues it.
 /// </param>
+/// <param name="Total">
+/// Number of matching accounts when Identity filtered the list in the
+/// database; <see langword="null"/> for unfiltered and scanned lists.
+/// </param>
 internal sealed record HelloAdminDirectoryPage(
     IReadOnlyList<HelloAdminDirectoryRow> Rows,
     IdentityUserCursor? NextCursor,
     int Examined,
-    bool LimitReached);
+    bool LimitReached,
+    long? Total = null);
 
 /// <summary>
-/// The Admin user list with roles and badges. Identity has no query for role
-/// members or host attributes, so filtered lists page through accounts with
-/// the bounded user query and keep the matching ones, examining at most
+/// The Admin user list with roles and badges. Role members and role badges are
+/// filtered by Identity in the database. Identity knows nothing of host
+/// attributes or of accounts outside a role, so host badges and the "add to
+/// role" candidates page through accounts with the bounded user query and keep
+/// the matching ones, examining at most
 /// <see cref="SkopkaHelloAdminOptions.MembershipScanLimit"/> accounts per
 /// request.
 /// </summary>
@@ -70,27 +78,39 @@ internal sealed class HelloAdminUserDirectory(
 
         if (!query.Filtered)
         {
-            var page = await users.QueryUsersAsync(
-                new HelloAdminQueryUsersCommand(
-                    query.AccessToken,
-                    query.Search,
-                    query.Status,
-                    PageSize: query.PageSize,
-                    Cursor: query.Cursor),
-                cancellationToken);
-            if (!page.IsSuccess)
+            return await PageAsync(query, roleIds: null, cancellationToken);
+        }
+
+        if (query.NotMemberOfRoleId is null)
+        {
+            IReadOnlyCollection<Guid>? roleIds = null;
+            if (query.MemberOfRoleId is { } member)
             {
-                return OperationResultFactory.Fail<HelloAdminDirectoryPage>(page.Errors);
+                roleIds = badge is null ? [member] : null;
+            }
+            else if (badge is { Roles.Count: > 0, AlsoFromHost: false })
+            {
+                var resolved = await ResolveRolesAsync(query.AccessToken, badge, cancellationToken);
+                if (!resolved.IsSuccess)
+                {
+                    return OperationResultFactory.Fail<HelloAdminDirectoryPage>(resolved.Errors);
+                }
+
+                if (resolved.Value.Count == 0)
+                {
+                    return OperationResultFactory.Success(
+                        new HelloAdminDirectoryPage([], null, 0, false, Total: 0));
+                }
+
+                roleIds = resolved.Value.Count <= IdentityUserQueryLimits.MaximumRoleIds
+                    ? resolved.Value
+                    : null;
             }
 
-            var rows = await DecorateAsync(query.AccessToken, page.Value.Items, cancellationToken);
-            return rows.IsSuccess
-                ? OperationResultFactory.Success(new HelloAdminDirectoryPage(
-                    rows.Value,
-                    page.Value.NextCursor,
-                    page.Value.Items.Count,
-                    LimitReached: false))
-                : OperationResultFactory.Fail<HelloAdminDirectoryPage>(rows.Errors);
+            if (roleIds is not null)
+            {
+                return await PageAsync(query, roleIds, cancellationToken);
+            }
         }
 
         List<HelloAdminDirectoryRow> matches = [];
@@ -154,6 +174,85 @@ internal sealed class HelloAdminUserDirectory(
         }
     }
 
+    private async Task<OperationResult<HelloAdminDirectoryPage>> PageAsync(
+        HelloAdminDirectoryQuery query,
+        IReadOnlyCollection<Guid>? roleIds,
+        CancellationToken cancellationToken)
+    {
+        var command = new HelloAdminQueryUsersCommand(
+            query.AccessToken,
+            query.Search,
+            query.Status,
+            PageSize: query.PageSize,
+            Cursor: query.Cursor)
+        {
+            RoleIds = roleIds,
+        };
+        var page = await users.QueryUsersAsync(command, cancellationToken);
+        if (!page.IsSuccess)
+        {
+            return OperationResultFactory.Fail<HelloAdminDirectoryPage>(page.Errors);
+        }
+
+        long? total = null;
+        if (roleIds is not null)
+        {
+            var counted = await users.CountUsersAsync(command, cancellationToken);
+            if (!counted.IsSuccess)
+            {
+                return OperationResultFactory.Fail<HelloAdminDirectoryPage>(counted.Errors);
+            }
+
+            total = counted.Value;
+        }
+
+        var rows = await DecorateAsync(query.AccessToken, page.Value.Items, cancellationToken);
+        return rows.IsSuccess
+            ? OperationResultFactory.Success(new HelloAdminDirectoryPage(
+                rows.Value,
+                page.Value.NextCursor,
+                page.Value.Items.Count,
+                LimitReached: false,
+                total))
+            : OperationResultFactory.Fail<HelloAdminDirectoryPage>(rows.Errors);
+    }
+
+    // Badge roles are names; Identity filters by id. Role search matches name
+    // fragments, so each result is compared exactly as the badge compares names.
+    private async Task<OperationResult<IReadOnlyCollection<Guid>>> ResolveRolesAsync(
+        string accessToken,
+        HelloAdminUserBadge badge,
+        CancellationToken cancellationToken)
+    {
+        HashSet<Guid> ids = [];
+        foreach (var name in badge.Roles.Select(role => role.Trim()).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            IdentityRoleCursor? cursor = null;
+            do
+            {
+                var page = await roles.QueryRolesAsync(
+                    new HelloAdminQueryRolesCommand(
+                        accessToken,
+                        name,
+                        IdentityRoleQueryLimits.MaximumPageSize,
+                        cursor),
+                    cancellationToken);
+                if (!page.IsSuccess)
+                {
+                    return OperationResultFactory.Fail<IReadOnlyCollection<Guid>>(page.Errors);
+                }
+
+                ids.UnionWith(page.Value.Items
+                    .Where(role => badge.MatchesRole(role.Name))
+                    .Select(role => role.Id));
+                cursor = page.Value.NextCursor;
+            }
+            while (cursor is not null);
+        }
+
+        return OperationResultFactory.Success<IReadOnlyCollection<Guid>>(ids);
+    }
+
     private static bool Matches(
         HelloAdminDirectoryRow row,
         HelloAdminDirectoryQuery query,
@@ -212,7 +311,8 @@ internal sealed class HelloAdminUserDirectory(
                 item.Roles,
                 options.UserBadges
                     .Where(badge => item.Roles.Any(role => badge.MatchesRole(role.Name))
-                        || hostBadges.TryGetValue(item.User.Id, out var keys)
+                        || badge.FromHost
+                            && hostBadges.TryGetValue(item.User.Id, out var keys)
                             && keys.Contains(badge.Key, StringComparer.Ordinal))
                     .ToArray()))
             .ToArray());

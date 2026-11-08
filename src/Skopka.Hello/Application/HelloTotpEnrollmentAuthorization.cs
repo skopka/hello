@@ -271,7 +271,12 @@ internal sealed class HelloTotpEnrollmentAuthorization<TProfile>(
         }
 
         var verified = await phone.VerifyAsync(
-            new VerifyPhoneOtpCommand(payload.Id, code, clientKey), cancellationToken);
+            new VerifyPhoneOtpCommand(payload.Id, code, clientKey)
+            {
+                // The code proves the signed-in account's own number, wherever it is scoped.
+                PhoneScope = user.PhoneScope,
+            },
+            cancellationToken);
         if (!verified.IsSuccess)
         {
             return OperationResultFactory.Fail<string>(verified.Errors);

@@ -37,6 +37,30 @@ internal sealed partial class HelloAdminApplication<TProfile>(
             deliveryOptions,
             messageSender);
 
+    public async Task<OperationResult<long>> CountUsersAsync(
+        HelloAdminQueryUsersCommand command,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var actor = await ValidateActorAsync(
+            command.AccessToken,
+            cancellationToken);
+        return actor.IsSuccess
+            ? await userQueries.CountAsync(ToQuery(command), cancellationToken)
+            : OperationResultFactory.Fail<long>(actor.Errors);
+    }
+
+    private static IdentityUserQuery ToQuery(HelloAdminQueryUsersCommand command)
+        => new(
+            command.Search,
+            command.Status,
+            command.RequiredFlags,
+            command.PageSize,
+            command.Cursor)
+        {
+            RoleIds = command.RoleIds,
+        };
+
     public async Task<OperationResult<HelloAdminUserPage>> QueryUsersAsync(
         HelloAdminQueryUsersCommand command,
         CancellationToken cancellationToken)
@@ -53,12 +77,7 @@ internal sealed partial class HelloAdminApplication<TProfile>(
         }
 
         var queried = await userQueries.QueryAsync(
-            new IdentityUserQuery(
-                command.Search,
-                command.Status,
-                command.RequiredFlags,
-                command.PageSize,
-                command.Cursor),
+            ToQuery(command),
             cancellationToken);
         if (!queried.IsSuccess)
         {

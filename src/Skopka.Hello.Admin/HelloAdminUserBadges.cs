@@ -9,8 +9,9 @@ namespace Skopka.Hello.Admin;
 /// </summary>
 /// <remarks>
 /// Hello does not know what an attribute means for a host. An account holds a
-/// badge when it has any of <see cref="Roles"/>, or when the host's
-/// <see cref="IHelloAdminUserBadgeSource"/> reports it. Both may be combined.
+/// badge when it has any of <see cref="Roles"/>, or, for a badge without roles
+/// or with <see cref="AlsoFromHost"/>, when the host's
+/// <see cref="IHelloAdminUserBadgeSource"/> reports it.
 /// </remarks>
 public sealed partial class HelloAdminUserBadge
 {
@@ -41,6 +42,18 @@ public sealed partial class HelloAdminUserBadge
     /// <see cref="IHelloAdminUserBadgeSource"/>.
     /// </summary>
     public IReadOnlyList<string> Roles { get; init; } = [];
+
+    /// <summary>
+    /// For a badge with <see cref="Roles"/>: whether the host's
+    /// <see cref="IHelloAdminUserBadgeSource"/> may also grant it. The default is
+    /// <see langword="false"/>: the badge means "has one of the roles", and its list
+    /// filter is answered by Identity in the database. When <see langword="true"/>,
+    /// the filter pages through accounts like a host badge does. A badge without
+    /// roles is always decided by the badge source.
+    /// </summary>
+    public bool AlsoFromHost { get; init; }
+
+    internal bool FromHost => Roles.Count == 0 || AlsoFromHost;
 
     /// <summary>
     /// Bootstrap badge classes. The default is <c>text-bg-info</c>.

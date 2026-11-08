@@ -91,7 +91,8 @@ internal sealed class HelloPhoneBindingApplication<TProfile>(
             pending.ChallengeId, code, clientKey), cancellationToken);
         if (!verified.IsSuccess) return OperationResultFactory.Fail<HelloAccount<TProfile>>(verified.Errors);
         var result = await phoneOtp.BindVerifiedPhoneAsync(new BindVerifiedPhoneCommand(
-            user.Value.Id, pending.Version, pending.Phone, verified.Value), cancellationToken);
+            user.Value.Id, pending.Version, pending.Phone, verified.Value)
+        { PhoneScope = HelloSiteAccess.PhoneScope(sites) }, cancellationToken);
         if (!result.IsSuccess) return OperationResultFactory.Fail<HelloAccount<TProfile>>(result.Errors);
         var value = result.Value;
         return OperationResultFactory.Success(new HelloAccount<TProfile>(value.Id, value.Flags, value.UserName,

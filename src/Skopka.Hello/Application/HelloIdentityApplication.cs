@@ -145,7 +145,10 @@ internal sealed class HelloIdentityApplication<TProfile>(
                     command.UserName,
                     command.Email,
                     phone,
-                    profile),
+                    profile)
+                {
+                    PhoneScope = HelloSiteAccess.PhoneScope(siteContext),
+                },
                 command.Password),
             cancellationToken);
 
@@ -179,7 +182,12 @@ internal sealed class HelloIdentityApplication<TProfile>(
                     ? HelloPhoneNormalizer.Normalize(command.Login, options.DefaultPhoneRegion)
                     : command.Login,
                 command.Password,
-                command.ClientKey),
+                command.ClientKey)
+            {
+                // Identity uses the scope only for the explicit phone handle.
+                PhoneScope = (siteContext?.Current?.PasswordLoginHandle ?? options.PasswordLoginHandle)
+                    == PasswordLoginHandle.Phone ? HelloSiteAccess.PhoneScope(siteContext) : null,
+            },
             cancellationToken);
         if (!authenticated.IsSuccess)
         {

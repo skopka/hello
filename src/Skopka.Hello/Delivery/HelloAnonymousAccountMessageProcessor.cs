@@ -26,6 +26,8 @@ internal sealed class HelloAnonymousAccountMessageProcessor<TProfile>(
                 HelloAccountMessageKind.PhoneConfirmation
             ? await userLookup.FindActiveByPhoneAsync(
                 request.NormalizedTarget,
+                // The queue has no request; the site is the one that accepted the message.
+                request.SiteId is { } site ? sites?.Find(site)?.PhoneScope : null,
                 cancellationToken)
             : await userLookup.FindActiveByEmailAsync(
                 request.NormalizedTarget,

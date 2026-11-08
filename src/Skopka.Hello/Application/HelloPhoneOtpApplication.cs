@@ -147,7 +147,10 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
         }
 
         var result = await phoneOtp.VerifyAsync(
-            new VerifyPhoneOtpCommand(requestId, code, clientKey),
+            new VerifyPhoneOtpCommand(requestId, code, clientKey)
+            {
+                PhoneScope = HelloSiteAccess.PhoneScope(siteContext),
+            },
             cancellationToken);
         if (!result.IsSuccess)
         {
@@ -254,7 +257,10 @@ internal sealed class HelloPhoneOtpApplication<TProfile>(
         var created = await registration.RegisterVerifiedPhoneAsync(
             new RegisterVerifiedPhoneUserCommand<TProfile>(
                 new CreateUserCommand<TProfile>(
-                    null, null, ticket.Phone, profile),
+                    null, null, ticket.Phone, profile)
+                {
+                    PhoneScope = HelloSiteAccess.PhoneScope(siteContext),
+                },
                 new VerificationProof(
                     ticket.ChallengeId,
                     ticket.Proof,

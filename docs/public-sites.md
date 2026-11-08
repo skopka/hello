@@ -1,6 +1,7 @@
 # Public sites and account admission
 
-Hello 0.29.0 requires Skopka.Identity 0.18.0 for these features.
+Hello 0.29.0 requires Skopka.Identity 0.18.0 for these features. Site phone
+scopes need Hello 0.32.0 with Skopka.Identity 0.19.0.
 
 One process can expose multiple explicitly configured HTTPS origins. Define
 `SkopkaHelloOptions.Sites` once at startup. Site identifiers are stable security
@@ -86,6 +87,65 @@ and personal accounts only to `personal` with phone. The compiled sample also
 admits a child with a confirmed phone through phone sign-in. Separately configure the
 existing mandatory-second-factor policy for staff. A site method switch alone
 does not require TOTP and does not classify accounts.
+
+## One number on several sites
+
+By default a phone number belongs to one active account. When the same person
+has a personal account on one site and a staff account on another, give the
+staff site an Identity phone scope:
+
+```csharp
+options.Sites.Add(new HelloSiteOptions
+{
+    Id = "staff",
+    PublicOrigin = new Uri("https://staff.iqzone.example"),
+    PhoneScope = "staff",
+    // other staff settings as above
+});
+```
+
+The scope is trusted server configuration, never a request value. It has at
+most 128 characters, is compared ordinally and cannot contain control
+characters or surrounding whitespace. Hello passes the current site's scope to
+every phone operation on that site:
+
+| Operation | Effect of the site scope |
+| --- | --- |
+| Code sign-in (`/auth/phone/verify`, Razor login) | finds the account in the scope |
+| Password sign-in with `PasswordLoginHandle.Phone` | finds the account in the scope |
+| Registration by code, by password with a phone, by external sign-in | the new account's number is in the scope |
+| Phone binding by code (account page, `/account/phone/binding`) | the bound number moves into the scope; a duplicate is checked there |
+| Delegated phone registration and verification | the holder is looked up and the new account created in the scope |
+| Queued phone confirmation | the account is found in the scope of the site that accepted the request |
+
+Authenticator reset by phone code proves the signed-in account's own number in
+its own scope. A site without `PhoneScope` (the default `null`) uses the Identity
+default scope `""` for lookups and new accounts, and keeps an account's current
+scope when it binds a number; an explicit `""` also moves a bound number back
+into the default scope. Hosts that configure no scopes behave exactly as before.
+
+Keep personal accounts in the default scope so that existing data needs no
+migration. Give a staff account a number that a personal account already holds
+only after the staff site has its scope: bind it there, or set it through
+Identity with `BindVerifiedPhoneCommand { PhoneScope = "staff" }` or
+`ChangePhoneCommand { PhoneScope = "staff" }`.
+
+Limits that come from Identity:
+
+- `PasswordLoginHandle.Automatic` (the default) searches every scope. A number
+  shared by two accounts is ambiguous there, so password sign-in by that number
+  fails with the common credential error; the user name, email or code
+  sign-in still work. Use `PasswordLoginHandle.Phone` on a site whose people
+  sign in by number and password.
+- User names and emails stay unique across all scopes.
+- A sign-in code is bound to the number: requesting codes for one number on two
+  sites at once supersedes the earlier code, and the daily SMS limits count the
+  number across sites.
+
+Skopka.Identity 0.19.0 adds the `PhoneScopes` migration. The Hello server image
+applies pending Identity migrations at startup; a host that manages migrations
+itself must apply it before starting Hello 0.32.0. It cannot be reverted while
+two accounts share a number.
 
 ## Account-specific lifetime
 

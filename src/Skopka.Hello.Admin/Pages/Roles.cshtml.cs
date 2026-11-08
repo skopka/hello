@@ -732,7 +732,7 @@ public sealed class RolesModel : PageModel
         return check.Action switch
         {
             "assign" when member => text["Admin.Outcome.RoleAlreadyAssigned", OpenRole.Name].Value,
-            "remove" when !member && MemberSearch is null && MemberCursorId is null && !MembersScanLimitReached
+            "remove" when !member && MemberSearch is null && MemberCursorId is null && MembersNextCursor is null
                 => text["Admin.Outcome.RoleAlreadyRemoved", OpenRole.Name].Value,
             _ => null,
         };

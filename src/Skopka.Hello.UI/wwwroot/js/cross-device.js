@@ -10,6 +10,14 @@
   const countdown = root.querySelector("[data-cross-device-countdown]");
   let submitted = false;
 
+  // A page reached after a form submission shows the retained outcome of that
+  // submission. Rendering the current state needs the page without it.
+  const renderCurrentState = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("hello-prg");
+    window.location.replace(url.toString());
+  };
+
   const updateCountdown = () => {
     if (!countdown) return;
     const expiresAt = Date.parse(countdown.dataset.expiresAt || "");
@@ -31,12 +39,12 @@
         if (complete.hidden) {
           // Render the approved state once more so the completion POST uses a
           // fresh antiforgery token even after a long approval wait.
-          window.location.reload();
+          renderCurrentState();
           return;
         }
         complete.requestSubmit();
       } else if (status.state === "denied" || status.state === "expired") {
-        window.location.reload();
+        renderCurrentState();
       }
     } catch {
       // A later poll can recover from a transient network failure.

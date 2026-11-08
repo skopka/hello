@@ -1,0 +1,9 @@
+@model IReadOnlyDictionary<string, string?>
+@* The list state (search, filters, page, open dialog) that a submission returns to. *@
+@foreach (var (name, value) in Model)
+{
+    if (!string.IsNullOrEmpty(value))
+    {
+        <input type="hidden" name="@name" value="@value" />
+    }
+}

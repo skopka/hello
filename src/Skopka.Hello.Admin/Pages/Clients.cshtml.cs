@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.Security.Claims;
 using Skopka.Hello.AuthorizationServer;
 using Skopka.Hello.UI;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Skopka.Hello.Admin.Pages;
 
@@ -180,30 +181,63 @@ public sealed class ClientsModel(
             }
             return await LoadAsync(ct);
         }
-        var result = await app.CompleteAsync(
-            token,
-            new HelloAdminClientCompletion(
-                Action(), challengeId, VerificationCode ?? string.Empty),
-            context.CreateClientKey(HttpContext),
-            ct);
-        if (result.IsSuccess)
+        if (!Guid.TryParse(User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorUserId))
+        {
+            return Challenge(HelloUiDefaults.AuthenticationScheme);
+        }
+
+        var action = Action();
+        var clientKey = context.CreateClientKey(HttpContext);
+        var code = VerificationCode ?? string.Empty;
+        // A duplicate submission of this confirmation (a double click, Enter
+        // and a click) waits for the first one and ends the same way.
+        var outcome = await HttpContext.RequestServices
+            .GetRequiredService<HelloAdminCompletionGuard>()
+            .RunAsync(actorUserId, challengeId, "client:" + ActionName + ":" + ClientId, async () =>
+            {
+                var completed = await app.CompleteAsync(
+                    token,
+                    new HelloAdminClientCompletion(action, challengeId, code),
+                    clientKey,
+                    CancellationToken.None);
+                if (!completed.IsSuccess)
+                {
+                    return new HelloAdminCompletionOutcome(
+                        false,
+                        null,
+                        completed.Errors.Select(error => new KeyValuePair<string, string>(string.Empty, error.Message)).ToArray(),
+                        KeepPending: completed.Errors.Count == 1
+                            && completed.Errors.First().Code
+                                == Skopka.Identity.Errors.IdentityErrorCodes.VerificationResponseInvalid);
+                }
+
+                return new HelloAdminCompletionOutcome(true, text["Admin.Clients.Completed"], [])
+                {
+                    StateToken = completed.Value.Secret is { } generated
+                        ? prgState.Store(new ClientSecret(actor, generated))
+                        : null,
+                };
+            });
+        if (outcome.Completed)
         {
             prgState.Remove(ClientsPendingStateToken);
             ClientsPendingStateToken = null;
-            prgState.Remove(ClientsSecretStateToken);
-            ClientsSecretStateToken = null;
-            if (result.Value.Secret is { } secret)
+            if (ClientsSecretStateToken != outcome.StateToken)
             {
-                ClientsSecretStateToken = prgState.Store(new ClientSecret(actor, secret));
+                prgState.Remove(ClientsSecretStateToken);
             }
-            ClientsStatusMessageTempData = text["Admin.Clients.Completed"];
-            return RedirectToPage("/SkopkaHelloAdmin/Clients", new { Offset });
+            ClientsSecretStateToken = outcome.StateToken;
+            ClientsStatusMessageTempData = outcome.StatusMessage;
+            // Return to the card of the client that changed.
+            return RedirectToPage("/SkopkaHelloAdmin/Clients", new
+            {
+                Offset,
+                Edit = ActionName is "delete" ? null : ClientId,
+            });
         }
         else
         {
-            if (result.Errors.Count == 1
-                && result.Errors.First().Code ==
-                    Skopka.Identity.Errors.IdentityErrorCodes.VerificationResponseInvalid)
+            if (outcome.KeepPending)
             {
                 ChallengeId = challengeId;
                 TempData.Keep(nameof(ClientsPendingStateToken));
@@ -214,7 +248,10 @@ public sealed class ClientsModel(
                 ClientsPendingStateToken = null;
                 ResetForm();
             }
-            AddErrors(result.Errors);
+            foreach (var (key, message) in outcome.Errors)
+            {
+                ModelState.AddModelError(key, message);
+            }
         }
         return await LoadAsync(ct);
     }

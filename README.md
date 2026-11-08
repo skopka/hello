@@ -12,11 +12,19 @@ verification and refresh-session state stay in Skopka.Identity.
 
 ## Documentation
 
+Version `0.30.0`: every Hello UI and Admin form submission ends with a redirect
+to a GET, so refresh and Back never resubmit it; errors, non-secret input and
+the current step survive refresh, and a repeated Admin confirmation ends like
+the first one, returning to the dialog it started from. See
+[form submissions](docs/form-submissions.md). Admin adds host-declared user
+badges with list filters and role member management on the Roles page; see
+[administration](docs/administration.md#user-badges-and-filters).
+
 Version `0.29.1`: access-link setup now uses the standard Hello form styles and localized
 retry guidance. Refresh no longer resubmits the form; expired or replaced
 authenticator setup can be restarted. See [access links](docs/access-links.md).
 
-Documentation: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html). Repository guides describe version `0.29.1`; the documentation site is updated separately.
+Documentation: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html). Repository guides describe version `0.30.0`; the documentation site is updated separately.
 
 Version `0.25.0` adds optional hints under host-defined account profile
 fields; see [customization](docs/customization.md). It also adds

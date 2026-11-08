@@ -163,7 +163,14 @@ public sealed partial class AuthenticationFlowTests
                     configureHello: options => options.Totp.Enabled = true,
                     configureUi: options => options.Localization.Enabled = true,
                     requireSecondFactor: requireSecondFactor,
-                    accessLinksEnabled: accessLinksEnabled);
+                    accessLinksEnabled: accessLinksEnabled,
+                    configureAdmin: options =>
+                    {
+                        options.UserBadges.Add(HelloAdminUserBadge.ForRoles(
+                            "admin", "Administrator", HelloAdminDefaults.AdministratorRole));
+                        options.UserBadges.Add(new HelloAdminUserBadge("staff", "Staff"));
+                    },
+                    configureServices: services => services.AddScoped<IHelloAdminUserBadgeSource, StaffBadgeSource>());
                 using var client = app.CreateClient();
                 var actor = await RegisterUiAccountAsync(client, "browser-admin", "browser-admin@example.test", "Browser Admin");
                 var target = await RegisterUiAccountAsync(client, "browser-target", "browser-target@example.test", "Browser Target");
@@ -193,6 +200,37 @@ public sealed partial class AuthenticationFlowTests
             }
         }
 
+        public async Task<bool> TargetHasRoleAsync()
+        {
+            using var scope = app.Services.CreateScope();
+            var roles = scope.ServiceProvider.GetRequiredService<Skopka.Identity.Roles.IIdentityRoleService<IntegrationProfile>>();
+            var result = await roles.IsUserInRoleAsync(TargetId, RoleId, CancellationToken.None);
+            Assert.True(result.IsSuccess);
+            return result.Value;
+        }
+
+        /// <summary>
+        /// Spends a pending Razor confirmation through the Admin API, as another
+        /// server instance would, so the page meets an already used challenge.
+        /// </summary>
+        public async Task CompleteTargetRoleActionThroughApiAsync(string action, Guid challengeId, string code)
+        {
+            using var client = app.CreateClient();
+            var login = await LoginAsync(client, "browser-admin@example.test");
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                HelloAdminDefaults.DefaultApiPathPrefix + "/roles/actions/" + action)
+            {
+                Content = JsonContent.Create(new { challengeId, verificationCode = code, roleId = RoleId, targetUserId = TargetId }),
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", login.AccessToken);
+            using var response = await client.SendAsync(request);
+            Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        }
+
+        public int AdminVerificationCount
+            => app.Messages.Count(message => message.Kind == HelloAccountMessageKind.AdminActionVerification);
+
         public async Task<Uri> IssueTargetAccessLinkAsync()
         {
             using var scope = app.Services.CreateScope();
@@ -211,6 +249,17 @@ public sealed partial class AuthenticationFlowTests
             await postgres.DisposeAsync();
         }
     }
+    /// <summary>A host-decided badge: the browser target account is staff.</summary>
+    private sealed class StaffBadgeSource : IHelloAdminUserBadgeSource
+    {
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyCollection<string>>> GetBadgesAsync(
+            IReadOnlyList<HelloAdminUserBadgeCandidate> users,
+            CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyCollection<string>>>(users
+                .Where(user => user.UserName == "browser-target")
+                .ToDictionary(user => user.UserId, _ => (IReadOnlyCollection<string>)["staff"]));
+    }
+
     public sealed class NativeAppBrowserHost : IAsyncDisposable
     {
         private readonly PostgreSqlContainer postgres;
@@ -4984,7 +5033,39 @@ public sealed partial class AuthenticationFlowTests
             Content = new FormUrlEncodedContent(form),
         };
         AddCookies(request, cookies);
-        return await client.SendAsync(request);
+        var response = await client.SendAsync(request);
+        AssertNoRenderedPost(path, response);
+        if (response.StatusCode != HttpStatusCode.SeeOther)
+        {
+            return response;
+        }
+
+        // Hello ends a submission that renders its page with 303 See Other;
+        // the GET it points to shows that outcome. Cookies the redirect set
+        // (the retained-outcome binding, TempData) travel with that GET.
+        var location = Assert.IsType<Uri>(response.Headers.Location);
+        Assert.Contains("hello-prg=", location.OriginalString, StringComparison.Ordinal);
+        Assert.DoesNotContain("handler=", location.OriginalString, StringComparison.OrdinalIgnoreCase);
+        var followCookies = cookies as Dictionary<string, string>
+            ?? new Dictionary<string, string>(cookies, StringComparer.Ordinal);
+        MergeCookies(followCookies, response);
+        response.Dispose();
+        return await SendAsync(client, HttpMethod.Get, location.OriginalString, followCookies);
+    }
+
+    /// <summary>
+    /// Every Hello Razor form submission ends with a redirect: a POST never
+    /// renders a page, so refresh cannot resubmit it.
+    /// </summary>
+    internal static void AssertNoRenderedPost(string path, HttpResponseMessage response)
+    {
+        var hello = path.StartsWith("/hello", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/identity", StringComparison.OrdinalIgnoreCase);
+        Assert.False(
+            hello
+                && response.StatusCode == HttpStatusCode.OK
+                && response.Content.Headers.ContentType?.MediaType == "text/html",
+            $"POST {path} rendered a page instead of redirecting.");
     }
 
     private static async Task<Dictionary<string, string>>

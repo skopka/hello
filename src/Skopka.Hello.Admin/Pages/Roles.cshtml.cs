@@ -1,30 +1,70 @@
+using System.Globalization;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Skopka.Abstraction.OperationResult;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Skopka.Hello.UI;
-using Skopka.Identity.Errors;
 using Skopka.Identity.Roles;
 using Skopka.Identity.Roles.Queries;
+using Skopka.Identity.Users.Queries;
 
 namespace Skopka.Hello.Admin.Pages;
 
 [Authorize(Policy = HelloUiDefaults.AuthorizationPolicy)]
-public sealed class RolesModel(
-    IHelloAdminRoleApplication application,
-    IHelloRequestContext requestContext,
-    IAuthorizationService authorization,
-    HelloUiPrgStateStore prgState,
-    SkopkaHelloAdminOptions options,
-    IHelloUiLocalizer text)
-    : PageModel
+public sealed class RolesModel : PageModel
 {
+    public const int MemberPageSize = 25;
+
+    public const int CandidatePageSize = 10;
+
+    private readonly IHelloAdminRoleApplication application;
+    private readonly IHelloRequestContext requestContext;
+    private readonly IAuthorizationService authorization;
+    private readonly HelloUiPrgStateStore prgState;
+    private readonly SkopkaHelloAdminOptions options;
+    private readonly IHelloUiLocalizer text;
+    private readonly IHelloSessionCookieManager sessionCookies;
+    private readonly HelloAdminRoleRulesEvaluator roleRules;
+
+    public RolesModel(
+        IHelloAdminRoleApplication application,
+        IHelloRequestContext requestContext,
+        IAuthorizationService authorization,
+        HelloUiPrgStateStore prgState,
+        SkopkaHelloAdminOptions options,
+        IHelloUiLocalizer text,
+        IHelloSessionCookieManager sessionCookies)
+    {
+        this.application = application;
+        this.requestContext = requestContext;
+        this.authorization = authorization;
+        this.prgState = prgState;
+        this.options = options;
+        this.text = text;
+        this.sessionCookies = sessionCookies;
+        roleRules = new(options);
+    }
+
+    private HelloAdminUserDirectory directory
+        => HttpContext.RequestServices.GetRequiredService<HelloAdminUserDirectory>();
+
+    private HelloAdminCompletionGuard completionGuard
+        => HttpContext.RequestServices.GetRequiredService<HelloAdminCompletionGuard>();
+
     public IReadOnlyList<IdentityRole> Roles { get; private set; } = [];
 
     public IdentityRoleCursor? NextCursor { get; private set; }
 
     public bool RoleManagementEnabled => options.RoleManagementEnabled;
+
+    public bool CanReadRoles { get; private set; }
+
+    public bool CanEditRoles { get; private set; }
+
+    public bool CanAssignRoles { get; private set; }
 
     [BindProperty(SupportsGet = true)]
     public string? Search { get; set; }
@@ -35,7 +75,52 @@ public sealed class RolesModel(
     [BindProperty(SupportsGet = true)]
     public Guid? CursorId { get; set; }
 
+    /// <summary>The role whose dialog, with its members, the page opens.</summary>
+    [BindProperty(SupportsGet = true)]
+    public Guid? Open { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public string? MemberSearch { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public DateTimeOffset? MemberCursorCreatedAt { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public Guid? MemberCursorId { get; set; }
+
+    /// <summary>Search for accounts without the open role, to add them.</summary>
+    [BindProperty(SupportsGet = true)]
+    public string? AddSearch { get; set; }
+
+    public IdentityRole? OpenRole { get; private set; }
+
+    internal IReadOnlyList<HelloAdminDirectoryRow> Members { get; private set; } = [];
+
+    public IdentityUserCursor? MembersNextCursor { get; private set; }
+
+    public bool MembersScanLimitReached { get; private set; }
+
+    public int MembersScanned { get; private set; }
+
+    internal IReadOnlyList<HelloAdminDirectoryRow>? Candidates { get; private set; }
+
+    public bool CandidatesScanLimitReached { get; private set; }
+
+    public int CandidatesScanned { get; private set; }
+
+    /// <summary>Whether the current administrator may add accounts to and remove them from the open role.</summary>
+    public bool CanManageOpenRoleMembers { get; private set; }
+
     public PendingAdminRoleAction? PendingAction { get; private set; }
+
+    /// <summary>Who a pending membership change is for.</summary>
+    public string? PendingTargetLabel { get; private set; }
+
+    public string? OutcomeMessage { get; private set; }
+
+    internal HelloAdminFeedback? Feedback { get; private set; }
+
+    private Guid? ActorUserId { get; set; }
 
     [TempData]
     public string? StatusMessage { get; set; }
@@ -43,11 +128,17 @@ public sealed class RolesModel(
     [TempData]
     public string? PendingActionStateToken { get; set; }
 
+    [TempData]
+    public string? RolesFeedbackStateToken { get; set; }
+
     public async Task<IActionResult> OnGetAsync(
         CancellationToken cancellationToken)
     {
         ApplySensitiveResponseHeaders();
-        if (!await IsAuthorizedAsync(options.ReadPolicyName))
+        await LoadAuthorizationAsync();
+        // The role catalog and its members are read access. A delegated role
+        // assigner without it manages membership from the Users page.
+        if (!CanReadRoles)
         {
             return Forbid();
         }
@@ -61,6 +152,12 @@ public sealed class RolesModel(
             CursorId = null;
         }
 
+        if ((MemberCursorCreatedAt is null) != (MemberCursorId is null))
+        {
+            MemberCursorCreatedAt = null;
+            MemberCursorId = null;
+        }
+
         var accessToken = await ReadAccessTokenAsync();
         if (accessToken is null)
         {
@@ -69,6 +166,8 @@ public sealed class RolesModel(
 
         await LoadRolesAsync(accessToken, cancellationToken);
         RestorePendingAction();
+        await LoadOpenRoleAsync(accessToken, cancellationToken);
+        RestoreFeedback();
         return Page();
     }
 
@@ -80,9 +179,19 @@ public sealed class RolesModel(
         string? name,
         string? description,
         Guid? parentId,
+        string? targetLabel,
         CancellationToken cancellationToken)
     {
         ApplySensitiveResponseHeaders();
+        ClearFeedback();
+        Open = roleId ?? Open;
+        var values = new Dictionary<string, string?>
+        {
+            ["target"] = FeedbackTarget(action, roleId),
+            ["name"] = name,
+            ["description"] = description,
+            ["parentId"] = Request.Form["parentId"].ToString(),
+        };
         if (!HelloAdminSecurity.TryParseRoleActionSlug(
                 action,
                 out var parsedAction))
@@ -90,11 +199,10 @@ public sealed class RolesModel(
             ModelState.AddModelError(
                 string.Empty,
                 text["Admin.Errors.InvalidRoleAction"]);
-            return await ReloadPageAsync(cancellationToken);
+            return RedirectWithFeedback(values);
         }
 
-        if (!await IsAuthorizedAsync(options.ReadPolicyName)
-            || !await IsAuthorizedAsync(options.DeletePolicyName))
+        if (!await IsAuthorizedForAsync(parsedAction))
         {
             return Forbid();
         }
@@ -121,24 +229,21 @@ public sealed class RolesModel(
             cancellationToken);
         if (result.IsSuccess)
         {
-            PendingActionStateToken = prgState.Store(
+            ReplacePending(new PendingRoleState(
                 new PendingAdminRoleAction(
-                parsedAction,
-                roleId,
-                targetUserId,
-                parameters,
-                result.Value.ChallengeId,
-                result.Value.ExpiresAt,
-                result.Value.DeliveryChannel));
-            return RedirectToPage(
-                "/SkopkaHelloAdmin/Roles",
-                new { Search });
+                    parsedAction,
+                    roleId,
+                    targetUserId,
+                    parameters,
+                    result.Value.ChallengeId,
+                    result.Value.ExpiresAt,
+                    result.Value.DeliveryChannel),
+                IsMembership(parsedAction) ? Trim(targetLabel) : null));
+            return RedirectToList();
         }
 
-        AddErrors(result.Errors);
-
-        await LoadRolesAsync(accessToken, cancellationToken);
-        return Page();
+        HelloAdminErrorText.AddErrors(ModelState, result.Errors, text);
+        return RedirectWithFeedback(values);
     }
 
     public async Task<IActionResult> OnPostCompleteActionAsync(
@@ -154,6 +259,8 @@ public sealed class RolesModel(
         CancellationToken cancellationToken)
     {
         ApplySensitiveResponseHeaders();
+        ClearFeedback();
+        Open = roleId ?? Open;
         if (!HelloAdminSecurity.TryParseRoleActionSlug(
                 action,
                 out var parsedAction))
@@ -161,17 +268,16 @@ public sealed class RolesModel(
             ModelState.AddModelError(
                 string.Empty,
                 text["Admin.Errors.InvalidRoleAction"]);
-            return await ReloadPageAsync(cancellationToken);
+            return RedirectWithFeedback();
         }
 
-        if (!await IsAuthorizedAsync(options.ReadPolicyName)
-            || !await IsAuthorizedAsync(options.DeletePolicyName))
+        if (!await IsAuthorizedForAsync(parsedAction))
         {
             return Forbid();
         }
 
         var accessToken = await ReadAccessTokenAsync();
-        if (accessToken is null)
+        if (accessToken is null || CurrentActorId() is not { } actorId)
         {
             return Challenge(HelloUiDefaults.AuthenticationScheme);
         }
@@ -181,38 +287,113 @@ public sealed class RolesModel(
             name,
             description,
             parentId);
-        var result = await application.CompleteRoleActionAsync(
-            new HelloAdminCompleteRoleActionCommand(
+        var clientKey = requestContext.CreateClientKey(HttpContext);
+        var actionText = text[GetActionTextKey(parsedAction)].Value;
+        HelloAdminCompletionOutcome outcome;
+        if (IsMembership(parsedAction) && roleId is { } memberRoleId && targetUserId is { } memberId)
+        {
+            outcome = await HelloAdminRoleMembershipCompletion.CompleteAsync(
+                completionGuard,
+                application,
+                text,
+                actorId,
                 accessToken,
                 parsedAction,
-                roleId,
-                targetUserId,
-                parameters,
+                memberRoleId,
+                memberId,
                 challengeId,
                 verificationCode,
-                requestContext.CreateClientKey(HttpContext)),
-            cancellationToken);
-        if (result.IsSuccess)
+                clientKey);
+        }
+        else
         {
-            StatusMessage = text[
-                "Admin.Common.ActionCompleted",
-                text[GetActionTextKey(parsedAction)]];
-            return RedirectToPage(
-                "/SkopkaHelloAdmin/Roles",
-                new { Search });
+            outcome = await completionGuard.RunAsync(
+                actorId,
+                challengeId,
+                $"role:{action}:{roleId:N}",
+                async () =>
+                {
+                    // Runs to completion even when the browser abandons this
+                    // request for a duplicate submission.
+                    var result = await application.CompleteRoleActionAsync(
+                        new HelloAdminCompleteRoleActionCommand(
+                            accessToken,
+                            parsedAction,
+                            roleId,
+                            targetUserId,
+                            parameters,
+                            challengeId,
+                            verificationCode,
+                            clientKey),
+                        CancellationToken.None);
+                    return UsersModel.ToOutcome(
+                        result.IsSuccess,
+                        result.Errors,
+                        text["Admin.Common.ActionCompleted", actionText],
+                        text) with
+                    {
+                        EntityId = result.IsSuccess ? result.Value.Role?.Id : null,
+                    };
+                });
         }
 
-        AddErrors(result.Errors);
-        PendingAction = new PendingAdminRoleAction(
-            parsedAction,
-            roleId,
-            targetUserId,
-            parameters,
-            challengeId,
-            ExpiresAt: null,
-            DeliveryChannel: null);
-        await LoadRolesAsync(accessToken, cancellationToken);
-        return Page();
+        if (outcome.SignOut)
+        {
+            ClearPending();
+            await ClearLocalSessionAsync();
+            return RedirectToPage(
+                "/SkopkaHello/Login",
+                new RouteValueDictionary { [outcome.LoginFlag ?? "rolesChanged"] = true });
+        }
+
+        if (outcome.Completed)
+        {
+            ClearPending();
+            StatusMessage = outcome.StatusMessage;
+            Open = parsedAction switch
+            {
+                HelloAdminRoleAction.Delete => null,
+                HelloAdminRoleAction.Create => outcome.EntityId,
+                _ => Open,
+            };
+            return RedirectToList();
+        }
+
+        foreach (var (key, message) in outcome.Errors)
+        {
+            ModelState.AddModelError(key, message);
+        }
+
+        if (outcome.KeepPending)
+        {
+            if (prgState.TryGet<PendingRoleState>(PendingActionStateToken, out var stored)
+                && stored is not null
+                && stored.Action.ChallengeId == challengeId)
+            {
+                ReplacePending(stored);
+            }
+            else
+            {
+                ReplacePending(new PendingRoleState(
+                    new PendingAdminRoleAction(
+                        parsedAction,
+                        roleId,
+                        targetUserId,
+                        parameters,
+                        challengeId,
+                        ExpiresAt: null,
+                        DeliveryChannel: null),
+                    null));
+            }
+
+            return RedirectWithFeedback();
+        }
+
+        ClearPending();
+        return RedirectWithFeedback(
+            check: outcome.CheckState
+                ? new HelloAdminOutcomeCheck(action, targetUserId, roleId, actionText)
+                : null);
     }
 
     public static string GetActionSlug(HelloAdminRoleAction action)
@@ -240,22 +421,115 @@ public sealed class RolesModel(
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
 
-    private async Task<IActionResult> ReloadPageAsync(
-        CancellationToken cancellationToken)
+    /// <summary>Whether the page opens the dialog of <paramref name="roleId"/>.</summary>
+    public bool ShouldOpen(Guid roleId)
+        => Open == roleId && PendingAction is null;
+
+    /// <summary>Whether the page reopens the new-role dialog after a failed submission.</summary>
+    public bool ShouldOpenCreate
+        => PendingAction is null && Feedback?.Errors.Count > 0
+            && Feedback.Values.TryGetValue("target", out var target) && target == "create";
+
+    public string? PostedValue(Guid? roleId, string name)
+        => Feedback?.Value(roleId?.ToString("D") ?? "create", name);
+
+    public bool CanRemoveMember(Guid userId)
+        => CanManageOpenRoleMembers
+            && OpenRole is { } role
+            && (ActorUserId != userId
+                || roleRules.GetProtection(role.Name) is not (
+                    HelloRoleProtection.System
+                        or HelloRoleProtection.Retained));
+
+    public string BadgeLabel(HelloAdminUserBadge badge)
+        => text.TryGetString($"Admin.Badges.{badge.Key}", out var label)
+            ? label
+            : badge.Label;
+
+    public static string UserLabel(HelloAdminUser user)
+        => user.UserName ?? user.Email ?? user.Phone ?? user.Id.ToString("D");
+
+    /// <summary>The list state that every form and redirect of this page carries.</summary>
+    public IReadOnlyDictionary<string, string?> ListContext(Guid? open, bool members = true)
+        => new Dictionary<string, string?>
+        {
+            [nameof(Search)] = Search,
+            [nameof(CursorCreatedAt)] = CursorCreatedAt?.ToString("O", CultureInfo.InvariantCulture),
+            [nameof(CursorId)] = CursorId?.ToString("D"),
+            [nameof(Open)] = open?.ToString("D"),
+            [nameof(MemberSearch)] = members && open == Open ? MemberSearch : null,
+            [nameof(MemberCursorCreatedAt)] = members && open == Open
+                ? MemberCursorCreatedAt?.ToString("O", CultureInfo.InvariantCulture)
+                : null,
+            [nameof(MemberCursorId)] = members && open == Open ? MemberCursorId?.ToString("D") : null,
+            [nameof(AddSearch)] = members && open == Open ? AddSearch : null,
+        };
+
+    private static bool IsMembership(HelloAdminRoleAction action)
+        => action is HelloAdminRoleAction.Assign or HelloAdminRoleAction.Remove;
+
+    private static string? FeedbackTarget(string action, Guid? roleId)
+        => string.Equals(action, "create", StringComparison.Ordinal)
+            ? "create"
+            : roleId?.ToString("D");
+
+    private static string? Trim(string? value)
+        => string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim() is { Length: > 256 } long_ ? long_[..256] : value.Trim();
+
+    private async Task<bool> IsAuthorizedForAsync(HelloAdminRoleAction action)
+        => IsMembership(action)
+            // Membership follows the same rules as on the Users page.
+            ? await IsAuthorizedAsync(options.ReadPolicyName)
+                && await IsAuthorizedAsync(options.RoleAssignmentPolicyName)
+            : await IsAuthorizedAsync(options.ReadPolicyName)
+                && await IsAuthorizedAsync(options.DeletePolicyName);
+
+    private RedirectToPageResult RedirectToList()
     {
-        if (!await IsAuthorizedAsync(options.ReadPolicyName))
+        var values = new RouteValueDictionary();
+        foreach (var (key, value) in ListContext(Open))
         {
-            return Forbid();
+            if (!string.IsNullOrEmpty(value))
+            {
+                values[key] = value;
+            }
         }
 
-        var accessToken = await ReadAccessTokenAsync();
-        if (accessToken is null)
+        return RedirectToPage("/SkopkaHelloAdmin/Roles", values);
+    }
+
+    private RedirectToPageResult RedirectWithFeedback(
+        IReadOnlyDictionary<string, string?>? values = null,
+        HelloAdminOutcomeCheck? check = null)
+    {
+        var feedback = HelloAdminFeedback.From(ModelState, values, check);
+        if (feedback.Errors.Count > 0 || feedback.Check is not null)
         {
-            return Challenge(HelloUiDefaults.AuthenticationScheme);
+            RolesFeedbackStateToken = prgState.Store(feedback);
         }
 
-        await LoadRolesAsync(accessToken, cancellationToken);
-        return Page();
+        ModelState.Clear();
+        return RedirectToList();
+    }
+
+    private void ClearFeedback()
+    {
+        prgState.Remove(RolesFeedbackStateToken);
+        RolesFeedbackStateToken = null;
+    }
+
+    private void ClearPending()
+    {
+        prgState.Remove(PendingActionStateToken);
+        PendingActionStateToken = null;
+    }
+
+    private void ReplacePending(PendingRoleState pending)
+    {
+        prgState.Remove(PendingActionStateToken);
+        PendingActionStateToken = prgState.Store(pending);
     }
 
     private async Task LoadRolesAsync(
@@ -280,7 +554,75 @@ public sealed class RolesModel(
             return;
         }
 
-        AddErrors(result.Errors);
+        HelloAdminErrorText.AddErrors(ModelState, result.Errors, text);
+    }
+
+    private async Task LoadOpenRoleAsync(
+        string accessToken,
+        CancellationToken cancellationToken)
+    {
+        OpenRole = Open is { } open
+            ? Roles.FirstOrDefault(role => role.Id == open)
+            : null;
+        if (OpenRole is null)
+        {
+            return;
+        }
+
+        ActorUserId = CurrentActorId();
+        if (CanAssignRoles && ActorUserId is { } actorId)
+        {
+            var actorRoles = await application.GetUserRolesAsync(
+                new HelloAdminGetUserRolesCommand(accessToken, actorId),
+                cancellationToken);
+            CanManageOpenRoleMembers = actorRoles.IsSuccess
+                && roleRules.CanManageMembership(actorRoles.Value, OpenRole);
+        }
+
+        var members = await directory.QueryAsync(
+            new HelloAdminDirectoryQuery(
+                accessToken,
+                MemberSearch,
+                IdentityUserStatus.Any,
+                MemberCursorCreatedAt is not null && MemberCursorId is not null
+                    ? new IdentityUserCursor(MemberCursorCreatedAt.Value, MemberCursorId.Value)
+                    : null,
+                MemberPageSize,
+                MemberOfRoleId: OpenRole.Id),
+            cancellationToken);
+        if (!members.IsSuccess)
+        {
+            HelloAdminErrorText.AddErrors(ModelState, members.Errors, text);
+            return;
+        }
+
+        Members = members.Value.Rows;
+        MembersNextCursor = members.Value.NextCursor;
+        MembersScanLimitReached = members.Value.LimitReached;
+        MembersScanned = members.Value.Examined;
+        if (!CanManageOpenRoleMembers || string.IsNullOrWhiteSpace(AddSearch))
+        {
+            return;
+        }
+
+        var candidates = await directory.QueryAsync(
+            new HelloAdminDirectoryQuery(
+                accessToken,
+                AddSearch,
+                IdentityUserStatus.Any,
+                Cursor: null,
+                CandidatePageSize,
+                NotMemberOfRoleId: OpenRole.Id),
+            cancellationToken);
+        if (!candidates.IsSuccess)
+        {
+            HelloAdminErrorText.AddErrors(ModelState, candidates.Errors, text);
+            return;
+        }
+
+        Candidates = candidates.Value.Rows;
+        CandidatesScanLimitReached = candidates.Value.LimitReached;
+        CandidatesScanned = candidates.Value.Examined;
     }
 
     private async Task<string?> ReadAccessTokenAsync()
@@ -293,55 +635,33 @@ public sealed class RolesModel(
             : null;
     }
 
+    private Guid? CurrentActorId()
+        => Guid.TryParse(
+            User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("sub"),
+            out var id)
+                ? id
+                : null;
+
+    private async Task LoadAuthorizationAsync()
+    {
+        CanReadRoles = await IsAuthorizedAsync(options.ReadPolicyName);
+        CanEditRoles = CanReadRoles
+            && options.RoleManagementEnabled
+            && await IsAuthorizedAsync(options.DeletePolicyName);
+        CanAssignRoles = await IsAuthorizedAsync(options.RoleAssignmentPolicyName);
+    }
+
     private async Task<bool> IsAuthorizedAsync(string policyName)
         => (await authorization.AuthorizeAsync(
             User,
             HttpContext,
             policyName)).Succeeded;
 
-    private void AddErrors(IReadOnlyCollection<Error> errors)
+    private async Task ClearLocalSessionAsync()
     {
-        foreach (var error in errors)
-        {
-            if (error.Details is ValidationDetails validation)
-            {
-                foreach (var field in validation.Fields)
-                {
-                    foreach (var message in field.Value)
-                    {
-                        ModelState.AddModelError(
-                            field.Key,
-                            LocalizeError(error, field.Key, message));
-                    }
-                }
-
-                continue;
-            }
-
-            ModelState.AddModelError(
-                string.Empty,
-                LocalizeError(error, null, error.Message));
-        }
-    }
-
-    private string LocalizeError(
-        Error error,
-        string? field,
-        string fallback)
-    {
-        if (field is not null
-            && text.TryGetString(
-                $"Errors.{error.Code}.{field}",
-                out var fieldMessage))
-        {
-            return fieldMessage;
-        }
-
-        return text.TryGetString(
-            $"Errors.{error.Code}",
-            out var message)
-                ? message
-                : fallback;
+        sessionCookies.DeleteSessionCookies(HttpContext);
+        await HttpContext.SignOutAsync(HelloUiDefaults.AuthenticationScheme);
     }
 
     private void ApplySensitiveResponseHeaders()
@@ -353,17 +673,74 @@ public sealed class RolesModel(
 
     private void RestorePendingAction()
     {
-        if (!prgState.TryGet<PendingAdminRoleAction>(
+        if (!prgState.TryGet<PendingRoleState>(
                 PendingActionStateToken,
-                out var pendingAction)
-            || pendingAction is null)
+                out var pending)
+            || pending is null)
         {
             return;
         }
 
-        PendingAction = pendingAction;
+        PendingAction = pending.Action;
+        PendingTargetLabel = pending.TargetLabel;
         TempData.Keep(nameof(PendingActionStateToken));
     }
+
+    private void RestoreFeedback()
+    {
+        if (!prgState.TryGet<HelloAdminFeedback>(
+                RolesFeedbackStateToken,
+                out var feedback)
+            || feedback is null)
+        {
+            return;
+        }
+
+        // Errors stay visible on refresh until the next submission.
+        TempData.Keep(nameof(RolesFeedbackStateToken));
+        Feedback = feedback;
+        if (feedback.Check is { } check && ExplainOutcome(check) is { } explanation)
+        {
+            OutcomeMessage = explanation;
+            return;
+        }
+
+        feedback.Apply(ModelState);
+    }
+
+    private string? ExplainOutcome(HelloAdminOutcomeCheck check)
+    {
+        if (check.RoleId is not { } roleId)
+        {
+            return null;
+        }
+
+        var role = Roles.FirstOrDefault(item => item.Id == roleId);
+        if (check.Action == "delete")
+        {
+            return role is null && Search is null && CursorId is null
+                ? text["Admin.Outcome.AlreadyInEffect", check.ActionText].Value
+                : null;
+        }
+
+        if (check.UserId is not { } userId || OpenRole?.Id != roleId)
+        {
+            return null;
+        }
+
+        var member = Members.Any(row => row.User.Id == userId);
+        return check.Action switch
+        {
+            "assign" when member => text["Admin.Outcome.RoleAlreadyAssigned", OpenRole.Name].Value,
+            "remove" when !member && MemberSearch is null && MemberCursorId is null && !MembersScanLimitReached
+                => text["Admin.Outcome.RoleAlreadyRemoved", OpenRole.Name].Value,
+            _ => null,
+        };
+    }
+
+    private sealed record PendingRoleState(
+        PendingAdminRoleAction Action,
+        string? TargetLabel);
 }
 
 public sealed record PendingAdminRoleAction(

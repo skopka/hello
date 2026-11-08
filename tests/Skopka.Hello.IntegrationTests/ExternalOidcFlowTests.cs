@@ -1197,7 +1197,17 @@ public sealed class ExternalOidcFlowTests
         AddCookies(request, cookies);
         var response = await client.SendAsync(request);
         MergeCookies(cookies, response);
-        return response;
+        AuthenticationFlowTests.AssertNoRenderedPost(path, response);
+        if (response.StatusCode != HttpStatusCode.SeeOther)
+        {
+            return response;
+        }
+
+        // Hello ends a submission that renders its page with 303 See Other;
+        // the GET it points to shows that outcome.
+        var location = Assert.IsType<Uri>(response.Headers.Location);
+        response.Dispose();
+        return await SendHelloAsync(client, HttpMethod.Get, location.OriginalString, cookies);
     }
 
     private static async Task<HttpResponseMessage> FollowHelloRedirectAsync(

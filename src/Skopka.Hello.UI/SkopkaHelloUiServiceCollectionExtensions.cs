@@ -219,6 +219,10 @@ public static class SkopkaHelloUiServiceCollectionExtensions
         services.AddMemoryCache();
         services.TryAddSingleton<
             Skopka.Hello.UI.HelloUiPrgStateStore>();
+        services.TryAddSingleton<
+            Skopka.Hello.UI.HelloUiPostRedirectStore>();
+        services.TryAddScoped<
+            Skopka.Hello.UI.HelloUiPostRedirectFilter>();
         services.AddSingleton(
             new Skopka.Hello.UI.HelloUiDictionarySource(
                 typeof(Skopka.Hello.UI.HelloUiModule).Assembly,

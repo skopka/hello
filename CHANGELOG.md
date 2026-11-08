@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.30.0
+
+- End every Hello.UI and Hello.Admin form submission with `303 See Other` to a GET, on success, error and intermediate steps. Refresh and Back no longer resubmit; errors, typed non-secret values and the current step survive refresh, while passwords and codes are never kept. Outcomes are process-local and bound to the browser and account; multi-instance hosts need session affinity. See `docs/form-submissions.md`.
+- Make a repeated Admin step-up confirmation (double click, Enter and a click) end like the first: the action runs once and every duplicate gets the same success. A confirmation used elsewhere is explained from the current state ("the role is already assigned") instead of only "invalid or expired"; the restart message now asks to check the state.
+- Return to the context after an Admin confirmation: the same user's Manage dialog, role dialog or client card, keeping search, filters and page.
+- Add host-declared Admin user badges (`SkopkaHelloAdminOptions.UserBadges`, `HelloAdminUserBadge`, optional `IHelloAdminUserBadgeSource`) shown in the user list and offered as a `Badge` filter.
+- Show role members on the Roles page with search and pages, and add or remove members there with the same step-up and per-role assignment rules as on the Users page. Badge filters and member lists examine at most `SkopkaHelloAdminOptions.MembershipScanLimit` accounts per request (default 500) and offer to continue.
+
 ## 0.29.1
 
 - Redirect access-link form submissions to GET, preserve an active authenticator setup across refresh, and show recovery codes only once while keeping the completion message visible.

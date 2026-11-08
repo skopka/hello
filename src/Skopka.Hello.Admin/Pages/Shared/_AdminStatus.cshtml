@@ -1,0 +1,14 @@
+@model (string? Status, string? Outcome)
+@* A one-time success message and a result explained from the current state. *@
+@if (!string.IsNullOrWhiteSpace(Model.Status))
+{
+    <div class="alert alert-success shadow-sm" role="status">
+        @Model.Status
+    </div>
+}
+@if (!string.IsNullOrWhiteSpace(Model.Outcome))
+{
+    <div class="alert alert-info shadow-sm" role="status" data-admin-outcome>
+        @Model.Outcome
+    </div>
+}

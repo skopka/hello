@@ -24,5 +24,11 @@ internal sealed class HelloUiPageApplicationModelConvention
                 typeof(HelloUiRequestCultureFilter)));
         if (model.RelativePath.StartsWith("/Pages/SkopkaHello/", StringComparison.Ordinal))
             model.Filters.Add(new ServiceFilterAttribute(typeof(HelloUiSiteFilter)));
+
+        // After the site filter, so a replayed outcome never bypasses a page
+        // the current site does not offer.
+        model.Filters.Add(
+            new ServiceFilterAttribute(
+                typeof(HelloUiPostRedirectFilter)));
     }
 }

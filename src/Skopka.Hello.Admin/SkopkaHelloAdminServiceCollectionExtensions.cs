@@ -76,6 +76,8 @@ public static class SkopkaHelloAdminServiceCollectionExtensions
                     "AddSkopkaHelloUi<TProfile, TProfileFactory> must be called before enabling the admin Razor UI.");
             }
 
+            services.TryAddScoped<Skopka.Hello.Admin.HelloAdminUserDirectory>();
+            services.TryAddSingleton<Skopka.Hello.Admin.HelloAdminCompletionGuard>();
             services.AddSingleton(provider =>
                 new Skopka.Hello.Admin.HelloAdminRoutePaths(
                     provider.GetRequiredService<

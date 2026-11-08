@@ -166,7 +166,8 @@ public sealed class AdminDialogBrowserTests(BrowserFixture browser) : IClassFixt
         var row = page.Locator(".admin-list-row").Filter(new() { HasText = "browser-client" });
         await Assertions.Expect(row).ToHaveCountAsync(1);
         Assert.True(await row.EvaluateAsync<bool>("e => e.getBoundingClientRect().height <= 64"));
-        await row.Locator("button").ClickAsync();
+        // After the confirmation the card of the client that changed is open.
+        Assert.Contains("Edit=browser-client", page.Url, StringComparison.Ordinal);
         var dialogTarget = await row.Locator("button").GetAttributeAsync("data-bs-target");
         var dialog = page.Locator(dialogTarget!);
         await Assertions.Expect(dialog).ToBeFocusedAsync();

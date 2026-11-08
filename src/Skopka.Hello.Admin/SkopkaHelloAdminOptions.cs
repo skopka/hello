@@ -54,6 +54,22 @@ public sealed class SkopkaHelloAdminOptions
     public HelloSessionRevocationScope RevokeSessionsOnRoleRemoval
     { get; set; } = HelloSessionRevocationScope.Always;
 
+    /// <summary>
+    /// Account attributes shown as badges in the Admin user list and offered
+    /// as list filters, in display order. Empty by default.
+    /// </summary>
+    public IList<HelloAdminUserBadge> UserBadges { get; } =
+        new List<HelloAdminUserBadge>();
+
+    /// <summary>
+    /// How many accounts one Admin page request may examine while filtering
+    /// the user list by badge or listing role members. Identity has no role
+    /// or host-attribute query, so these lists are built by paging through
+    /// accounts; when the bound is reached the page offers to continue. The
+    /// default is 500; the allowed range is 100-5000.
+    /// </summary>
+    public int MembershipScanLimit { get; set; } = 500;
+
     public void Validate()
     {
         ApiPathPrefix = ValidatePathPrefix(
@@ -85,6 +101,24 @@ public sealed class SkopkaHelloAdminOptions
             nameof(ProtectedRoleNames));
         Roles.Validate();
         RoleAssignment.Validate();
+        foreach (var badge in UserBadges)
+        {
+            ArgumentNullException.ThrowIfNull(badge, nameof(UserBadges));
+            badge.Validate();
+        }
+
+        if (UserBadges.Select(badge => badge.Key)
+                .Distinct(StringComparer.Ordinal).Count() != UserBadges.Count)
+        {
+            throw new InvalidOperationException(
+                "Admin user badge keys must be unique.");
+        }
+
+        if (MembershipScanLimit is < 100 or > 5000)
+        {
+            throw new InvalidOperationException(
+                "The Admin membership scan limit must be between 100 and 5000.");
+        }
         if (!Enum.IsDefined(RevokeSessionsOnRoleRemoval))
         {
             throw new InvalidOperationException(

@@ -150,6 +150,80 @@ Call `AddSkopkaHelloUi<TProfile, TProfileFactory>` before the admin registration
 when `RazorUiEnabled` is true. API-only hosts can set it to false; no admin
 Razor application part or route convention is then installed.
 
+## User badges and filters
+
+Hello does not know which accounts a host considers administrators, staff or
+any other kind. A host declares such attributes as badges; the Users page shows
+them next to each account and offers a filter for them:
+
+```csharp
+services.AddSkopkaHelloAdmin<MyProfile, MyAdminProfileProjector>(options =>
+{
+    // Held by accounts with any of the listed roles.
+    options.UserBadges.Add(HelloAdminUserBadge.ForRoles(
+        "admin", "Администратор", "iq-admin"));
+    // Decided by the host, for example from its own account-kind table.
+    options.UserBadges.Add(new HelloAdminUserBadge("staff", "Сотрудник")
+    {
+        CssClass = "text-bg-secondary",
+    });
+});
+services.AddScoped<IHelloAdminUserBadgeSource, MyAccountKindBadges>();
+```
+
+```csharp
+public sealed class MyAccountKindBadges(MyAccounts accounts)
+    : IHelloAdminUserBadgeSource
+{
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyCollection<string>>>
+        GetBadgesAsync(
+            IReadOnlyList<HelloAdminUserBadgeCandidate> users,
+            CancellationToken cancellationToken)
+    {
+        var staff = await accounts.FindWorkAccountsAsync(
+            users.Select(user => user.UserId).ToArray(),
+            cancellationToken);
+        return staff.ToDictionary(
+            id => id,
+            _ => (IReadOnlyCollection<string>)["staff"]);
+    }
+}
+```
+
+An account holds a badge when it has any of `Roles` (case-insensitive) or when
+the source returns the badge key for it; both may be combined. The source is
+optional, resolved per request and called once per batch of at most 100
+accounts with each account's id, flags, login, email, phone and role names.
+Unknown keys are ignored. `Key` is the stable filter value
+(`/hello/admin/users?Badge=staff`): 1–64 lowercase Latin letters, digits or
+hyphens, unique among badges. `Label` is host text that Hello does not
+translate; a UI dictionary key `Admin.Badges.{key}` overrides it per culture.
+`CssClass` takes Bootstrap badge classes (default `text-bg-info`) and
+`Filterable = false` shows a badge without offering a filter.
+
+Identity has no query by role or by host attribute. A badge filter, and the role
+member list below, page through accounts with the bounded user query and keep
+the matching ones. One page request examines at most
+`MembershipScanLimit` accounts (default 500, allowed 100–5000). When it stops
+before the page is full, the page says how many accounts were examined and
+offers "Continue search" from where it stopped. Narrow the list with the search
+box for large directories.
+
+## Role members
+
+The Roles page lists the members of a role in the role's dialog ("Members"),
+with search and pages. From there an administrator adds an account (search by
+login, email or phone among accounts without the role) or removes a member.
+Adding and removing use the same step-up confirmation, the same
+`RoleAssignmentPolicyName` and the same per-role rules (`GrantableBy`,
+`RoleAssignment`, protected and own-role restrictions) as assignment from the
+Users page; actions the administrator may not perform are not offered and are
+refused by the application. The page itself still requires the read policy;
+a delegated role assigner without it manages membership from the Users page.
+
+After any confirmation the person returns to the dialog they started from; see
+[form submissions](form-submissions.md).
+
 ## Bootstrap the first administrator
 
 Create and confirm a normal user first, note its id from the account response,

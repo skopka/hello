@@ -126,7 +126,7 @@
 @foreach (var client in Model.Clients)
 {
     var dialogId = $"admin-client-{index++}";
-    var active = Model.ChallengeId is null && ((hasErrors && Model.ClientId == client.ClientId && Model.ActionName != "create") || (!posted && Model.Edit == client.ClientId));
+    var active = Model.ChallengeId is null && ((hasErrors && Model.ClientId == client.ClientId && Model.ActionName != "create") || (!posted && Model.Edit == client.ClientId && Model.Secret is null));
     var editing = hasErrors && Model.ClientId == client.ClientId && Model.ActionName == "update";
     <article class="admin-list-row">
                     <div class="admin-row-content">

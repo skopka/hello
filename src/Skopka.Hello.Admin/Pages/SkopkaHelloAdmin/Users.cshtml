@@ -3,8 +3,7 @@
 @{
     ViewData["Title"] = Text["Admin.Users.PageTitle"];
     ViewData["AdminSection"] = "users";
-    var postedForm = ViewContext.HttpContext.Request.HasFormContentType ? ViewContext.HttpContext.Request.Form : null;
-    var hasPostErrors = postedForm is not null && !ViewData.ModelState.IsValid;
+    var openUserVisible = Model.Manage is { } openUser && Model.Users.Any(user => user.Id == openUser) && Model.ShouldOpen(openUser);
 }
 
 <div class="admin-directory">
@@ -23,11 +22,9 @@
         }
     </header>
 
-    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    @if (!openUserVisible)
     {
-        <div class="alert alert-success shadow-sm" role="status">
-            @Model.StatusMessage
-        </div>
+        <partial name="_AdminStatus" model="@((Model.StatusMessage, Model.OutcomeMessage))" />
     }
 
     <div asp-validation-summary="All"
@@ -38,7 +35,7 @@
              aria-label="@Text["Admin.Common.ApplyFilters"]">
         <div class="card-body">
             <form method="get" class="row g-2 align-items-end admin-filter-form">
-                <div class="col-12 col-lg-7">
+                <div class="col-12 @(Model.FilterBadges.Count > 0 ? "col-lg-5" : "col-lg-7")">
                     <label class="form-label small mb-1"
                            for="admin-search">
                         @Text["Admin.Common.Search"]
@@ -65,6 +62,24 @@
                         }
                     </select>
                 </div>
+                @if (Model.FilterBadges.Count > 0)
+                {
+                    <div class="col-12 col-sm-7 col-lg-2">
+                        <label class="form-label small mb-1"
+                               for="admin-badge">
+                            @Text["Admin.Users.Badge"]
+                        </label>
+                        <select class="form-select form-select-sm"
+                                id="admin-badge"
+                                name="Badge">
+                            <option value="">@Text["Admin.Users.AnyBadge"]</option>
+                            @foreach (var badge in Model.FilterBadges)
+                            {
+                                <option value="@badge.Key" selected="@(badge.Key == Model.Badge)">@Model.BadgeLabel(badge)</option>
+                            }
+                        </select>
+                    </div>
+                }
                 <div class="col-12 col-sm-5 col-lg-2 d-grid">
                     <button class="btn btn-primary btn-sm" type="submit">
                         @Text["Admin.Common.ApplyFilters"]
@@ -128,8 +143,7 @@
                                 <input type="hidden"
                                     name="reason"
                                     value="@pending.Parameters.Reason" />
-                                <input type="hidden" name="Search" value="@Model.Search" />
-                                <input type="hidden" name="Status" value="@Model.Status" />
+                                <partial name="_AdminListContext" model="@Model.ListContext(pending.UserId)" />
 
                                 <div class="col-12 col-sm-7">
                                     <label class="form-label small mb-1"
@@ -208,8 +222,7 @@
                                 <input type="hidden"
                                     name="challengeId"
                                     value="@pendingRole.ChallengeId" />
-                                <input type="hidden" name="Search" value="@Model.Search" />
-                                <input type="hidden" name="Status" value="@Model.Status" />
+                                <partial name="_AdminListContext" model="@Model.ListContext(pendingRole.TargetUserId)" />
 
                                 <div class="col-12 col-sm-7">
                                     <label class="form-label small mb-1"
@@ -279,12 +292,16 @@
                     <div class="admin-row-content">
                         <h2 class="admin-user-title">@(user.UserName ?? user.Email ?? user.Phone ?? user.Id.ToString("D"))</h2>
                         <span class="badge @statusBadgeClass">@Text[statusTextKey]</span>
+                        @foreach (var badge in Model.BadgesOf(user.Id))
+                        {
+                            <span class="badge @badge.CssClass admin-user-badge" data-admin-badge="@badge.Key">@Model.BadgeLabel(badge)</span>
+                        }
                         <span class="admin-row-summary">@user.Email</span>
                         <span class="admin-row-summary">@user.Phone</span>
                     </div>
                     <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#@managePanelId">@Text["Admin.Common.Manage"]</button>
                 </article>
-                <div class="modal fade" id="@managePanelId" data-admin-auto-open="@(hasPostErrors && Model.PendingAction is null && Model.PendingRoleAction is null && postedForm!["userId"] == user.Id.ToString() ? "true" : null)" tabindex="-1" aria-labelledby="@(managePanelId)-title" aria-hidden="true">
+                <div class="modal fade" id="@managePanelId" data-admin-auto-open="@(Model.ShouldOpen(user.Id) ? "true" : null)" tabindex="-1" aria-labelledby="@(managePanelId)-title" aria-hidden="true">
                     <div class="modal-dialog modal-xl modal-dialog-scrollable">
                         <div class="modal-content">
                             <div class="modal-header">
@@ -292,6 +309,10 @@
                                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="@Text["Admin.Common.Close"]"></button>
                             </div>
                             <div class="modal-body">
+                                @if (Model.ShouldOpen(user.Id))
+                                {
+                                    <partial name="_AdminStatus" model="@((Model.StatusMessage, Model.OutcomeMessage))" />
+                                }
                                 <div asp-validation-summary="All" class="alert alert-danger admin-validation" role="alert"></div>
                                 <div class="admin-subtitle">@user.Id · @Text["Admin.Common.Version", user.Version]</div>
                                 <div class="admin-meta-grid">
@@ -397,12 +418,7 @@
                                                                     <input type="hidden"
                                                                         name="action"
                                                                         value="remove" />
-                                                                    <input type="hidden"
-                                                                        name="Search"
-                                                                        value="@Model.Search" />
-                                                                    <input type="hidden"
-                                                                        name="Status"
-                                                                        value="@Model.Status" />
+                                                                    <partial name="_AdminListContext" model="@Model.ListContext(user.Id)" />
                                                                     <button class="btn btn-outline-danger btn-sm"
                                                                         type="submit">
                                                                     @Text["Common.Remove"]
@@ -433,12 +449,7 @@
                                                     <input type="hidden"
                                                         name="action"
                                                         value="assign" />
-                                                    <input type="hidden"
-                                                        name="Search"
-                                                        value="@Model.Search" />
-                                                    <input type="hidden"
-                                                        name="Status"
-                                                        value="@Model.Status" />
+                                                    <partial name="_AdminListContext" model="@Model.ListContext(user.Id)" />
                                                     <div class="col-12 col-md">
                                                         <label class="form-label small mb-1"
                                                             for="role-id-@user.Id.ToString("N")">
@@ -530,12 +541,7 @@
                                                                 <input type="hidden"
                                                                     name="expectedVersion"
                                                                     value="@user.Version" />
-                                                                <input type="hidden"
-                                                                    name="Search"
-                                                                    value="@Model.Search" />
-                                                                <input type="hidden"
-                                                                    name="Status"
-                                                                    value="@Model.Status" />
+                                                                <partial name="_AdminListContext" model="@Model.ListContext(user.Id)" />
                                                                 <button class="btn btn-outline-success btn-sm"
                                                                     type="submit">
                                                                 @Text["Admin.Users.Restore"]
@@ -563,12 +569,7 @@
                                                                         <input type="hidden"
                                                                             name="expectedVersion"
                                                                             value="@user.Version" />
-                                                                        <input type="hidden"
-                                                                            name="Search"
-                                                                            value="@Model.Search" />
-                                                                        <input type="hidden"
-                                                                            name="Status"
-                                                                            value="@Model.Status" />
+                                                                        <partial name="_AdminListContext" model="@Model.ListContext(user.Id)" />
                                                                         <button class="btn btn-outline-success btn-sm"
                                                                             type="submit">
                                                                         @Text["Admin.Users.ConfirmEmail"]
@@ -593,12 +594,7 @@
                                                                         <input type="hidden"
                                                                             name="expectedVersion"
                                                                             value="@user.Version" />
-                                                                        <input type="hidden"
-                                                                            name="Search"
-                                                                            value="@Model.Search" />
-                                                                        <input type="hidden"
-                                                                            name="Status"
-                                                                            value="@Model.Status" />
+                                                                        <partial name="_AdminListContext" model="@Model.ListContext(user.Id)" />
                                                                         <button class="btn btn-outline-success btn-sm"
                                                                             type="submit">
                                                                         @Text["Admin.Users.Unblock"]
@@ -619,12 +615,7 @@
                                                                         <input type="hidden"
                                                                             name="expectedVersion"
                                                                             value="@user.Version" />
-                                                                        <input type="hidden"
-                                                                            name="Search"
-                                                                            value="@Model.Search" />
-                                                                        <input type="hidden"
-                                                                            name="Status"
-                                                                            value="@Model.Status" />
+                                                                        <partial name="_AdminListContext" model="@Model.ListContext(user.Id)" />
                                                                         <div class="col-12">
                                                                             <label class="form-label small mb-1"
                                                                                 for="block-until-@user.Id.ToString("N")">
@@ -634,7 +625,7 @@
                                                                                 id="block-until-@user.Id.ToString("N")"
                                                                                 type="datetime-local"
                                                                                 name="blockedUntil"
-                                                                                value="@(hasPostErrors && postedForm!["userId"] == user.Id.ToString() ? postedForm["blockedUntil"].ToString() : null)" />
+                                                                                value="@Model.PostedValue(user.Id, "blockedUntil")" />
                                                                         </div>
                                                                         <div class="col-12">
                                                                             <label class="form-label small mb-1"
@@ -644,7 +635,7 @@
                                                                             <input class="form-control form-control-sm"
                                                                                 id="block-reason-@user.Id.ToString("N")"
                                                                                 name="reason"
-                                                                                value="@(hasPostErrors && postedForm!["userId"] == user.Id.ToString() ? postedForm["reason"].ToString() : null)"
+                                                                                value="@Model.PostedValue(user.Id, "reason")"
                                                                                 maxlength="512" />
                                                                         </div>
                                                                         <div class="col-12">
@@ -669,12 +660,7 @@
                                                                     <input type="hidden"
                                                                         name="action"
                                                                         value="revoke-sessions" />
-                                                                    <input type="hidden"
-                                                                        name="Search"
-                                                                        value="@Model.Search" />
-                                                                    <input type="hidden"
-                                                                        name="Status"
-                                                                        value="@Model.Status" />
+                                                                    <partial name="_AdminListContext" model="@Model.ListContext(user.Id)" />
                                                                     <button class="btn btn-outline-secondary btn-sm"
                                                                         type="submit">
                                                                     @Text["Admin.Users.RevokeSessions"]
@@ -694,12 +680,7 @@
                                                                     <input type="hidden"
                                                                         name="expectedVersion"
                                                                         value="@user.Version" />
-                                                                    <input type="hidden"
-                                                                        name="Search"
-                                                                        value="@Model.Search" />
-                                                                    <input type="hidden"
-                                                                        name="Status"
-                                                                        value="@Model.Status" />
+                                                                    <partial name="_AdminListContext" model="@Model.ListContext(user.Id)" />
                                                                     <button class="btn btn-outline-danger btn-sm"
                                                                         type="submit">
                                                                     @Text["Admin.Users.ResetAuthenticator"]
@@ -723,12 +704,7 @@
                                                                     <input type="hidden"
                                                                         name="expectedVersion"
                                                                         value="@user.Version" />
-                                                                    <input type="hidden"
-                                                                        name="Search"
-                                                                        value="@Model.Search" />
-                                                                    <input type="hidden"
-                                                                        name="Status"
-                                                                        value="@Model.Status" />
+                                                                    <partial name="_AdminListContext" model="@Model.ListContext(user.Id)" />
                                                                     <div class="col-12">
                                                                         <label class="form-label small mb-1"
                                                                             for="delete-reason-@user.Id.ToString("N")">
@@ -737,7 +713,7 @@
                                                                         <input class="form-control form-control-sm"
                                                                             id="delete-reason-@user.Id.ToString("N")"
                                                                             name="reason"
-                                                                            value="@(hasPostErrors && postedForm!["userId"] == user.Id.ToString() ? postedForm["reason"].ToString() : null)"
+                                                                            value="@Model.PostedValue(user.Id, "reason")"
                                                                             maxlength="512" />
                                                                     </div>
                                                                     <div class="col-12">
@@ -765,15 +741,20 @@
 
     @if (Model.NextCursor is { } nextCursor)
     {
-        <nav class="d-flex justify-content-end mt-4"
+        <nav class="d-flex flex-wrap align-items-center justify-content-end gap-2 mt-4"
              aria-label="@Text["Admin.Common.NextPage"]">
+            @if (Model.ScanLimitReached)
+            {
+                <span class="small text-body-secondary" role="status">@Text["Admin.Users.ScanLimitReached", Model.ScannedUsers]</span>
+            }
             <a class="btn btn-outline-primary btn-sm"
                asp-page="/SkopkaHelloAdmin/Users"
                asp-route-Search="@Model.Search"
-               asp-route-Status="@Model.Status"
+               asp-route-Status="@(Model.Status == IdentityUserStatus.Any ? null : Model.Status.ToString())"
+               asp-route-Badge="@Model.Badge"
                asp-route-CursorCreatedAt="@nextCursor.CreatedAt.ToString("O")"
                asp-route-CursorId="@nextCursor.Id">
-                @Text["Admin.Common.NextPage"]
+                @(Model.ScanLimitReached ? Text["Admin.Users.ContinueScan"] : Text["Admin.Common.NextPage"])
             </a>
         </nav>
     }

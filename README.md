@@ -38,8 +38,8 @@ Version `0.25.2` requires fresh primary authentication before authenticator enro
 Version `0.27.0` adds optional [native app sign-in](docs/native-app-sign-in.md), compact authorization-client administration, and a replaceable [email transport](docs/email-transport.md).
 
 For host-issued setup and recovery links, see [access links](docs/access-links.md).
-Trusted host SMS and delegated phone registration are described in
-[host SMS](docs/host-sms.md).
+Trusted host SMS, delegated phone registration and delegated phone verification
+are described in [host SMS](docs/host-sms.md).
 
 Version `0.28.0` adds host-required second-factor sign-in, host-defined phone
 registration fields, verified phone binding and guarded administrator authenticator
@@ -70,6 +70,10 @@ Version `0.29.0` requires Skopka.Identity `0.18.0` and adds
 [mandatory host onboarding](docs/registration-continuation.md),
 [host-issued access links](docs/access-links.md), and
 [host SMS and delegated phone registration](docs/host-sms.md).
+
+Version `0.31.0` adds [delegated phone verification](docs/host-sms.md#delegated-phone-verification):
+a signed-in actor proves possession of a number that may already belong to another
+account, and the host links that account or registers a new one.
 The [host policy example](samples/Skopka.Hello.HostPolicies/README.md)
 shows the integration contracts.
 

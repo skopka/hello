@@ -110,6 +110,8 @@ public static class SkopkaHelloServiceCollectionExtensions
         services.TryAddScoped<Skopka.Hello.IHelloSmsSender, Skopka.Hello.HelloSmsSender<TProfile>>();
         services.TryAddScoped<Skopka.Hello.IHelloDelegatedPhoneRegistration<TProfile>,
             Skopka.Hello.HelloDelegatedPhoneRegistration<TProfile>>();
+        services.TryAddScoped<Skopka.Hello.IHelloDelegatedPhoneVerification<TProfile>,
+            Skopka.Hello.HelloDelegatedPhoneRegistration<TProfile>>();
         services.TryAddEnumerable(
             ServiceDescriptor.Scoped<
                 Skopka.Hello.IHelloAccessTokenValidator<TProfile>,

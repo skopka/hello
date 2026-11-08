@@ -40,6 +40,9 @@ public sealed partial class AuthenticationFlowTests
             var delegated = scope.ServiceProvider.GetRequiredService<IHelloDelegatedPhoneRegistration<IntegrationProfile>>();
             var denied = await delegated.BeginAsync(actor.AccessToken, "+79991234581", null, CancellationToken.None);
             Assert.False(denied.IsSuccess);
+            var verification = scope.ServiceProvider.GetRequiredService<IHelloDelegatedPhoneVerification<IntegrationProfile>>();
+            var verificationDenied = await verification.BeginAsync(actor.AccessToken, "+79991234581", null, CancellationToken.None);
+            Assert.False(verificationDenied.IsSuccess);
             Assert.DoesNotContain(app.Messages, entry => entry.Kind == HelloAccountMessageKind.PhoneSignInVerification);
         }
         var cookies = await LoginThroughUiAsync(client, "ui-binding@example.test", password, null, "/identity/account");
@@ -218,6 +221,113 @@ public sealed partial class AuthenticationFlowTests
         var occupiedCorrect = await service.CompleteAsync(parent.AccessToken, occupiedStart.Value.Ticket, occupiedSms.VerificationCode!, "parent-client", child, false, false, CancellationToken.None);
         Assert.False(occupiedCorrect.IsSuccess);
         Assert.Contains(occupiedCorrect.Errors, error => error.Code == IdentityErrorCodes.DuplicatePhone);
+        using var stillParent = await GetMeAsync(client, parent.AccessToken);
+        Assert.Equal(parentId, stillParent.RootElement.GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task DelegatedPhoneVerificationProvesOwnershipOnceForTheActorOnly()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        await postgres.StartAsync();
+        await using var app = await TestApplication.CreateAsync(postgres.GetConnectionString(),
+            configureHello: options => options.PhoneOtpEnabled = true, shortVerificationCooldown: true,
+            configureServices: services => services.AddSingleton<IHelloDelegatedPhoneRegistrationPolicy<IntegrationProfile>, AllowDelegatedRegistration>());
+        using var client = app.CreateClient(allowAutoRedirect: false);
+        const string password = "correct horse battery staple";
+        foreach (var name in new[] { "verifying-parent", "verifying-other" })
+        {
+            using var registered = await client.PostAsJsonAsync("/auth/register", new { userName = name, email = name + "@example.test", phone = (string?)null, profile = new { displayName = name, locale = "en" }, password });
+            Assert.Equal(HttpStatusCode.Created, registered.StatusCode);
+        }
+        // A number written on an account but never confirmed proves nothing about who owns that account.
+        using var unconfirmed = await client.PostAsJsonAsync("/auth/register", new { userName = "unconfirmed-owner", email = "unconfirmed-owner@example.test", phone = "+79991234593", profile = new { displayName = "Unconfirmed", locale = "en" }, password });
+        Assert.Equal(HttpStatusCode.Created, unconfirmed.StatusCode);
+        var parent = await LoginAsync(client, "verifying-parent@example.test", password);
+        var other = await LoginAsync(client, "verifying-other@example.test", password);
+        using var initial = await GetMeAsync(client, parent.AccessToken);
+        var parentId = initial.RootElement.GetProperty("id").GetGuid();
+        using var scope = app.Services.CreateScope();
+        var registration = scope.ServiceProvider.GetRequiredService<IHelloDelegatedPhoneRegistration<IntegrationProfile>>();
+        var service = scope.ServiceProvider.GetRequiredService<IHelloDelegatedPhoneVerification<IntegrationProfile>>();
+        var sent = 0;
+        async Task<(string Ticket, string Code)> BeginAsync(string phone, string accessToken)
+        {
+            var begun = await service.BeginAsync(accessToken, phone, "parent-client", CancellationToken.None);
+            Assert.True(begun.IsSuccess);
+            sent++;
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            HelloAccountMessage[] codes;
+            while ((codes = app.Messages.Where(entry => entry.Kind == HelloAccountMessageKind.PhoneSignInVerification).ToArray()).Length < sent)
+                await Task.Delay(10, timeout.Token);
+            return (begun.Value.Ticket, codes[^1].VerificationCode!);
+        }
+        static string Wrong(string code) => code == "000000" ? "111111" : "000000";
+
+        // An existing child account with a confirmed number, created the old way.
+        var childStart = await registration.BeginAsync(parent.AccessToken, "+79991234591", "parent-client", CancellationToken.None);
+        Assert.True(childStart.IsSuccess);
+        sent++;
+        var childCode = (await app.WaitForMessageAsync(HelloAccountMessageKind.PhoneSignInVerification)).VerificationCode!;
+        var child = await registration.CompleteAsync(parent.AccessToken, childStart.Value.Ticket, childCode, "parent-client",
+            new IntegrationProfile("Child", "en"), false, false, CancellationToken.None);
+        Assert.True(child.IsSuccess);
+
+        // Existing number: nothing is disclosed until the correct code, then the holder is named once.
+        var existing = await BeginAsync("+79991234591", parent.AccessToken);
+        var stolenTicket = await service.VerifyAsync(other.AccessToken, existing.Ticket, existing.Code, "parent-client", CancellationToken.None);
+        Assert.False(stolenTicket.IsSuccess);
+        var wrong = await service.VerifyAsync(parent.AccessToken, existing.Ticket, Wrong(existing.Code), "parent-client", CancellationToken.None);
+        Assert.False(wrong.IsSuccess);
+        Assert.Contains(wrong.Errors, error => error.Code == IdentityErrorCodes.VerificationResponseInvalid);
+        var proof = await service.VerifyAsync(parent.AccessToken, existing.Ticket, existing.Code, "parent-client", CancellationToken.None);
+        Assert.True(proof.IsSuccess);
+        Assert.Equal(child.Value.Id, proof.Value.AccountId);
+        Assert.Equal("+79991234591", proof.Value.Phone);
+        Assert.True(proof.Value.ExpiresAt > proof.Value.VerifiedAt);
+        Assert.DoesNotContain("+79991234591", proof.Value.Proof, StringComparison.Ordinal);
+        var verifiedAgain = await service.VerifyAsync(parent.AccessToken, existing.Ticket, existing.Code, "parent-client", CancellationToken.None);
+        Assert.False(verifiedAgain.IsSuccess);
+        var transferred = await service.RedeemAsync(other.AccessToken, proof.Value.Proof, CancellationToken.None);
+        Assert.False(transferred.IsSuccess);
+        var forged = await service.RedeemAsync(parent.AccessToken, proof.Value.Proof[..^4] + "AAAA", CancellationToken.None);
+        Assert.False(forged.IsSuccess);
+        var ownership = await service.RedeemAsync(parent.AccessToken, proof.Value.Proof, CancellationToken.None);
+        Assert.True(ownership.IsSuccess);
+        Assert.Equal(parentId, ownership.Value.ActorId);
+        Assert.Equal(child.Value.Id, ownership.Value.AccountId);
+        Assert.Equal("+79991234591", ownership.Value.Phone);
+        Assert.Equal(proof.Value.VerifiedAt, ownership.Value.VerifiedAt);
+        var replayed = await service.RedeemAsync(parent.AccessToken, proof.Value.Proof, CancellationToken.None);
+        Assert.False(replayed.IsSuccess);
+        var registeredOnSpent = await service.RegisterAsync(parent.AccessToken, proof.Value.Proof, new IntegrationProfile("Again", "en"), false, false, CancellationToken.None);
+        Assert.False(registeredOnSpent.IsSuccess);
+        Assert.DoesNotContain(registeredOnSpent.Errors, error => error.Code == IdentityErrorCodes.DuplicatePhone);
+
+        // New number: the proof names no holder and registers a confirmed-phone account once.
+        var fresh = await BeginAsync("+79991234592", parent.AccessToken);
+        var freshProof = await service.VerifyAsync(parent.AccessToken, fresh.Ticket, fresh.Code, "parent-client", CancellationToken.None);
+        Assert.True(freshProof.IsSuccess);
+        Assert.Null(freshProof.Value.AccountId);
+        var stolenRegistration = await service.RegisterAsync(other.AccessToken, freshProof.Value.Proof, new IntegrationProfile("Stolen", "en"), false, false, CancellationToken.None);
+        Assert.False(stolenRegistration.IsSuccess);
+        var created = await service.RegisterAsync(parent.AccessToken, freshProof.Value.Proof, new IntegrationProfile("Second child", "en"), false, false, CancellationToken.None);
+        Assert.True(created.IsSuccess);
+        Assert.Equal("+79991234592", created.Value.Phone);
+        Assert.True(created.Value.PhoneConfirmed);
+        Assert.NotEqual(parentId, created.Value.Id);
+        var redeemedAfterRegistration = await service.RedeemAsync(parent.AccessToken, freshProof.Value.Proof, CancellationToken.None);
+        Assert.False(redeemedAfterRegistration.IsSuccess);
+
+        // An unconfirmed holder is not linkable and registration still reports the number as taken.
+        var taken = await BeginAsync("+79991234593", parent.AccessToken);
+        var takenProof = await service.VerifyAsync(parent.AccessToken, taken.Ticket, taken.Code, "parent-client", CancellationToken.None);
+        Assert.True(takenProof.IsSuccess);
+        Assert.Null(takenProof.Value.AccountId);
+        var duplicate = await service.RegisterAsync(parent.AccessToken, takenProof.Value.Proof, new IntegrationProfile("Duplicate", "en"), false, false, CancellationToken.None);
+        Assert.False(duplicate.IsSuccess);
+        Assert.Contains(duplicate.Errors, error => error.Code == IdentityErrorCodes.DuplicatePhone);
+
         using var stillParent = await GetMeAsync(client, parent.AccessToken);
         Assert.Equal(parentId, stillParent.RootElement.GetProperty("id").GetGuid());
     }

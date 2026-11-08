@@ -26,6 +26,8 @@ atomically with registration. A verified number is not used to auto-link an
 OIDC account. A confirmed phone counts as a sign-in method when checking
 whether an external login or passkey can be removed. An unconfirmed number is never linked merely by an anonymous sign-in code. Account phone additions and replacements require the authenticated phone-binding flow, which verifies a code sent to the new phone before atomically attaching and confirming it. The previous phone remains unchanged until completion. Phone availability is checked only after proof verification. The direct `PUT /account/phone` route and unverified Razor edit are removed; the legacy application change method fails closed. See [phone binding](phone-binding.md) for UI configuration and migration.
 
+Delegated phone verification lets a host-authorized actor prove possession of another person's number. The holder of the number is looked up only after the correct code. The resulting proof is encrypted, bound to the actor and its access token, short-lived and spent once by Skopka.Identity in its store, so it cannot be replayed or redeemed by another account. Only an active account whose number is confirmed is reported as the holder. Linking is the host's decision and record; see [host SMS](host-sms.md#delegated-phone-verification).
+
 Identity enforces per-phone and per-client daily limits plus a resend cooldown.
 Hello adds a host-wide daily SMS budget and runs registered
 `IHelloPhonePreSendPolicy` implementations before issuing a code, so hosts can

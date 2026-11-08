@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.31.0
+
+- Add `IHelloDelegatedPhoneVerification<TProfile>`: a signed-in actor proves possession of a phone number that may already belong to another account. After the correct code the host receives a protected one-use `HelloPhoneOwnershipProof` with the holder of the confirmed number (`AccountId`) and either registers a new account (`RegisterAsync`) or redeems it for linking (`RedeemAsync` → `HelloPhoneOwnership`). Occupancy is still disclosed only after the correct code; codes, budgets, limits and `IHelloDelegatedPhoneRegistrationPolicy<TProfile>` are shared with delegated registration. The proof is bound to the actor and access token, expires with the Identity proof (`VerificationOptions.ProofLifetime`, two minutes by default) and is spent atomically by Skopka.Identity. `IHelloDelegatedPhoneRegistration<TProfile>` is unchanged. See `docs/host-sms.md`.
+
 ## 0.30.0
 
 - End every Hello.UI and Hello.Admin form submission with `303 See Other` to a GET, on success, error and intermediate steps. Refresh and Back no longer resubmit; errors, typed non-secret values and the current step survive refresh, while passwords and codes are never kept. Outcomes are process-local and bound to the browser and account; multi-instance hosts need session affinity. Native app sign-in approval keeps its one-time hand-off response. See `docs/form-submissions.md`.

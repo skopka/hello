@@ -12,7 +12,11 @@ verification and refresh-session state stay in Skopka.Identity.
 
 ## Documentation
 
-Documentation: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html). Repository guides describe version `0.29.0`; the documentation site is updated separately.
+Version `0.29.1`: access-link setup now uses the standard Hello form styles and localized
+retry guidance. Refresh no longer resubmits the form; expired or replaced
+authenticator setup can be restarted. See [access links](docs/access-links.md).
+
+Documentation: [product overview](https://products.skopka.ru/en/hello/index.html) · [English guide](https://products.skopka.ru/guides/en/hello.html) · [Руководство на русском](https://products.skopka.ru/guides/ru/hello.html) · [API reference](https://products.skopka.ru/api/hello/index.html). Repository guides describe version `0.29.1`; the documentation site is updated separately.
 
 Version `0.25.0` adds optional hints under host-defined account profile
 fields; see [customization](docs/customization.md). It also adds

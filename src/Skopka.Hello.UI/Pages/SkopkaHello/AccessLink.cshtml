@@ -3,46 +3,79 @@
 @{
     ViewData["Title"] = Text["AccessLink.Title"];
 }
-<section class="hello-card">
+
+<section class="hello-page-heading">
     <h1>@Text["AccessLink.Title"]</h1>
-    <div asp-validation-summary="All" class="hello-validation-summary"></div>
+</section>
+
+<section class="hello-card">
+    <div asp-validation-summary="All" class="hello-validation" role="alert" tabindex="-1"></div>
+
     @if (Microsoft.AspNetCore.Http.HttpMethods.IsGet(ViewContext.HttpContext.Request.Method))
     {
         <form method="post" asp-page-handler="Inspect" id="access-link-inspect">
             <input asp-for="Token" type="hidden" />
-            <noscript>@Text["AccessLink.JavaScriptRequired"]</noscript>
+            <noscript><p class="hello-status hello-status-error">@Text["AccessLink.JavaScriptRequired"]</p></noscript>
         </form>
         <script src="~/_content/Skopka.Hello.UI/js/access-link.js" defer></script>
     }
-    @if (Model.RecoveryCodes is not null)
+
+    @if (Model.Completed)
     {
-        <p>@Text["AccessLink.RecoveryInstructions"]</p>
-        <ul>@foreach (var code in Model.RecoveryCodes) { <li><code>@code</code></li> }</ul>
-        <a asp-page="/SkopkaHello/Login">@Text["Layout.SignIn"]</a>
+        <div class="hello-status" role="status">
+            <strong>@Text["AccessLink.Success"]</strong>
+            @if (Model.RecoveryCodes is { } recoveryCodes)
+            {
+                <p>@Text["AccessLink.RecoveryInstructions"]</p>
+                <ul class="hello-recovery-codes">
+                    @foreach (var code in recoveryCodes)
+                    {
+                        <li><code>@code</code></li>
+                    }
+                </ul>
+            }
+        </div>
+        <div class="hello-actions">
+            <a class="hello-button" asp-page="/SkopkaHello/Login">@Text["Layout.SignIn"]</a>
+        </div>
     }
     else if (Model.Valid && !Model.Enrolling)
     {
         <p>@Text["AccessLink.Instructions"]</p>
-        <form method="post" asp-page-handler="Begin">
+        <form method="post" asp-page-handler="Begin" class="hello-form">
             <input asp-for="Token" type="hidden" />
-            <button type="submit">@Text["AccessLink.Begin"]</button>
+            <button class="hello-button" type="submit">@Text["AccessLink.Begin"]</button>
         </form>
     }
     else if (Model.Valid)
     {
         <p>@Text["AccessLink.AuthenticatorInstructions"]</p>
-        @if (Model.QrCode is not null) { <img src="@Model.QrCode" alt="@Text["AccessLink.QrAlt"]" /> }
-        <p><code>@Model.Secret</code></p>
-        <form method="post" asp-page-handler="Complete">
+        @if (Model.QrCode is not null)
+        {
+            <div class="hello-qr-code">
+                <img src="@Model.QrCode" alt="@Text["AccessLink.QrAlt"]" />
+            </div>
+        }
+        <p class="hello-muted">
+            @Text["Security.AuthenticatorManualKey"] <code>@Model.Secret</code>
+        </p>
+        <form method="post" asp-page-handler="Complete" class="hello-form">
             <input asp-for="Token" type="hidden" />
             <input asp-for="EnrollmentTicket" type="hidden" />
             <label asp-for="Password">@Text["AccessLink.Password"]</label>
             <input asp-for="Password" type="password" autocomplete="new-password" required />
+            <span asp-validation-for="Password" class="hello-field-error"></span>
             <label asp-for="ConfirmPassword">@Text["AccessLink.ConfirmPassword"]</label>
             <input asp-for="ConfirmPassword" type="password" autocomplete="new-password" required />
+            <span asp-validation-for="ConfirmPassword" class="hello-field-error"></span>
             <label asp-for="Code">@Text["AccessLink.Code"]</label>
-            <input asp-for="Code" autocomplete="one-time-code" required />
-            <button type="submit">@Text["AccessLink.Complete"]</button>
+            <input asp-for="Code" autocomplete="one-time-code" inputmode="numeric" required />
+            <span asp-validation-for="Code" class="hello-field-error"></span>
+            <button class="hello-button" type="submit">@Text["AccessLink.Complete"]</button>
+        </form>
+        <form method="post" asp-page-handler="Begin" class="hello-form">
+            <input asp-for="Token" type="hidden" />
+            <button class="hello-button hello-button-secondary" type="submit">@Text["AccessLink.Restart"]</button>
         </form>
     }
 </section>

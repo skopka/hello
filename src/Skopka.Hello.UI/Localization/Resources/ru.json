@@ -370,6 +370,7 @@
 
     "Errors.hello.registration.consent_required.acceptTermsOfService": "Примите Пользовательское соглашение, чтобы создать аккаунт.",
     "Errors.hello.registration.consent_required.acceptPrivacyPolicy": "Примите Политику конфиденциальности, чтобы создать аккаунт.",
+    "Errors.identity.access_link.invalid": "Ссылка доступа или код аутентификатора недействительны, истекли или уже использованы.",
     "Errors.identity.authentication.invalid_credentials": "Неверный логин или пароль.",
     "Errors.identity.authentication.blocked": "Вход временно заблокирован.",
     "Errors.identity.user_name.duplicate": "Это имя пользователя уже используется.",
@@ -402,6 +403,10 @@
     "AccessLink.ConfirmPassword": "Повторите пароль",
     "AccessLink.PasswordMismatch": "Пароли не совпадают.",
     "AccessLink.JavaScriptRequired": "Для открытия ссылки необходим JavaScript.",
+    "AccessLink.Success": "Доступ к аккаунту настроен.",
+    "AccessLink.Restart": "Начать настройку заново",
+    "AccessLink.EnrollmentExpired": "Срок настройки аутентификатора истёк. Начните настройку заново.",
+    "AccessLink.Retry": "Не удалось завершить настройку. Проверьте текущий код аутентификатора; если вы начали давно или в другой вкладке, начните настройку заново.",
     "AccessLink.Title": "Настройка доступа к аккаунту",
     "AccessLink.Invalid": "Ссылка недействительна, истекла или уже использована.",
     "AccessLink.Instructions": "Задайте пароль и подключите приложение-аутентификатор.",

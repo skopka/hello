@@ -302,23 +302,29 @@ public sealed partial class AuthenticationFlowTests
         var token = Uri.UnescapeDataString(issued.Value.Url.Fragment["#token=".Length..]);
         using var inspect = await SendFormAsync(client, "/identity/access-link?handler=Inspect", cookies,
             new Dictionary<string, string> { ["Token"] = token, ["__RequestVerificationToken"] = csrf });
-        Assert.Contains("Set a password", await inspect.Content.ReadAsStringAsync());
+        Assert.Equal("/identity/access-link", inspect.Headers.Location?.OriginalString);
+        using var inspectedPage = await FollowRedirectAsync(client, inspect, cookies);
+        Assert.Contains("Set a password", await inspectedPage.Content.ReadAsStringAsync());
         using var secondInspect = await SendFormAsync(client, "/identity/access-link?handler=Inspect", cookies,
             new Dictionary<string, string> { ["Token"] = token, ["__RequestVerificationToken"] = csrf });
-        Assert.Contains("Set a password", await secondInspect.Content.ReadAsStringAsync());
+        using var secondInspectedPage = await FollowRedirectAsync(client, secondInspect, cookies);
+        Assert.Contains("Set a password", await secondInspectedPage.Content.ReadAsStringAsync());
         using var begun = await SendFormAsync(client, "/identity/access-link?handler=Begin", cookies,
             new Dictionary<string, string> { ["Token"] = token, ["__RequestVerificationToken"] = csrf });
-        var enrollmentHtml = await begun.Content.ReadAsStringAsync();
+        using var enrollmentPage = await FollowRedirectAsync(client, begun, cookies);
+        var enrollmentHtml = await enrollmentPage.Content.ReadAsStringAsync();
         var ticket = ReadInputValue(enrollmentHtml, "EnrollmentTicket");
         csrf = ReadInputValue(enrollmentHtml, "__RequestVerificationToken");
         var secret = System.Text.RegularExpressions.Regex.Match(enrollmentHtml, "<code>([A-Z2-7]+)</code>").Groups[1].Value;
         Assert.NotEmpty(secret);
         using var completed = await SendFormAsync(client, "/identity/access-link?handler=Complete", cookies,
             new Dictionary<string, string> { ["Token"] = token, ["EnrollmentTicket"] = ticket, ["Password"] = "another strong password 123", ["ConfirmPassword"] = "another strong password 123", ["Code"] = ComputeTotp(secret), ["__RequestVerificationToken"] = csrf });
-        Assert.Contains("recovery codes", (await completed.Content.ReadAsStringAsync()), StringComparison.OrdinalIgnoreCase);
+        using var completedPage = await FollowRedirectAsync(client, completed, cookies);
+        Assert.Contains("recovery codes", (await completedPage.Content.ReadAsStringAsync()), StringComparison.OrdinalIgnoreCase);
         using var replay = await SendFormAsync(client, "/identity/access-link?handler=Inspect", cookies,
             new Dictionary<string, string> { ["Token"] = token, ["__RequestVerificationToken"] = csrf });
-        Assert.Contains("invalid, expired or already used", await replay.Content.ReadAsStringAsync());
+        using var replayPage = await FollowRedirectAsync(client, replay, cookies);
+        Assert.Contains("invalid, expired or already used", await replayPage.Content.ReadAsStringAsync());
     }
 
     private sealed class AllowDelegatedRegistration : IHelloDelegatedPhoneRegistrationPolicy<IntegrationProfile>

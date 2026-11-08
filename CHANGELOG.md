@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.29.1
+
+- Redirect access-link form submissions to GET, preserve an active authenticator setup across refresh, and show recovery codes only once while keeping the completion message visible.
+- Use the standard Hello form styles, localize access-link failures, distinguish an expired authenticator setup from an invalid link, and let users restart setup without resetting the attempt limit.
+
 ## 0.29.0
 
 - Add host-issued one-use access links with independent lifetime and site-bound password and authenticator setup, plus optional revocation of previous credentials and sessions.

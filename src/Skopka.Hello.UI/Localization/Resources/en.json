@@ -370,6 +370,7 @@
 
     "Errors.hello.registration.consent_required.acceptTermsOfService": "Accept the Terms of Service to create an account.",
     "Errors.hello.registration.consent_required.acceptPrivacyPolicy": "Accept the Privacy Policy to create an account.",
+    "Errors.identity.access_link.invalid": "The access link or authenticator code is invalid, expired, or already used.",
     "Errors.identity.authentication.invalid_credentials": "The login or password is invalid.",
     "Errors.identity.authentication.blocked": "Sign-in is temporarily blocked.",
     "Errors.identity.user_name.duplicate": "That user name is already in use.",
@@ -402,6 +403,10 @@
     "AccessLink.ConfirmPassword": "Confirm password",
     "AccessLink.PasswordMismatch": "Passwords do not match.",
     "AccessLink.JavaScriptRequired": "JavaScript is required to open this access link.",
+    "AccessLink.Success": "Account access is ready.",
+    "AccessLink.Restart": "Start setup again",
+    "AccessLink.EnrollmentExpired": "Authenticator setup expired. Start setup again.",
+    "AccessLink.Retry": "Could not finish setup. Check the current authenticator code; if you started a while ago or in another tab, start setup again.",
     "AccessLink.Title": "Set up account access",
     "AccessLink.Invalid": "This access link is invalid, expired or already used.",
     "AccessLink.Instructions": "Set a password and connect an authenticator to access your account.",

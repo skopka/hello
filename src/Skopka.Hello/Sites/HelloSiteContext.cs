@@ -33,7 +33,7 @@ internal sealed class HelloSiteCatalog
                 site.ExternalSignInEnabled, site.WebAuthnSignInEnabled, site.CrossDeviceSignInEnabled,
                 site.PasswordLoginHandle ?? options.PasswordLoginHandle, site.EnabledFeatures,
                 site.ApplicationHomeUrl, site.PostLogoutRedirectPath, site.AuthenticatedRedirectPath)
-                { PhoneScope = site.PhoneScope }).ToArray();
+            { PhoneScope = site.PhoneScope }).ToArray();
     }
 }
 

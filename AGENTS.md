@@ -153,12 +153,18 @@ Run:
 ```powershell
 dotnet restore .\Skopka.Hello.slnx --configfile .\NuGet.Config
 dotnet build .\Skopka.Hello.slnx -c Release --no-restore
+dotnet format .\Skopka.Hello.slnx --no-restore --verify-no-changes
 dotnet test .\tests\Skopka.Hello.Tests -c Release --no-build
 dotnet test .\tests\Skopka.Hello.IntegrationTests -c Release --no-build
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Skopka.Hello.BrowserTests\bin\Release\net10.0\playwright.ps1 install chromium
 dotnet test .\tests\Skopka.Hello.BrowserTests -c Release --no-build
 docker build -f .\src\Skopka.Hello.Server\Dockerfile .
 ```
+
+Run the format check before every push and release: CI on `main` and
+`release.yml` both stop on it. The build passes with style violations, but the
+formatter rejects them; in 0.32.0 a single indentation error stopped the
+release run before any package was built.
 
 Integration tests require Docker because they use a real PostgreSQL
 Testcontainer. Browser tests require the Playwright Chromium version installed

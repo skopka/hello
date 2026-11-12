@@ -103,9 +103,44 @@ version.
 After the GitHub tag and the coordinated NuGet package set are available, update the Hello
 pin in `scripts/fetch-sources.sh` to the release tag and its full commit SHA.
 Then run `sh scripts/build.sh` and verify the generated API and links against that pin.
-Do not present unreleased `main` as the current release. Publish Products using
-its existing authorization and workflow; if it is not published, report that
-status clearly. After deployment, verify the public Russian and English
+Do not present unreleased `main` as the current release. Publish Products
+immediately using the site checklist below; if deployment is blocked, report
+the exact failed stage and reason. After deployment, verify the public Russian and English
 overviews, guide and API pages, and README/NuGet links at
 https://products.skopka.ru. Record the release version, tag, full SHA, Products
 commit and live-check results in the final release record.
+
+## Publish the Products update immediately
+
+The owner has authorized this documentation publication step. Unless the user
+explicitly asks for drafts/local changes or no publication, finish a verified
+public documentation update in the same task:
+
+1. Confirm the documented Git tag/full SHA and the complete coordinated NuGet
+   package set are available. Update the affected Products source pin, RU/EN
+   pages, examples and navigation; build and review them according to the
+   [canonical Products workflow](https://git.skopka.ru/skopka/products/src/branch/main/docs/documentation-workflow.md).
+2. In the `products` repository, inspect the working tree and fetch remote `main`
+   and tags. Preserve unrelated edits and drafts. Commit and push only reviewed,
+   release-ready documentation changes; do not stage everything, reset or stash
+   someone else's work. Ensure the tagged commit contains no unfinished work.
+3. Select an unused stable `vX.Y.Z` greater than both the published version in
+   `https://products.skopka.ru/release.json` and existing stable Products tags
+   (compare semantic versions, not strings). Site versions are independent of
+   package versions. Create an annotated tag on the exact reviewed Products
+   commit and push it to `products`, not to this library or `build-projects`.
+4. Wait for the Products release workflow to succeed and for the public
+   `/release.json` to match both the site tag and full Products commit SHA.
+   The tag triggers build and deployment directly; no infra version bump or
+   scheduled infrastructure reconciliation is needed.
+5. Verify the affected public RU/EN overview, guide chapters and API pages,
+   including README/NuGet links. Report the package version/tag/SHA, Products
+   tag/SHA, workflow result and live URLs. A queued or failed deployment is not
+   complete: diagnose it and report any concrete blocker rather than promising
+   an unspecified later publication.
+
+Never move, delete or reuse an existing tag for changed content. A transient
+failure may be retried using the same unchanged tag; corrected content requires
+another higher site version. This instruction does not authorize new library or
+NuGet releases. Do not create an empty Products release for instructions-only
+changes or an update with no published documentation changes.
